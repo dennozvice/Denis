@@ -1288,6 +1288,11 @@
     margin: 0 calc(var(--sp-2) * -1);
   }
 
+  /* Elenco a tutta larghezza: le etichette delle scadenze stanno su una riga */
+  .cl-row-side .pill {
+    max-width: none;
+  }
+
   .cl-back-bar + .cl-detail-head {
     padding-top: var(--sp-3);
   }

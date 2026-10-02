@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { ArrowLeftRight, Banknote, Forward, HandCoins, Hourglass, Landmark, MessageSquareWarning, PiggyBank, Umbrella, Users } from 'lucide-react'
+import { ArrowLeftRight, Banknote, Forward, HandCoins, Hourglass, MessageSquareWarning, PiggyBank, Umbrella, Users, Wallet } from 'lucide-react'
 import { useId, useRef, useState } from 'react'
 import { Pill } from '../../components/ui/Pill'
 import { CASE_STATUS_LABEL, CASE_STATUS_TONE } from '../../domain/labels'
@@ -18,7 +18,7 @@ export const CASE_TYPE_ICON: Record<CaseType, LucideIcon> = {
   variazione_beneficiario: Users,
   versamento_aggiuntivo: PiggyBank,
   switch: ArrowLeftRight,
-  anticipazione: Landmark,
+  anticipazione: Wallet,
   trasferimento: Forward,
   reclamo: MessageSquareWarning,
 }

@@ -15,8 +15,9 @@ export const CASE_TYPE_TONE: Record<CaseType, Tone> = {
   variazione_beneficiario: 'primary',
   versamento_aggiuntivo: 'positive',
   switch: 'primary',
-  anticipazione: 'warning',
-  trasferimento: 'accent',
+  // stessi colori delle pratiche affini: anticipazione come il riscatto (uscita di denaro), trasferimento come lo switch
+  anticipazione: 'violet',
+  trasferimento: 'primary',
   reclamo: 'negative',
 }
 

@@ -328,19 +328,19 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
         <div className="cl-fact">
           <dt>Premi annui</dt>
           <dd className="num">
-            {totals.annualPremium > 0 ? formatCurrency(totals.annualPremium) : '—'}
+            {totals.annualPremium > 0 ? formatMoney(totals.annualPremium) : '—'}
             {totals.singlePremium > 0 && (
-              <span className="cl-fact-sub">+ {formatCurrency(totals.singlePremium)} premi unici</span>
+              <span className="cl-fact-sub">+ {formatMoney(totals.singlePremium)} premi unici</span>
             )}
             {totals.recurringPayments > 0 && (
-              <span className="cl-fact-sub">+ {formatCurrency(totals.recurringPayments)} versamenti</span>
+              <span className="cl-fact-sub">+ {formatMoney(totals.recurringPayments)} versamenti</span>
             )}
           </dd>
         </div>
         <div className="cl-fact">
           <dt>PAC mensili</dt>
           <dd className="num">
-            {totals.monthlyPac > 0 ? formatCurrency(totals.monthlyPac) : '—'}
+            {totals.monthlyPac > 0 ? formatMoney(totals.monthlyPac) : '—'}
             {totals.withPac > 0 && <span className="cl-fact-sub">{plural(totals.withPac, 'piano', 'piani')}</span>}
           </dd>
         </div>
@@ -496,6 +496,9 @@ function taskDueFor(due: DateKey | undefined, today: DateKey): DateKey {
 
 const capitalizeFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
+/** Premi e PAC: centesimi solo se presenti ("3.000 €", "1.200,50 €"). */
+const formatMoney = (value: number) => formatCurrency(value, Number.isInteger(value) ? 0 : 2)
+
 /** Etichetta di un valore facoltativo; undefined se assente o non riconosciuto (dati importati). */
 const labelOf = <T extends string>(labels: Record<T, string>, value: T | undefined): string | undefined =>
   value !== undefined && Object.hasOwn(labels, value) ? labels[value] : undefined
@@ -616,12 +619,12 @@ function PolicyItem({ policy: p, today }: { policy: Policy; today: DateKey }) {
         </div>
         <div>
           <dt>{PREMIUM_TYPE_LABEL[premiumType]}</dt>
-          <dd className="num">{p.annualPremium ? formatCurrency(p.annualPremium) : '—'}</dd>
+          <dd className="num">{p.annualPremium ? formatMoney(p.annualPremium) : '—'}</dd>
         </div>
         <div>
           <dt>PAC</dt>
           <dd className="num">
-            {p.pac ? `${formatCurrency(p.pac.amount)}/mese · giorno ${p.pac.dayOfMonth}` : '—'}
+            {p.pac ? `${formatMoney(p.pac.amount)}/mese · giorno ${p.pac.dayOfMonth}` : '—'}
           </dd>
         </div>
         <div>
