@@ -141,12 +141,19 @@ describe('adempimenti', () => {
 })
 
 describe('ultimo contatto', () => {
+  const policies = [{ id: 'p1', kind: 'risparmio' as const, ref: '••••1234', startDate: '2020-01-15' }]
+
   it('etichette e soglia', () => {
-    expect(lastContactInfo({}, TODAY, 180)).toEqual({ stale: true, label: 'Mai contattato' })
-    expect(lastContactInfo({ lastContact: TODAY }, TODAY, 180).label).toBe('oggi')
-    expect(lastContactInfo({ lastContact: '2026-10-01' }, TODAY, 180).label).toBe('ieri')
-    expect(lastContactInfo({ lastContact: '2026-09-20' }, TODAY, 180)).toEqual({ days: 12, stale: false, label: '12 gg fa' })
-    expect(lastContactInfo({ lastContact: '2025-08-28' }, TODAY, 180).stale).toBe(true)
+    expect(lastContactInfo({ policies }, TODAY, 180)).toEqual({ stale: true, label: 'Mai contattato' })
+    expect(lastContactInfo({ lastContact: TODAY, policies }, TODAY, 180).label).toBe('oggi')
+    expect(lastContactInfo({ lastContact: '2026-10-01', policies }, TODAY, 180).label).toBe('ieri')
+    expect(lastContactInfo({ lastContact: '2026-09-20', policies }, TODAY, 180)).toEqual({ days: 12, stale: false, label: '12 gg fa' })
+    expect(lastContactInfo({ lastContact: '2025-08-28', policies }, TODAY, 180).stale).toBe(true)
+  })
+
+  it('i prospect (senza polizze) non vanno segnalati da ricontattare, come nel widget della home', () => {
+    expect(lastContactInfo({ policies: [] }, TODAY, 180)).toEqual({ stale: false, label: 'Mai contattato' })
+    expect(lastContactInfo({ lastContact: '2025-08-28', policies: [] }, TODAY, 180)).toMatchObject({ stale: false, label: '400 gg fa' })
   })
 })
 

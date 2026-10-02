@@ -45,9 +45,9 @@ export function DeadlinesWidget() {
       title="Scadenze e adempimenti"
       subtitle="Prossimi 30 giorni e scadute"
       footer={
-        <a className="cs-footer-link" href={buildHref('pratiche', { vista: 'scadenze' })}>
+        <a className="card-link cs-footer-link" href={buildHref('pratiche', { vista: 'scadenze' })}>
           Scadenzario completo
-          <ChevronRight size={16} aria-hidden="true" />
+          <ChevronRight size={14} aria-hidden="true" />
         </a>
       }
     >

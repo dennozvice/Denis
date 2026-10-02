@@ -1,5 +1,5 @@
 /** Piccoli elementi condivisi da widget e pagina dei fondi. */
-import { useCallback, useState, useSyncExternalStore } from 'react'
+import { useCallback, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ChangeValue } from '../../components/ui/ChangeValue'
 import type { Instrument } from '../../domain/types'
 import { lastPoint } from '../../lib/finance'
@@ -97,4 +97,69 @@ export function useMeasuredWidth(): [number, (node: HTMLElement | null) => (() =
     return () => ro.disconnect()
   }, [])
   return [width, ref]
+}
+
+interface ScrollEdges {
+  /** C'è altro contenuto a sinistra. */
+  start: boolean
+  /** C'è altro contenuto a destra. */
+  end: boolean
+}
+
+const NO_EDGES: ScrollEdges = { start: false, end: false }
+
+/** Stato di scorrimento orizzontale di un contenitore (ResizeObserver + scroll, nessun setState nel render). */
+function useScrollEdges(): [ScrollEdges, (node: HTMLElement | null) => (() => void) | undefined] {
+  const [edges, setEdges] = useState<ScrollEdges>(NO_EDGES)
+  const ref = useCallback((node: HTMLElement | null) => {
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const update = () => {
+      const rest = node.scrollWidth - node.clientWidth - node.scrollLeft
+      const next = { start: node.scrollLeft > 1, end: rest > 1 }
+      setEdges((prev) => (prev.start === next.start && prev.end === next.end ? prev : next))
+    }
+    // il primo rilevamento arriva subito dall'observer; la tabella cambia larghezza anche senza che cambi il contenitore
+    const ro = new ResizeObserver(update)
+    ro.observe(node)
+    if (node.firstElementChild) ro.observe(node.firstElementChild)
+    node.addEventListener('scroll', update, { passive: true })
+    return () => {
+      ro.disconnect()
+      node.removeEventListener('scroll', update)
+    }
+  }, [])
+  return [edges, ref]
+}
+
+/**
+ * Contenitore delle tabelle larghe: se la tabella non sta nella card, dissolvenza sul bordo
+ * dove c'è altro da vedere e un suggerimento a scorrere.
+ */
+export function TableScroll({
+  className,
+  hint = 'Scorri la tabella di lato per vedere tutte le colonne →',
+  children,
+}: {
+  className?: string
+  hint?: string
+  children: ReactNode
+}) {
+  const [edges, ref] = useScrollEdges()
+  return (
+    <>
+      {(edges.start || edges.end) && (
+        <p className="xsmall muted fd-scroll-hint" aria-hidden="true">
+          {hint}
+        </p>
+      )}
+      <div
+        ref={ref}
+        className={`table-wrap fd-table-wrap${className ? ` ${className}` : ''}`}
+        data-more-start={edges.start || undefined}
+        data-more-end={edges.end || undefined}
+      >
+        {children}
+      </div>
+    </>
+  )
 }

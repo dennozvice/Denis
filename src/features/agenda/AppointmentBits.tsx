@@ -4,14 +4,12 @@ import { Pill } from '../../components/ui/Pill'
 import type { Tone } from '../../domain/labels'
 import {
   APPOINTMENT_OUTCOME_LABEL,
+  APPOINTMENT_TYPE_COLOR,
   APPOINTMENT_TYPE_LABEL,
-  APPOINTMENT_TYPE_TONE,
   LOCATION_LABEL,
-  TONE_BG,
-  TONE_COLOR,
 } from '../../domain/labels'
 import type { Appointment, AppointmentOutcome, Client, LocationMode } from '../../domain/types'
-import { clientFullName } from '../../store/selectors'
+import { clientFullName, isAllDay } from '../../store/selectors'
 import { videoHref, type Phase } from './agendaUtils'
 
 export function LocationIcon({ mode, size = 14 }: { mode: LocationMode; size?: number }) {
@@ -25,6 +23,19 @@ export function LocationIcon({ mode, size = 14 }: { mode: LocationMode; size?: n
     case 'telefono':
       return <Phone size={size} aria-hidden="true" />
   }
+}
+
+/**
+ * Il luogo va mostrato? Per gli eventi "tutto il giorno" (ferie, festività importate) solo se c'è un dettaglio:
+ * l'"In ufficio" predefinito non avrebbe senso.
+ */
+export function hasLocation(a: Pick<Appointment, 'start' | 'end' | 'locationDetail'>): boolean {
+  return !isAllDay(a) || !!a.locationDetail?.trim()
+}
+
+/** Orario per testi e lettori di schermo: "09:30–10:30" oppure "Tutto il giorno". */
+export function timeRangeText(a: Pick<Appointment, 'start' | 'end'>): string {
+  return isAllDay(a) ? 'Tutto il giorno' : `${a.start}–${a.end}`
 }
 
 /** Testo del luogo: dettaglio (indirizzo, sala…) oppure l'etichetta generica. I link non vengono mostrati per intero. */
@@ -64,17 +75,19 @@ export function StatusPill({ appointment: a, phase }: { appointment: Appointment
   return null
 }
 
-/** Variabili CSS del colore del tipo (barra laterale e sfondo dei blocchi). */
+/** Variabili CSS del colore del tipo (barra laterale e sfondo tenue dei blocchi), distinto per ogni tipo. */
 export function typeStyle(a: Pick<Appointment, 'type'>): React.CSSProperties {
-  const tone = APPOINTMENT_TYPE_TONE[a.type]
-  return { '--ag-type': TONE_COLOR[tone], '--ag-type-bg': TONE_BG[tone] } as React.CSSProperties
+  return {
+    '--ag-type': APPOINTMENT_TYPE_COLOR[a.type],
+    '--ag-type-bg': 'color-mix(in srgb, var(--ag-type) 14%, var(--surface))',
+  } as React.CSSProperties
 }
 
 /** Descrizione completa per lettori di schermo: "09:30–10:30, Revisione portafoglio, Mario Rossi, In ufficio, Da confermare". */
 export function appointmentAriaLabel(a: Appointment, client: Client | undefined, phase: Phase): string {
-  const parts = [`${a.start}–${a.end}`, a.title, APPOINTMENT_TYPE_LABEL[a.type]]
+  const parts = [timeRangeText(a), a.title, APPOINTMENT_TYPE_LABEL[a.type]]
   if (client) parts.push(clientFullName(client))
-  parts.push(locationText(a))
+  if (hasLocation(a)) parts.push(locationText(a))
   if (a.status === 'annullato') parts.push('annullato')
   else if (phase === 'in_corso') parts.push('in corso')
   else if (a.outcome) parts.push(OUTCOME_TEXT[a.outcome].toLowerCase())

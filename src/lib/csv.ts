@@ -128,8 +128,16 @@ export interface CsvError {
   message: string
 }
 
+/** Riga con data successiva a `maxDate`: quasi sempre un anno sbagliato. */
+export interface FutureRow extends PriceRow {
+  /** Numero di riga nel file (da 1). */
+  line: number
+}
+
 export interface PriceCsvResult {
   rows: PriceRow[]
+  /** Righe datate dopo `maxDate`: escluse da `rows`, da importare solo su conferma. */
+  future: FutureRow[]
   errors: CsvError[]
   /** Separatore di colonna riconosciuto. */
   delimiter: ';' | '\t' | ','
@@ -140,6 +148,8 @@ export interface PriceCsvResult {
 export interface PriceCsvOptions {
   /** Strumento a cui attribuire le righe senza colonna id (file "data;valore"). */
   defaultKey?: string
+  /** Ultima data ammessa (di solito oggi): le righe successive finiscono in `future`. */
+  maxDate?: DateKey
 }
 
 type Delimiter = PriceCsvResult['delimiter']
@@ -264,6 +274,7 @@ function detectDecimal(values: string[], delimiter: Delimiter): ',' | '.' {
  * Legge un CSV di valori (id;data;valore oppure data;valore con `defaultKey`).
  * Le righe con stesso strumento e stessa data sono unificate (vince l'ultima).
  * Le righe risultanti sono raggruppate per strumento (in ordine di apparizione) e ordinate per data.
+ * Con `maxDate`, le righe datate dopo quel giorno vanno in `future` invece che in `rows`.
  */
 export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): PriceCsvResult {
   const defaultKey = options.defaultKey?.trim() || undefined
@@ -353,7 +364,7 @@ export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): Pric
     raw.map((r) => r.value),
     delimiter,
   )
-  const byKey = new Map<string, Map<DateKey, number>>()
+  const byKey = new Map<string, Map<DateKey, { value: number; line: number }>>()
   for (const r of raw) {
     const value = looksNumeric(r.value) ? parseItalianNumber(r.value, { decimal }) : undefined
     if (value === undefined) {
@@ -366,14 +377,19 @@ export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): Pric
       byKey.set(r.key, points)
     }
     points.delete(r.date) // l'ultima occorrenza vince
-    points.set(r.date, value)
+    points.set(r.date, { value, line: r.line })
   }
 
   const rows: PriceRow[] = []
+  const future: FutureRow[] = []
   for (const [key, points] of byKey) {
     const sorted = [...points.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
-    for (const [date, value] of sorted) rows.push({ key, date, value })
+    for (const [date, { value, line }] of sorted) {
+      if (options.maxDate && date > options.maxDate) future.push({ key, date, value, line })
+      else rows.push({ key, date, value })
+    }
   }
   errors.sort((a, b) => a.line - b.line)
-  return { rows, errors, delimiter, hasHeader }
+  future.sort((a, b) => a.line - b.line)
+  return { rows, future, errors, delimiter, hasHeader }
 }

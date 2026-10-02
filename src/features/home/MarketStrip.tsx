@@ -1,4 +1,5 @@
 import { CircleAlert, ChevronRight, RefreshCw } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { ChangeValue } from '../../components/ui/ChangeValue'
 import { DemoBadge } from '../../components/ui/DemoBadge'
 import type { Instrument } from '../../domain/types'
@@ -6,18 +7,44 @@ import { lastPoint } from '../../lib/finance'
 import { formatDayMonth, formatInstrumentValue } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useMarket } from '../../store/MarketContext'
-import { marketChange } from './homeLogic'
+import { marketChange, scrollEdges, type ScrollEdges } from './homeLogic'
 import './home.css'
 
 const SKELETON_ITEMS = 7
 
+const NO_EDGES: ScrollEdges = { start: false, end: false }
+
+/** Rileva se l'elenco scorre in orizzontale e da che lato c'è altro (ResizeObserver + scroll). */
+function useScrollEdges(): [ScrollEdges, (node: HTMLElement | null) => (() => void) | undefined] {
+  const [edges, setEdges] = useState<ScrollEdges>(NO_EDGES)
+  const ref = useCallback((node: HTMLElement | null) => {
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const update = () => {
+      const next = scrollEdges(node)
+      setEdges((prev) => (prev.start === next.start && prev.end === next.end ? prev : next))
+    }
+    // Il primo rilevamento arriva subito dall'observer; le celle cambiano larghezza quando cambiano i valori.
+    const ro = new ResizeObserver(update)
+    ro.observe(node)
+    for (const child of node.children) ro.observe(child)
+    node.addEventListener('scroll', update, { passive: true })
+    return () => {
+      ro.disconnect()
+      node.removeEventListener('scroll', update)
+    }
+  }, [])
+  return [edges, ref]
+}
+
 /**
  * Striscia dei mercati (indici, tassi, spread, cambi) con valore e variazione giornaliera.
- * Statica: su schermi piccoli si scorre in orizzontale con lo scroll-snap, senza animazioni automatiche.
+ * Statica: su schermi piccoli si scorre in orizzontale con lo scroll-snap, senza animazioni automatiche;
+ * una dissolvenza sul bordo indica che c'è altro da scorrere.
  */
 export function MarketStrip() {
   const { status, markets, asOf, reload } = useMarket()
   const hasDemo = markets.some((i) => i.source === 'demo')
+  const [edges, scrollRef] = useScrollEdges()
 
   let body
   if (status === 'loading') {
@@ -49,7 +76,12 @@ export function MarketStrip() {
     body = <p className="hm-market-error muted small">Nessun indice di mercato disponibile.</p>
   } else {
     body = (
-      <ul className="hm-market-list">
+      <ul
+        ref={scrollRef}
+        className="hm-market-list"
+        data-more-start={edges.start || undefined}
+        data-more-end={edges.end || undefined}
+      >
         {markets.map((instrument) => (
           <MarketItem key={instrument.id} instrument={instrument} />
         ))}
@@ -71,7 +103,7 @@ export function MarketStrip() {
               al <time dateTime={asOf}>{formatDayMonth(asOf)}</time>
             </span>
           )}
-          <a className="hm-market-more" href={buildHref('fondi')}>
+          <a className="card-link hm-market-more" href={buildHref('fondi')}>
             Dettagli
             <ChevronRight size={14} aria-hidden="true" />
           </a>

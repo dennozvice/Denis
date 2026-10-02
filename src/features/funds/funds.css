@@ -9,10 +9,6 @@
   min-height: 36px;
 }
 
-.fd-more {
-  color: var(--primary-text);
-}
-
 .fd-error {
   display: flex;
   align-items: center;
@@ -87,9 +83,76 @@
 }
 
 /* ---------- Tabelle ---------- */
-/* contenitore di riferimento per i testi nascosti (position: absolute) dentro le celle */
+/* contenitore di riferimento per i testi nascosti (position: absolute) dentro le celle
+   e per le container query che nascondono le colonne meno importanti */
 .fd-table-wrap {
+  --fd-fade: 40px;
   position: relative;
+  container: fd-table / inline-size;
+}
+
+/* tabella più larga della card: dissolvenza sul bordo dove c'è altro da scorrere
+   (nella maschera conta solo l'opacità del colore) */
+.fd-table-wrap[data-more-end] {
+  mask-image: linear-gradient(to left, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-table-wrap[data-more-start] {
+  mask-image: linear-gradient(to right, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-table-wrap[data-more-start][data-more-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--surface) var(--fd-fade),
+    var(--surface) calc(100% - var(--fd-fade)),
+    transparent
+  );
+}
+
+/* con la prima colonna fissa il bordo sinistro resta sempre leggibile */
+.fd-compare-wrap[data-more-start]:not([data-more-end]) {
+  mask-image: none;
+}
+
+.fd-compare-wrap[data-more-start][data-more-end] {
+  mask-image: linear-gradient(to left, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-scroll-hint {
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+/* colonne meno importanti: nascoste quando la tabella non sta nella card (soglie = larghezza minima misurata) */
+@container fd-table (max-width: 699px) {
+  .fd-widget .fd-col-risk {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 619px) {
+  .fd-widget .fd-col-trend {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 923px) {
+  .fd-col-low {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 706px) {
+  #fd-markets .fd-col-type {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 643px) {
+  #fd-markets .fd-col-trend {
+    display: none;
+  }
 }
 
 .fd-table {
@@ -111,19 +174,6 @@
 .fd-table thead th:last-child,
 .fd-table tbody > tr > :last-child {
   padding-right: 0;
-}
-
-/* home su desktop stretto: la colonna rischio lascia spazio alle variazioni */
-@media (min-width: 1200px) and (max-width: 1439px) {
-  .fd-widget .fd-col-risk {
-    display: none;
-  }
-}
-
-@media (min-width: 1200px) and (max-width: 1319px) {
-  .fd-widget .fd-col-trend {
-    display: none;
-  }
 }
 
 .fd-table .fd-col-check {
@@ -260,36 +310,34 @@ th[aria-sort='descending'] .fd-sort {
 }
 
 th[aria-sort='ascending'] .fd-sort-icon,
-th[aria-sort='descending'] .fd-table thead th[aria-sort] {
-  padding-top: 2px;
-  padding-bottom: 2px;
-}
-
-.fd-sort-icon {
+th[aria-sort='descending'] .fd-sort-icon {
   opacity: 1;
 }
 
-/* prima colonna fissa nelle tabelle larghe (scorrimento orizzontale) */
-.fd-card .fd-compare-wrap {
-  margin: 0;
-  padding: 0;
-}
-
+/* prima colonna fissa nelle tabelle larghe (scorrimento orizzontale).
+   Si ferma al bordo interno del contenitore: l'ombra a sinistra copre la fascia di padding,
+   dove altrimenti scorrerebbero le altre colonne. */
 .fd-sticky-first .fd-col-name {
+  --fd-gutter: var(--sp-5);
   position: sticky;
   left: 0;
   z-index: 1;
   background: var(--surface);
   min-width: 200px;
-  box-shadow: inset -1px 0 0 var(--border);
-}
-
-.fd-scroll-hint {
-  display: none;
+  box-shadow:
+    inset -1px 0 0 var(--border),
+    calc(var(--fd-gutter) * -1) 0 0 var(--surface);
 }
 
 .fd-sticky-first tbody tr:hover .fd-col-name {
   background: var(--surface-2);
+}
+
+/* sotto questa larghezza i nomi dei fondi vanno a capo prima, per lasciare spazio ai periodi */
+@container fd-table (max-width: 759px) {
+  .fd-sticky-first .fd-col-name {
+    min-width: 160px;
+  }
 }
 
 /* ---------- Widget home ---------- */
@@ -523,6 +571,9 @@ th[aria-sort='descending'] .fd-table thead th[aria-sort] {
 .fd-stat dt {
   font-size: var(--fs-xs);
   color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fd-stat dd {
@@ -755,23 +806,41 @@ th[aria-sort='descending'] .fd-table thead th[aria-sort] {
   padding: 6px 8px;
 }
 
-.fd-file-row {
-  position: relative;
+.fd-drop {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
   min-height: 40px;
-}
-
-.fd-file-btn {
-  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
   cursor: pointer;
 }
 
-.fd-file-input:focus-visible + .fd-file-btn {
+.fd-drop:hover,
+.fd-drop.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.fd-drop:focus-within {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.btn.fd-drop-pick {
+  flex: none;
+  min-height: 36px;
+  pointer-events: none;
+}
+
+.fd-drop-name {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
 }
 
 .fd-textarea {
@@ -836,6 +905,11 @@ th[aria-sort='descending'] .fd-table thead th[aria-sort] {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.fd-preview-errors .fd-future-check {
+  align-self: flex-start;
+  margin-left: calc(var(--sp-2) * -1);
 }
 
 /* ---------- Responsive ---------- */
@@ -930,12 +1004,11 @@ th[aria-sort='descending'] .fd-table thead th[aria-sort] {
   }
 
   .fd-sticky-first .fd-col-name {
-    min-width: 160px;
+    --fd-gutter: var(--sp-4);
   }
 
-  .fd-scroll-hint {
-    display: block;
-    margin-top: calc(var(--sp-2) * -1);
+  .btn.fd-drop-pick {
+    min-height: 40px;
   }
 
   .fd-details > summary {
@@ -945,14 +1018,4 @@ th[aria-sort='descending'] .fd-table thead th[aria-sort] {
   .fd-codes .fd-codes-type {
     display: none;
   }
-}
-
-/* categoria sotto il nome: può andare a capo invece di allargare la colonna */
-.fd-fund-text .pill {
-  white-space: normal;
-  height: auto;
-  min-height: 22px;
-  padding-top: 2px;
-  padding-bottom: 2px;
-  line-height: 1.3;
 }

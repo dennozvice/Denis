@@ -3,10 +3,10 @@ import type { CSSProperties } from 'react'
 import { DEADLINE_TO_TASK_CATEGORY, TONE_BG, TONE_COLOR, type Tone } from '../../domain/labels'
 import type { DateKey, Deadline, DeadlineKind, Task } from '../../domain/types'
 import { parseKey } from '../../lib/dates'
-import { capitalize, formatDateShort, formatDayMonth, formatMonthYear, formatNumber } from '../../lib/format'
+import { capitalize, formatDateShort, formatDayMonth, formatMonthYear, formatNumber, formatRelativeDaysChip } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import type { NewTask } from '../../store/StoreContext'
-import { isOpen } from '../../store/selectors'
+import { findTaskForDeadline, isOpen } from '../../store/selectors'
 
 // ---------------------------------------------------------------- colori
 
@@ -21,9 +21,7 @@ export function toneVars(tone: Tone): CSSProperties {
 export function deadlineDaysLabel(daysLeft: number): string {
   if (daysLeft < -1) return `Scaduta da ${formatNumber(-daysLeft)} gg`
   if (daysLeft === -1) return 'Scaduta ieri'
-  if (daysLeft === 0) return 'Oggi'
-  if (daysLeft === 1) return 'Domani'
-  return `Tra ${formatNumber(daysLeft)} gg`
+  return formatRelativeDaysChip(daysLeft)
 }
 
 /** Scaduta = rosso; entro 7 giorni = arancio (blu per le ricorrenze); oltre = neutro. */
@@ -127,32 +125,26 @@ export function deadlineHref(d: Pick<Deadline, 'caseId' | 'clientId'>, caseParam
   return buildHref('clienti')
 }
 
-/** Valori iniziali del form "Nuova attività" creata a partire da una scadenza. */
+/** Valori iniziali del form "Nuova attività" creata a partire da una scadenza (collegata tramite `deadlineId`). */
 export function taskDefaultsForDeadline(d: Deadline, today: DateKey): Partial<NewTask> {
   return {
     title: d.title,
     category: DEADLINE_TO_TASK_CATEGORY[d.kind],
     clientId: d.clientId,
+    deadlineId: d.id,
     dueDate: d.date > today ? d.date : today,
     priority: d.severity === 'scaduta' || d.severity === 'urgente' ? 'alta' : 'media',
     notes: d.detail,
   }
 }
 
-const normalizeTitle = (s: string) => s.trim().toLowerCase()
-
-/** Chiave "cliente + categoria" (o "titolo + categoria" senza cliente) per riconoscere un'attività già presente. */
-function taskKey(clientId: string | undefined, title: string, category: string): string {
-  return clientId ? `c:${clientId}|${category}` : `t:${normalizeTitle(title)}|${category}`
-}
-
-/** Chiavi delle attività aperte, da confrontare con `deadlineTaskKey`. */
-export function openTaskKeys(tasks: Task[]): Set<string> {
-  const keys = new Set<string>()
-  for (const t of tasks) if (isOpen(t)) keys.add(taskKey(t.clientId, t.title, t.category))
-  return keys
-}
-
-export function deadlineTaskKey(d: Pick<Deadline, 'clientId' | 'title' | 'kind'>): string {
-  return taskKey(d.clientId, d.title, DEADLINE_TO_TASK_CATEGORY[d.kind])
+/** Attività aperta collegata a ciascuna scadenza (vedi `findTaskForDeadline`), indicizzata per ID della scadenza. */
+export function linkedTasksByDeadline(tasks: Task[], deadlines: Deadline[]): Map<string, Task> {
+  const open = tasks.filter(isOpen)
+  const linked = new Map<string, Task>()
+  for (const d of deadlines) {
+    const task = findTaskForDeadline(open, d)
+    if (task) linked.set(d.id, task)
+  }
+  return linked
 }

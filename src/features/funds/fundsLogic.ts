@@ -57,6 +57,9 @@ export interface ChangeInfo {
 
 export const isGestioneSeparata = (i: Pick<Instrument, 'group'>) => i.group === 'gestione_separata'
 
+/** true se per lo strumento un aumento è sfavorevole (spread, in punti base): colori invertiti. */
+export const risingIsBad = (i: Pick<Instrument, 'unit'>) => i.unit === 'bp'
+
 /**
  * Variazione di uno strumento nel periodo, nell'unità giusta:
  * fondi, indici e cambi in %; tassi in punti base (× 100); spread in punti base con colore invertito.
@@ -81,7 +84,7 @@ export function instrumentChange(instrument: Instrument, period: ChangePeriod): 
     pct = periodChangePct(series, period)
   }
   if (unit === 'pct') return abs === undefined ? undefined : { value: abs * 100, kind: 'abs', decimals: 0, suffix: ' pb', invert: false }
-  if (unit === 'bp') return abs === undefined ? undefined : { value: abs, kind: 'abs', decimals: 0, suffix: ' pb', invert: true }
+  if (unit === 'bp') return abs === undefined ? undefined : { value: abs, kind: 'abs', decimals: 0, suffix: ' pb', invert: risingIsBad(instrument) }
   return pct === undefined ? undefined : { value: pct, kind: 'pct', decimals: 2, suffix: '', invert: false }
 }
 
@@ -98,6 +101,20 @@ export function changeSortValue(instrument: Instrument, period: ChangePeriod): n
 
 export function lastValue(instrument: Instrument): number | undefined {
   return lastPoint(instrument.series)?.value
+}
+
+/**
+ * Data dell'ultimo valore tra gli strumenti indicati ("Aggiornato al").
+ * La gestione separata non conta: il suo rendimento è annuale, non un valore del giorno.
+ */
+export function latestDate(instruments: Instrument[]): DateKey | undefined {
+  let latest: DateKey | undefined
+  for (const i of instruments) {
+    if (isGestioneSeparata(i)) continue
+    const d = lastPoint(i.series)?.date
+    if (d && (!latest || d > latest)) latest = d
+  }
+  return latest
 }
 
 // ---------------------------------------------------------------- importazione CSV
@@ -231,6 +248,38 @@ export function buildImports(groups: ImportGroup[], imports: Instrument[]): Inst
     }
     if (idx >= 0) next[idx] = instrument
     else next.push(instrument)
+  }
+  return next
+}
+
+/** Serie importata rimossa, con la sua posizione nell'elenco (per poterla rimettere al suo posto). */
+export interface RemovedImport {
+  item: Instrument
+  index: number
+}
+
+/** Toglie le serie con gli ID indicati; restituisce anche quelle effettivamente tolte. */
+export function removeImports(current: Instrument[], ids: string[]): { next: Instrument[]; removed: RemovedImport[] } {
+  const drop = new Set(ids)
+  const removed: RemovedImport[] = []
+  const next = current.filter((item, index) => {
+    if (!drop.has(item.id)) return true
+    removed.push({ item, index })
+    return false
+  })
+  return { next, removed }
+}
+
+/**
+ * Annulla una rimozione partendo dall'elenco più recente: rimette le serie tolte nella posizione originale,
+ * senza toccare quelle importate nel frattempo (anche in un'altra scheda). Se una serie con lo stesso ID
+ * è stata reimportata dopo la rimozione, vince quella più recente.
+ */
+export function restoreImports(current: Instrument[], removed: RemovedImport[]): Instrument[] {
+  const next = [...current]
+  for (const { item, index } of [...removed].sort((a, b) => a.index - b.index)) {
+    if (next.some((i) => i.id === item.id)) continue
+    next.splice(Math.min(index, next.length), 0, item)
   }
   return next
 }

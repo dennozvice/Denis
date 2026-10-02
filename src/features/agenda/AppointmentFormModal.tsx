@@ -18,10 +18,19 @@ import type {
   LocationMode,
 } from '../../domain/types'
 import { isDateKey, isTimeKey, timeToMinutes } from '../../lib/dates'
+import { navigate } from '../../router/router'
 import { useNow } from '../../store/NowContext'
-import { useActions, useAppData, type NewAppointment, type NewTask } from '../../store/StoreContext'
-import { TaskFormModal } from '../tasks/TaskFormModal'
-import { DEFAULT_DURATION, defaultStartFor, endAfter, formatDuration, nextWorkday } from './agendaUtils'
+import { useActions, useAppData, type NewAppointment } from '../../store/StoreContext'
+import {
+  DEFAULT_DURATION,
+  defaultStartFor,
+  endAfter,
+  followUpTask,
+  formatDuration,
+  withDate,
+  withOutcome,
+  type OutcomeFields,
+} from './agendaUtils'
 import './agenda.css'
 
 export interface AppointmentFormModalProps {
@@ -52,7 +61,11 @@ const LOCATION_OPTIONS: { value: LocationMode; label: string; title: string }[] 
   { value: 'telefono', label: 'Telefono', title: LOCATION_LABEL.telefono },
 ]
 
-/** Form crea/modifica appuntamento, con eliminazione (annullabile) e proposta di follow-up. */
+/**
+ * Form crea/modifica appuntamento, con eliminazione (annullabile) e proposta di follow-up.
+ * Il follow-up si crea direttamente dal toast: il toast sopravvive alla finestra (e alla pagina che la ospita),
+ * quindi la sua azione non deve dipendere da componenti che nel frattempo potrebbero essere smontati.
+ */
 export function AppointmentFormModal({
   open,
   onClose,
@@ -62,8 +75,6 @@ export function AppointmentFormModal({
 }: AppointmentFormModalProps) {
   const actions = useActions()
   const toast = useToast()
-  // Attività di follow-up proposta dopo un esito "Da ricontattare".
-  const [followUp, setFollowUp] = useState<Partial<NewTask> | null>(null)
 
   const remove = () => {
     if (!appointment) return
@@ -77,55 +88,48 @@ export function AppointmentFormModal({
   }
 
   return (
-    <>
-      <Modal
-        open={open}
-        title={appointment ? 'Modifica appuntamento' : 'Nuovo appuntamento'}
-        onClose={onClose}
-        footer={
-          <>
-            {appointment && (
-              <button type="button" className="btn btn-danger ag-form-delete" onClick={remove}>
-                <Trash2 size={16} aria-hidden="true" />
-                Elimina
-              </button>
-            )}
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
-              Annulla
+    <Modal
+      open={open}
+      title={appointment ? 'Modifica appuntamento' : 'Nuovo appuntamento'}
+      onClose={onClose}
+      footer={
+        <>
+          {appointment && (
+            <button type="button" className="btn btn-danger ag-form-delete" onClick={remove}>
+              <Trash2 size={16} aria-hidden="true" />
+              Elimina
             </button>
-            <button type="submit" form={FORM_ID} className="btn btn-primary">
-              {appointment ? 'Salva' : 'Crea appuntamento'}
-            </button>
-          </>
-        }
-      >
-        {open && (
-          <AppointmentForm
-            key={appointment?.id ?? 'new'}
-            appointment={appointment}
-            defaults={defaults}
-            focusOutcome={focusOutcome}
-            onDone={onClose}
-            onFollowUp={setFollowUp}
-          />
-        )}
-      </Modal>
-      <TaskFormModal open={followUp !== null} onClose={() => setFollowUp(null)} defaults={followUp ?? undefined} />
-    </>
+          )}
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Annulla
+          </button>
+          <button type="submit" form={FORM_ID} className="btn btn-primary">
+            {appointment ? 'Salva' : 'Crea appuntamento'}
+          </button>
+        </>
+      }
+    >
+      {open && (
+        <AppointmentForm
+          key={appointment?.id ?? 'new'}
+          appointment={appointment}
+          defaults={defaults}
+          focusOutcome={focusOutcome}
+          onDone={onClose}
+        />
+      )}
+    </Modal>
   )
 }
 
-interface FormState {
+interface FormState extends OutcomeFields {
   title: string
   type: AppointmentType
-  date: string
   start: string
   end: string
   location: LocationMode
   locationDetail: string
   clientId: string
-  status: AppointmentStatus
-  outcome: AppointmentOutcome | ''
   notes: string
 }
 
@@ -146,13 +150,11 @@ function AppointmentForm({
   defaults,
   focusOutcome,
   onDone,
-  onFollowUp,
 }: {
   appointment?: Appointment
   defaults?: Partial<NewAppointment>
   focusOutcome?: boolean
   onDone(): void
-  onFollowUp(task: Partial<NewTask>): void
 }) {
   const { clients } = useAppData()
   const actions = useActions()
@@ -230,14 +232,17 @@ function AppointmentForm({
     setErrors((e) => ({ ...e, title: undefined }))
   }
 
-  /** Registrare un esito implica che l'incontro si è svolto. */
-  const changeOutcome = (outcome: AppointmentOutcome | '') => {
-    setForm((f) => ({
-      ...f,
-      outcome,
-      status: outcome && (f.status === 'pianificato' || f.status === 'confermato') ? 'svolto' : f.status,
-    }))
+  /** Registrare un esito implica che l'incontro si è svolto (stato "Svolto" automatico, annullabile). */
+  const changeOutcome = (outcome: AppointmentOutcome | '') => setForm((f) => withOutcome(f, outcome))
+
+  /** Spostando l'appuntamento nel futuro l'esito non vale più: lo "Svolto" automatico torna allo stato di prima. */
+  const changeDate = (date: string) => {
+    setForm((f) => withDate(f, date, today))
+    setErrors((e) => ({ ...e, date: undefined }))
   }
+
+  /** Uno stato scelto a mano non viene più ripristinato in automatico. */
+  const changeStatus = (status: AppointmentStatus) => setForm((f) => ({ ...f, status, statusBeforeOutcome: undefined }))
 
   const validate = (f: FormState): Errors => {
     const e: Errors = {}
@@ -290,17 +295,19 @@ function AppointmentForm({
 
     const saved = appointment ? 'Appuntamento aggiornato' : 'Appuntamento creato'
     if (outcome === 'da_ricontattare' && appointment?.outcome !== 'da_ricontattare') {
-      const followUp: Partial<NewTask> = {
-        title: `Ricontattare dopo: ${title}`,
-        category: 'ricontatto',
-        priority: 'media',
-        clientId,
-        dueDate: nextWorkday(today),
-      }
+      // actions e toast vengono dai provider dell'app: restano validi anche dopo un cambio di pagina
+      const followUp = followUpTask(title, clientId, today)
       toast({
         message: `${saved}. Vuoi creare un'attività di follow-up?`,
         actionLabel: 'Crea attività',
-        onAction: () => onFollowUp(followUp),
+        onAction: () => {
+          const task = actions.addTask(followUp)
+          toast({
+            message: 'Attività creata',
+            actionLabel: 'Apri',
+            onAction: () => navigate('attivita', { id: task.id }),
+          })
+        },
         duration: 10000,
       })
     } else {
@@ -387,7 +394,7 @@ function AppointmentForm({
               type="date"
               className="input"
               value={form.date}
-              onChange={(e) => set('date', e.target.value)}
+              onChange={(e) => changeDate(e.target.value)}
               required
               aria-invalid={errors.date ? true : undefined}
               aria-describedby={errId('date')}
@@ -469,7 +476,7 @@ function AppointmentForm({
           <select
             className="select"
             value={form.status}
-            onChange={(e) => set('status', e.target.value as AppointmentStatus)}
+            onChange={(e) => changeStatus(e.target.value as AppointmentStatus)}
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>

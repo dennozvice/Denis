@@ -8,7 +8,7 @@ import { createId } from '../../lib/id'
 import { decodeIcsBytes, icsEventsToAppointments, parseIcs, type ImportedAppointment } from '../../lib/ics'
 import { formatDayMonth, formatDateShort, formatWeekdayShort, plural } from '../../lib/format'
 import { useNow } from '../../store/NowContext'
-import { clientNameById } from '../../store/selectors'
+import { clientNameById, isAllDay } from '../../store/selectors'
 import { useActions, useAppData } from '../../store/StoreContext'
 import './agenda.css'
 
@@ -292,7 +292,7 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
                       <li key={`${a.externalId}-${i}`} className="ag-imp-row">
                         <span className="ag-imp-when num">
                           {formatWeekdayShort(a.date)} {formatDayMonth(a.date)} ·{' '}
-                          {a.start === '00:00' && a.end === '23:59' ? 'tutto il giorno' : `${a.start}–${a.end}`}
+                          {isAllDay(a) ? 'tutto il giorno' : `${a.start}–${a.end}`}
                         </span>
                         <span className="ag-imp-title">{a.title}</span>
                         <span className="ag-imp-meta small muted">

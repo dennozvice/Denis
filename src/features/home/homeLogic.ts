@@ -95,6 +95,20 @@ export function marketChange(instrument: Pick<Instrument, 'unit' | 'series'>): M
   }
 }
 
+/** Da che lato un elenco a scorrimento orizzontale ha altro contenuto nascosto. */
+export interface ScrollEdges {
+  /** C'è altro contenuto a sinistra. */
+  start: boolean
+  /** C'è altro contenuto a destra. */
+  end: boolean
+}
+
+/** Bordi con contenuto nascosto (tolleranza di 1px per gli arrotondamenti del browser). */
+export function scrollEdges(box: { scrollLeft: number; scrollWidth: number; clientWidth: number }): ScrollEdges {
+  const rest = box.scrollWidth - box.clientWidth - box.scrollLeft
+  return { start: box.scrollLeft > 1, end: rest > 1 }
+}
+
 // ---------------------------------------------------------------- formazione
 
 export interface TrainingSummary {

@@ -1,8 +1,17 @@
 /** Funzioni pure condivise da widget e pagina Agenda (orari, sovrapposizioni, link, etichette). */
-import type { Appointment, AppointmentType, Client, DateKey, TimeKey } from '../../domain/types'
+import type {
+  Appointment,
+  AppointmentOutcome,
+  AppointmentStatus,
+  AppointmentType,
+  Client,
+  DateKey,
+  TimeKey,
+} from '../../domain/types'
 import {
   addDays,
   addMonths,
+  isDateKey,
   isWeekend,
   minutesToTime,
   parseKey,
@@ -19,6 +28,8 @@ import {
   formatMonthYear,
   formatWeekdayDayMonth,
 } from '../../lib/format'
+import { isAllDay } from '../../store/selectors'
+import type { NewTask } from '../../store/StoreContext'
 
 export type AgendaView = 'giorno' | 'settimana' | 'mese'
 
@@ -72,10 +83,13 @@ export function formatDuration(minutes: number): string {
 
 export type Phase = 'passato' | 'in_corso' | 'futuro'
 
-/** Passato / in corso / futuro rispetto all'ora attuale di Roma. */
+/**
+ * Passato / in corso / futuro rispetto all'ora attuale di Roma.
+ * Un evento "tutto il giorno" non è mai "in corso": oggi resta da svolgere, dal giorno dopo è passato.
+ */
 export function appointmentPhase(a: Pick<Appointment, 'date' | 'start' | 'end'>, now: RomeNow): Phase {
   if (a.date < now.date) return 'passato'
-  if (a.date > now.date) return 'futuro'
+  if (a.date > now.date || isAllDay(a)) return 'futuro'
   if (timeToMinutes(a.end) <= now.minutes) return 'passato'
   if (timeToMinutes(a.start) <= now.minutes) return 'in_corso'
   return 'futuro'
@@ -97,9 +111,53 @@ export function needsOutcome(a: Appointment, now: RomeNow): boolean {
   return appointmentPhase(a, now) === 'passato'
 }
 
-/** Evento importato "tutto il giorno" (00:00–23:59): nelle griglie orarie va in una riga a parte. */
-export function isAllDay(a: Pick<Appointment, 'start' | 'end'>): boolean {
-  return a.start === '00:00' && timeToMinutes(a.end) >= LAST_MINUTE
+/** Minuti occupati in agenda: somma delle durate, esclusi gli eventi "tutto il giorno" (ferie, festività…). */
+export function busyMinutes(appointments: Pick<Appointment, 'start' | 'end'>[]): number {
+  return appointments
+    .filter((a) => !isAllDay(a))
+    .reduce((sum, a) => sum + Math.max(0, timeToMinutes(a.end) - timeToMinutes(a.start)), 0)
+}
+
+// ---------------------------------------------------------------- form: stato ed esito
+
+/** Campi del form coinvolti dalla regola "registrare un esito implica che l'incontro si è svolto". */
+export interface OutcomeFields {
+  date: string
+  status: AppointmentStatus
+  outcome: AppointmentOutcome | ''
+  /** Stato precedente, se "Svolto" è stato impostato in automatico scegliendo l'esito. */
+  statusBeforeOutcome?: AppointmentStatus
+}
+
+/** Sceglie l'esito: un esito porta lo stato a "Svolto"; togliendolo si torna allo stato precedente. */
+export function withOutcome<T extends OutcomeFields>(f: T, outcome: AppointmentOutcome | ''): T {
+  if (outcome && (f.status === 'pianificato' || f.status === 'confermato')) {
+    return { ...f, outcome, status: 'svolto', statusBeforeOutcome: f.status }
+  }
+  if (!outcome && f.statusBeforeOutcome) {
+    return { ...f, outcome, status: f.statusBeforeOutcome, statusBeforeOutcome: undefined }
+  }
+  return { ...f, outcome }
+}
+
+/** Cambia la data: spostando l'appuntamento nel futuro l'esito non vale più e lo "Svolto" automatico si annulla. */
+export function withDate<T extends OutcomeFields>(f: T, date: string, today: DateKey): T {
+  if (f.statusBeforeOutcome && isDateKey(date) && date > today) {
+    return { ...f, date, outcome: '', status: f.statusBeforeOutcome, statusBeforeOutcome: undefined }
+  }
+  return { ...f, date }
+}
+
+/** Attività di follow-up dopo un esito "Da ricontattare": scade il primo giorno lavorativo successivo. */
+export function followUpTask(appointmentTitle: string, clientId: string | undefined, today: DateKey): NewTask {
+  const task: NewTask = {
+    title: `Ricontattare dopo: ${appointmentTitle}`,
+    category: 'ricontatto',
+    priority: 'media',
+    dueDate: nextWorkday(today),
+  }
+  if (clientId) task.clientId = clientId
+  return task
 }
 
 // ---------------------------------------------------------------- griglia oraria

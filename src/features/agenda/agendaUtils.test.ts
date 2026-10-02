@@ -3,11 +3,12 @@ import type { Appointment } from '../../domain/types'
 import type { RomeNow } from '../../lib/dates'
 import {
   appointmentPhase,
+  busyMinutes,
   defaultStartFor,
   endAfter,
+  followUpTask,
   formatDuration,
   hourRange,
-  isAllDay,
   layoutOverlaps,
   mapsHref,
   needsOutcome,
@@ -18,6 +19,9 @@ import {
   stepDay,
   telHref,
   viewRange,
+  withDate,
+  withOutcome,
+  type OutcomeFields,
 } from './agendaUtils'
 
 const now = (date: string, time: string): RomeNow => {
@@ -83,9 +87,51 @@ describe('stato', () => {
     expect(needsOutcome(appt('a', '09:00', '09:30', { clientId: 'c01', status: 'annullato' }), n)).toBe(false)
     expect(needsOutcome(appt('a', '11:00', '12:00', { clientId: 'c01' }), n)).toBe(false)
   })
-  it('isAllDay', () => {
-    expect(isAllDay(appt('a', '00:00', '23:59'))).toBe(true)
-    expect(isAllDay(appt('a', '00:00', '12:00'))).toBe(false)
+  it('un evento "tutto il giorno" non è mai in corso: oggi è da svolgere, poi passato', () => {
+    expect(appointmentPhase(appt('a', '00:00', '23:59'), n)).toBe('futuro')
+    expect(appointmentPhase(appt('a', '00:00', '23:59', { date: '2026-10-01' }), n)).toBe('passato')
+    expect(appointmentPhase(appt('a', '00:00', '23:59', { date: '2026-10-03' }), n)).toBe('futuro')
+    // un evento lungo ma con orario resta "in corso"
+    expect(appointmentPhase(appt('a', '00:00', '12:00'), n)).toBe('in_corso')
+  })
+  it('busyMinutes esclude gli eventi "tutto il giorno"', () => {
+    expect(busyMinutes([appt('a', '09:30', '10:30'), appt('b', '00:00', '23:59'), appt('c', '14:30', '14:50')])).toBe(
+      80,
+    )
+    expect(busyMinutes([appt('a', '00:00', '23:59')])).toBe(0)
+  })
+})
+
+describe('form: esito, stato e data', () => {
+  const base: OutcomeFields = { date: '2026-09-28', status: 'confermato', outcome: '' }
+  it("scegliere un esito porta lo stato a 'svolto' e toglierlo lo ripristina", () => {
+    const done = withOutcome(base, 'positivo')
+    expect(done).toMatchObject({ status: 'svolto', outcome: 'positivo', statusBeforeOutcome: 'confermato' })
+    expect(withOutcome(done, '')).toMatchObject({ status: 'confermato', outcome: '', statusBeforeOutcome: undefined })
+    // uno stato già "svolto" o "annullato" non cambia
+    expect(withOutcome({ ...base, status: 'annullato' }, 'negativo')).toMatchObject({ status: 'annullato' })
+  })
+  it("spostando nel futuro un appuntamento con 'svolto' automatico si torna allo stato precedente", () => {
+    const done = withOutcome({ ...base, status: 'pianificato' }, 'da_ricontattare')
+    const moved = withDate(done, '2026-10-09', '2026-10-02')
+    expect(moved).toMatchObject({ date: '2026-10-09', status: 'pianificato', outcome: '' })
+    expect(moved.statusBeforeOutcome).toBeUndefined()
+    // nel passato o a oggi l'esito resta valido
+    expect(withDate(done, '2026-10-02', '2026-10-02')).toMatchObject({ status: 'svolto', outcome: 'da_ricontattare' })
+    // data incompleta durante la digitazione: nessun effetto sullo stato
+    expect(withDate(done, '', '2026-10-02')).toMatchObject({ status: 'svolto' })
+    // "svolto" scelto a mano (senza stato precedente) non viene toccato
+    expect(withDate({ ...base, status: 'svolto' }, '2026-10-09', '2026-10-02')).toMatchObject({ status: 'svolto' })
+  })
+  it('followUpTask: ricontatto al primo giorno lavorativo successivo', () => {
+    expect(followUpTask('Revisione portafoglio', 'c01', '2026-10-02')).toEqual({
+      title: 'Ricontattare dopo: Revisione portafoglio',
+      category: 'ricontatto',
+      priority: 'media',
+      clientId: 'c01',
+      dueDate: '2026-10-05',
+    })
+    expect(followUpTask('Call', undefined, '2026-10-05')).not.toHaveProperty('clientId')
   })
 })
 

@@ -4,7 +4,6 @@ import { LineChart, type LineSeries } from '../../components/charts/LineChart'
 import { Sparkline } from '../../components/charts/Sparkline'
 import { Card } from '../../components/ui/Card'
 import { DemoBadge } from '../../components/ui/DemoBadge'
-import { Pill } from '../../components/ui/Pill'
 import { Segmented } from '../../components/ui/Segmented'
 import { PERIOD_LABEL, PERIODS } from '../../domain/labels'
 import type { Instrument, PerformancePeriod } from '../../domain/types'
@@ -12,13 +11,15 @@ import { rebaseToPct, sliceSeries, tailValues } from '../../lib/finance'
 import { formatCurrency, formatDateShort, formatPercent } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useMarket } from '../../store/MarketContext'
-import { ChangeCell, formatLastValue, lastYieldYear, SeriesDot, SriMeter, useIsMobile } from './FundBits'
+import { ChangeCell, formatLastValue, lastYieldYear, SeriesDot, SriMeter, TableScroll, useIsMobile } from './FundBits'
 import {
   effectiveSelection,
   instrumentChange,
   isGestioneSeparata,
+  latestDate,
   loadFundsSelection,
   MAX_CHART_FUNDS,
+  risingIsBad,
   saveFundsSelection,
   stepDecimals,
 } from './fundsLogic'
@@ -39,7 +40,7 @@ const formatNavTick = (v: number, step: number) => formatCurrency(v, Math.max(2,
 
 /** Home: andamento dei fondi (grafico di confronto) e tabella con valori quota, variazioni e rischio. */
 export function FundsWidget() {
-  const { status, funds, asOf, reload } = useMarket()
+  const { status, funds, reload } = useMarket()
   const isMobile = useIsMobile()
   const [period, setPeriod] = useState<PerformancePeriod>('1A')
   const [stored, setStored] = useState<string[] | null>(() => loadFundsSelection())
@@ -49,6 +50,8 @@ export function FundsWidget() {
   const selected = useMemo(() => effectiveSelection(stored, chartable), [stored, chartable])
   const mode: ChartMode = selected.length === 1 ? singleMode : 'pct'
   const hasDemo = funds.some((f) => f.source === 'demo')
+  // data dei fondi mostrati qui (non degli indici): è quella che l'utente si aspetta di leggere
+  const asOf = useMemo(() => latestDate(funds), [funds])
 
   const chartSeries = useMemo<LineSeries[]>(
     () =>
@@ -133,7 +136,7 @@ export function FundsWidget() {
       actions={
         <>
           <Segmented<PerformancePeriod> options={PERIOD_OPTIONS} value={period} onChange={setPeriod} ariaLabel="Periodo" />
-          <a className="btn btn-ghost btn-sm fd-tap fd-more" href={buildHref('fondi')}>
+          <a className="card-link fd-more" href={buildHref('fondi')}>
             Dettagli
             <ChevronRight size={14} aria-hidden="true" />
           </a>
@@ -177,7 +180,7 @@ function trendLabel(values: number[], what: string): string {
 
 function FundsTable({ funds, period, selected, onToggle }: ListProps) {
   return (
-    <div className="table-wrap fd-table-wrap fd-only-wide">
+    <TableScroll className="fd-only-wide">
       <table className="table fd-table">
         <caption className="visually-hidden">Fondi: valore quota, variazioni e rischio</caption>
         <thead>
@@ -217,7 +220,7 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
                       <a className="fd-fund-name" href={buildHref('fondi', { id: f.id })}>
                         {f.name}
                       </a>
-                      {f.category && <Pill tone={gs ? 'accent' : 'neutral'}>{f.category}</Pill>}
+                      {f.category && <span className="xsmall muted">{f.category}</span>}
                     </div>
                   </div>
                 </td>
@@ -250,6 +253,7 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
                     width={72}
                     height={24}
                     label={trendLabel(spark, gs ? 'Rendimenti annui' : 'Andamento 30 giorni')}
+                    invert={risingIsBad(f)}
                   />
                 </td>
               </tr>
@@ -257,7 +261,7 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
           })}
         </tbody>
       </table>
-    </div>
+    </TableScroll>
   )
 }
 
@@ -295,6 +299,7 @@ function FundsMobileList({ funds, period, selected, onToggle }: ListProps) {
                     width={64}
                     height={24}
                     label={trendLabel(spark, gs ? 'Rendimenti annui' : 'Andamento 30 giorni')}
+                    invert={risingIsBad(f)}
                   />
                 </span>
               </div>

@@ -69,9 +69,9 @@ export function OpenCasesWidget() {
         </button>
       }
       footer={
-        <a className="cs-footer-link" href={buildHref('pratiche')}>
+        <a className="card-link cs-footer-link" href={buildHref('pratiche')}>
           {open.length > MAX_ROWS ? `Tutte le pratiche (${formatNumber(open.length)} aperte)` : 'Tutte le pratiche'}
-          <ChevronRight size={16} aria-hidden="true" />
+          <ChevronRight size={14} aria-hidden="true" />
         </a>
       }
     >

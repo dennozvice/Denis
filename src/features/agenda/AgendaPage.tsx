@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Segmented } from '../../components/ui/Segmented'
 import { useToast } from '../../components/ui/Toast'
-import { APPOINTMENT_TYPE_LABEL, APPOINTMENT_TYPE_TONE, TONE_COLOR } from '../../domain/labels'
+import { APPOINTMENT_TYPE_COLOR, APPOINTMENT_TYPE_LABEL } from '../../domain/labels'
 import type { AppointmentType, DateKey, TimeKey } from '../../domain/types'
 import { addDays, diffDays, isDateKey, timeToMinutes, weekDays } from '../../lib/dates'
 import { formatDateShort, formatRelativeDays, formatWeekdayDayMonth, capitalize, plural } from '../../lib/format'
@@ -21,6 +21,7 @@ import {
 import { useAppData } from '../../store/StoreContext'
 import {
   AGENDA_VIEWS,
+  busyMinutes,
   defaultStartFor,
   formatDuration,
   isAgendaView,
@@ -58,6 +59,8 @@ export function AgendaPage() {
   const toast = useToast()
   const editor = useAppointmentEditor()
   const isMobile = useMediaQuery('(max-width: 767px)')
+  // sotto i 1024px le 7 colonne sono troppo strette per i titoli: la settimana diventa un elenco per giorno
+  const weekAsList = useMediaQuery('(max-width: 1023px)')
   const [importOpen, setImportOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('tutti')
   // mese mostrato nel mini-calendario laterale, se diverso da quello del giorno scelto
@@ -167,7 +170,7 @@ export function AgendaPage() {
     )
   } else if (view === 'settimana') {
     const days = weekDays(day)
-    body = isMobile ? (
+    body = weekAsList ? (
       <div className="ag-week-list">
         {days.map((d) => {
           const list = inRange.filter((a) => a.date === d)
@@ -389,11 +392,7 @@ export function AgendaPage() {
           <ul className="ag-legend" aria-label="Legenda dei tipi di appuntamento">
             {legendTypes.map((t) => (
               <li key={t}>
-                <span
-                  className="ag-dot"
-                  style={{ background: TONE_COLOR[APPOINTMENT_TYPE_TONE[t]] }}
-                  aria-hidden="true"
-                />
+                <span className="ag-dot" style={{ background: APPOINTMENT_TYPE_COLOR[t] }} aria-hidden="true" />
                 {APPOINTMENT_TYPE_LABEL[t]}
               </li>
             ))}
@@ -408,7 +407,8 @@ export function AgendaPage() {
 }
 
 function DaySummary({ list, now }: { list: ReturnType<typeof appointmentsOn>; now: ReturnType<typeof useNow> }) {
-  const minutes = list.reduce((sum, a) => sum + Math.max(0, timeToMinutes(a.end) - timeToMinutes(a.start)), 0)
+  // gli eventi "tutto il giorno" (ferie, festività) non occupano ore in agenda
+  const minutes = busyMinutes(list)
   const tentative = list.filter((a) => a.status === 'pianificato').length
   const outcomes = list.filter((a) => needsOutcome(a, now)).length
   return (
@@ -421,7 +421,7 @@ function DaySummary({ list, now }: { list: ReturnType<typeof appointmentsOn>; no
         </div>
         <div>
           <dt>Tempo in agenda</dt>
-          <dd className="num">{list.length ? formatDuration(minutes) : '—'}</dd>
+          <dd className="num">{minutes > 0 ? formatDuration(minutes) : '—'}</dd>
         </div>
         <div>
           <dt>Da confermare</dt>

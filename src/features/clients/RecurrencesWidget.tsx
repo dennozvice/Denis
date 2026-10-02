@@ -1,4 +1,4 @@
-import { BellPlus, Cake, CalendarCheck, CalendarClock, CalendarPlus, CircleCheck, Phone, UserCheck } from 'lucide-react'
+import { BellPlus, Cake, CalendarCheck, CalendarClock, CalendarPlus, ChevronRight, CircleCheck, Phone, UserCheck } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -7,7 +7,7 @@ import { Segmented } from '../../components/ui/Segmented'
 import { POLICY_KIND_LABEL } from '../../domain/labels'
 import type { Client, Deadline, Task } from '../../domain/types'
 import { ageOn, diffDays, timeToMinutes } from '../../lib/dates'
-import { capitalize, formatDateLong, formatNumber, formatRelativeDays } from '../../lib/format'
+import { capitalize, formatDateLong, formatNumber, formatRelativeDays, formatRelativeDaysChip } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { useAppData, type NewAppointment, type NewTask } from '../../store/StoreContext'
@@ -15,6 +15,7 @@ import {
   clientFullName,
   clientsToRecontact,
   computeDeadlines,
+  findTaskForDeadline,
   indexById,
   isOpen,
   recurrenceDeadlines,
@@ -48,14 +49,22 @@ export function RecurrencesWidget() {
     [data.clients, today, data.settings.recontactAfterDays],
   )
 
-  /** Promemoria già presenti: attività "ricorrenza" aperte per cliente e giorno. */
+  /**
+   * Attività aperta già collegata a ciascuna ricorrenza: prima per `deadlineId` (bday-…, ann-…);
+   * per i promemoria creati a mano o prima del collegamento, attività "ricorrenza" dello stesso cliente e giorno.
+   */
   const reminders = useMemo(() => {
-    const map = new Map<string, Task>()
+    const legacy = new Map<string, Task>()
     for (const t of data.tasks) {
-      if (t.category === 'ricorrenza' && t.clientId && isOpen(t)) map.set(`${t.clientId}|${t.dueDate}`, t)
+      if (t.category === 'ricorrenza' && t.clientId && !t.deadlineId && isOpen(t)) legacy.set(`${t.clientId}|${t.dueDate}`, t)
+    }
+    const map = new Map<string, Task>()
+    for (const d of recurrences) {
+      const task = findTaskForDeadline(data.tasks, d) ?? legacy.get(`${d.clientId}|${d.date}`)
+      if (task) map.set(d.id, task)
     }
     return map
-  }, [data.tasks])
+  }, [data.tasks, recurrences])
 
   /** Prossimo appuntamento in agenda per ciascun cliente (per non pianificarne un altro). */
   const nextMeeting = useMemo(() => {
@@ -87,9 +96,10 @@ export function RecurrencesWidget() {
       title="Ricorrenze e ricontatti"
       subtitle={tab === 'ricorrenze' ? `Prossimi ${HORIZON_DAYS} giorni` : `Nessun contatto da oltre ${formatNumber(data.settings.recontactAfterDays)} giorni`}
       actions={
-        <a className="btn btn-ghost cl-see-all" href={buildHref('clienti', tab === 'ricontatti' ? { ordina: 'contatto' } : {})}>
+        <a className="card-link" href={buildHref('clienti', tab === 'ricontatti' ? { ordina: 'contatto' } : {})}>
           Vedi tutti
           {total > MAX_ROWS && <span className="visually-hidden"> ({formatNumber(total)})</span>}
+          <ChevronRight size={14} aria-hidden="true" />
         </a>
       }
     >
@@ -116,7 +126,7 @@ export function RecurrencesWidget() {
                   key={d.id}
                   deadline={d}
                   client={client}
-                  reminder={reminders.get(`${client.id}|${d.date}`)}
+                  reminder={reminders.get(d.id)}
                   onCreate={(defaults) => setModal({ kind: 'task', defaults })}
                 />
               )
@@ -131,56 +141,52 @@ export function RecurrencesWidget() {
             const name = clientFullName(client)
             const meeting = nextMeeting.get(client.id)
             return (
-              <li key={client.id} className="cl-wrow">
+              <li key={client.id} className="cl-wrow cl-wrow-contact">
                 <span className="cl-wicon" data-tone="warning" aria-hidden="true">
                   <Phone size={16} />
                 </span>
-                <div className="cl-wmain">
-                  <a className="cl-wname" href={buildHref('clienti', { id: client.id })}>
-                    {name}
-                  </a>
-                  <span className="cl-wmeta num">
-                    {daysSince === undefined ? 'Mai contattato' : `Ultimo contatto ${formatNumber(daysSince)} gg fa`}
-                  </span>
-                  {meeting && (
-                    <span className="cl-planned" title={`${capitalize(formatDateLong(meeting.date))} alle ${meeting.start}`}>
-                      <CalendarCheck size={14} aria-hidden="true" />
-                      In agenda {formatRelativeDays(diffDays(today, meeting.date))}
-                      <span className="visually-hidden">
-                        : {formatDateLong(meeting.date)} alle {meeting.start}
-                      </span>
+                <a className="cl-wname" href={buildHref('clienti', { id: client.id })}>
+                  {name}
+                </a>
+                <span className="cl-wmeta num">
+                  {daysSince === undefined ? 'Mai contattato' : `Ultimo contatto ${formatNumber(daysSince)} gg fa`}
+                </span>
+                {meeting && (
+                  <span className="cl-planned" title={`${capitalize(formatDateLong(meeting.date))} alle ${meeting.start}`}>
+                    <CalendarCheck size={14} aria-hidden="true" />
+                    In agenda {formatRelativeDays(diffDays(today, meeting.date))}
+                    <span className="visually-hidden">
+                      : {formatDateLong(meeting.date)} alle {meeting.start}
                     </span>
-                  )}
-                </div>
-                <div className="cl-wside">
-                  {client.phone && (
-                    <a
-                      className="icon-btn cl-icon-btn"
-                      href={`tel:${client.phone.replace(/[^\d+]/g, '')}`}
-                      aria-label={`Chiama ${name}`}
-                      title={`Chiama ${client.phone}`}
-                    >
-                      <Phone size={18} aria-hidden="true" />
-                    </a>
-                  )}
-                  {!meeting && (
-                    <button
-                      type="button"
-                      className="btn cl-plan-btn"
-                      aria-haspopup="dialog"
-                      onClick={() =>
-                        setModal({
-                          kind: 'appointment',
-                          defaults: { clientId: client.id, type: 'revisione_portafoglio', title: 'Revisione portafoglio' },
-                        })
-                      }
-                    >
-                      <CalendarPlus size={16} aria-hidden="true" />
-                      Pianifica
-                      <span className="visually-hidden">: {name}</span>
-                    </button>
-                  )}
-                </div>
+                  </span>
+                )}
+                {!meeting && (
+                  <button
+                    type="button"
+                    className="btn cl-plan-btn"
+                    aria-haspopup="dialog"
+                    onClick={() =>
+                      setModal({
+                        kind: 'appointment',
+                        defaults: { clientId: client.id, type: 'revisione_portafoglio', title: 'Revisione portafoglio' },
+                      })
+                    }
+                  >
+                    <CalendarPlus size={16} aria-hidden="true" />
+                    Pianifica
+                    <span className="visually-hidden">: {name}</span>
+                  </button>
+                )}
+                {client.phone && (
+                  <a
+                    className="icon-btn cl-icon-btn cl-wcall"
+                    href={`tel:${client.phone.replace(/[^\d+]/g, '')}`}
+                    aria-label={`Chiama ${name}`}
+                    title={`Chiama ${client.phone}`}
+                  >
+                    <Phone size={18} aria-hidden="true" />
+                  </a>
+                )}
               </li>
             )
           })}
@@ -234,56 +240,49 @@ function RecurrenceRow({
   const days = d.daysLeft
 
   return (
-    <li className="cl-wrow">
+    <li className="cl-wrow cl-wrow-rec">
       <span className="cl-wicon" data-tone={birthday ? 'violet' : 'accent'} aria-hidden="true">
         <Icon size={16} />
       </span>
-      <div className="cl-wmain">
-        <a className="cl-wname" href={buildHref('clienti', { id: client.id })}>
-          {name}
+      <a className="cl-wname" href={buildHref('clienti', { id: client.id })}>
+        {name}
+      </a>
+      <span className="cl-wmeta">{title}</span>
+      {detail && <span className="cl-wdetail">{detail}</span>}
+      <span className="cl-wwhen" title={capitalize(formatDateLong(d.date))}>
+        <Pill tone={days === 0 ? 'primary' : 'neutral'}>{formatRelativeDaysChip(days)}</Pill>
+        <span className="visually-hidden">, {formatDateLong(d.date)}</span>
+      </span>
+      {reminder ? (
+        <a
+          className="icon-btn cl-icon-btn cl-wact cl-reminder-done"
+          href={buildHref('attivita', { id: reminder.id })}
+          aria-label={`Attività presente: ${reminder.title}`}
+          title="Attività presente: apri il promemoria"
+        >
+          <CircleCheck size={18} aria-hidden="true" />
         </a>
-        <span className="cl-wmeta">{title}</span>
-        {detail && (
-          <span className="cl-wdetail" title={detail}>
-            {detail}
-          </span>
-        )}
-      </div>
-      <div className="cl-wside">
-        <span title={capitalize(formatDateLong(d.date))}>
-          <Pill tone={days === 0 ? 'primary' : 'neutral'}>{formatRelativeDays(days)}</Pill>
-          <span className="visually-hidden">, {formatDateLong(d.date)}</span>
-        </span>
-        {reminder ? (
-          <a
-            className="icon-btn cl-icon-btn cl-reminder-done"
-            href={buildHref('attivita', { id: reminder.id })}
-            aria-label={`Promemoria già presente: ${reminder.title}`}
-            title="Promemoria già presente: apri l'attività"
-          >
-            <CircleCheck size={18} aria-hidden="true" />
-          </a>
-        ) : (
-          <button
-            type="button"
-            className="icon-btn cl-icon-btn"
-            aria-haspopup="dialog"
-            aria-label={`Crea promemoria: ${reminderTitle}`}
-            title="Crea promemoria"
-            onClick={() =>
-              onCreate({
-                title: reminderTitle,
-                category: 'ricorrenza',
-                clientId: client.id,
-                dueDate: d.date,
-                priority: 'media',
-              })
-            }
-          >
-            <BellPlus size={18} aria-hidden="true" />
-          </button>
-        )}
-      </div>
+      ) : (
+        <button
+          type="button"
+          className="icon-btn cl-icon-btn cl-wact"
+          aria-haspopup="dialog"
+          aria-label={`Crea promemoria: ${reminderTitle}`}
+          title="Crea promemoria"
+          onClick={() =>
+            onCreate({
+              title: reminderTitle,
+              category: 'ricorrenza',
+              clientId: client.id,
+              deadlineId: d.id,
+              dueDate: d.date,
+              priority: 'media',
+            })
+          }
+        >
+          <BellPlus size={18} aria-hidden="true" />
+        </button>
+      )}
     </li>
   )
 }

@@ -10,20 +10,7 @@
 }
 
 /* ---------- Intestazione e azioni rapide ---------- */
-.hm-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3) var(--sp-4);
-  flex-wrap: wrap;
-}
-
-.hm-title {
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
+/* Titolo e sottotitolo usano .page-header come nelle altre pagine; qui solo il comportamento su mobile. */
 .hm-quick {
   display: flex;
   flex-wrap: wrap;
@@ -47,6 +34,7 @@
 }
 
 .hm-market-list {
+  --hm-fade: 32px;
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
@@ -55,6 +43,26 @@
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: thin;
+}
+
+/* Elenco più largo della card: dissolvenza sul bordo dove c'è altro da scorrere
+   (nella maschera conta solo l'opacità del colore) */
+.hm-market-list[data-more-end] {
+  mask-image: linear-gradient(to left, transparent, var(--surface) var(--hm-fade));
+}
+
+.hm-market-list[data-more-start] {
+  mask-image: linear-gradient(to right, transparent, var(--surface) var(--hm-fade));
+}
+
+.hm-market-list[data-more-start][data-more-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--surface) var(--hm-fade),
+    var(--surface) calc(100% - var(--hm-fade)),
+    transparent
+  );
 }
 
 .hm-market-item {
@@ -135,13 +143,8 @@ a.hm-market-cell:focus-visible {
   white-space: nowrap;
 }
 
-.hm-market-more {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+.card-link.hm-market-more {
   min-height: 40px;
-  font-size: var(--fs-sm);
-  font-weight: 600;
 }
 
 .hm-market-error {
@@ -327,6 +330,11 @@ a.hm-market-cell:focus-visible {
 }
 
 /* ---------- Griglia dei widget ---------- */
+/*
+ * Ogni cella è una colonna di card impilate; le celle di una riga finiscono alla stessa altezza
+ * allungando solo l'ultima card di ciascuna. Le card sono distribuite (vedi HomePage) perché
+ * l'allungamento resti piccolo con i widget reali.
+ */
 .grid-12.hm-grid {
   align-items: stretch;
 }
@@ -337,14 +345,35 @@ a.hm-market-cell:focus-visible {
   gap: var(--hm-gap);
 }
 
-/* L'ultima card di ogni colonna si allunga: le card della stessa riga finiscono alla stessa altezza */
 .hm-cell > :last-child {
   flex: 1 1 auto;
 }
 
 /* ---------- Obiettivi ---------- */
 .hm-goals {
+  container-type: inline-size;
   scroll-margin-top: calc(var(--topbar-h) + var(--sp-4));
+}
+
+/* Mese e anno: uno sotto l'altro nella colonna stretta, affiancati quando la card è larga */
+.hm-goal-columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hm-goal-form .hm-goal-columns {
+  gap: var(--sp-5);
+}
+
+@container (min-width: 560px) {
+  .hm-goal-columns,
+  .hm-goal-form .hm-goal-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: var(--sp-5) var(--sp-8);
+  }
 }
 
 .hm-goals:focus {
@@ -423,6 +452,7 @@ a.hm-market-cell:focus-visible {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  margin-top: auto;
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
@@ -758,7 +788,8 @@ a.hm-market-cell:focus-visible {
     min-height: 44px;
   }
 
-  .hm-title {
+  /* Su mobile titolo e sottotitolo restano per i lettori di schermo: la barra in alto ha già saluto e data */
+  .hm-heading {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -808,7 +839,7 @@ a.hm-market-cell:focus-visible {
     padding: var(--sp-2) var(--sp-3);
   }
 
-  .hm-market-more {
+  .card-link.hm-market-more {
     min-height: 44px;
   }
 

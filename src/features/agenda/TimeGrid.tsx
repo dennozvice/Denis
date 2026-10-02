@@ -3,11 +3,10 @@ import type { CSSProperties } from 'react'
 import type { Appointment, Client, DateKey, TimeKey } from '../../domain/types'
 import { isWeekend, minutesToTime, parseKey, weekdayIndex, type RomeNow } from '../../lib/dates'
 import { formatDateLong, WEEKDAY_SHORT } from '../../lib/format'
-import { clientFullName } from '../../store/selectors'
+import { clientFullName, isAllDay } from '../../store/selectors'
 import {
   appointmentPhase,
   hourRange,
-  isAllDay,
   layoutOverlaps,
   mapsHref,
   needsOutcome,
@@ -98,7 +97,12 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
                     className={`ag-chip${a.status === 'annullato' ? ' is-cancelled' : ''}`}
                     style={typeStyle(a)}
                     onClick={() => onEdit(a)}
-                    aria-label={`Tutto il giorno, ${a.title}`}
+                    aria-label={appointmentAriaLabel(
+                      a,
+                      a.clientId ? clients.get(a.clientId) : undefined,
+                      appointmentPhase(a, now),
+                    )}
+                    title={`Tutto il giorno · ${a.title}`}
                   >
                     <span className="truncate">{a.title}</span>
                   </button>

@@ -27,6 +27,7 @@ import {
   lastYieldYear,
   SeriesDot,
   SriMeter,
+  TableScroll,
   useIsMobile,
   useMeasuredWidth,
 } from './FundBits'
@@ -35,8 +36,12 @@ import {
   instrumentChange,
   isGestioneSeparata,
   lastValue,
+  removeImports,
+  restoreImports,
+  risingIsBad,
   stepDecimals,
   type ChangePeriod,
+  type RemovedImport,
 } from './fundsLogic'
 import { ImportPricesModal } from './ImportPricesModal'
 import { seriesColor } from '../../components/charts/LineChart'
@@ -482,6 +487,9 @@ function YieldBars({ instrument }: { instrument: Instrument }) {
 type SortKey = 'default' | 'name' | 'value' | ChangePeriod
 type SortDir = 'asc' | 'desc'
 const COMPARE_PERIODS: ChangePeriod[] = ['1G', ...PERIODS]
+/** Periodi nascosti quando la tabella di confronto non sta nella card (restano nel dettaglio del fondo). */
+const LOW_PRIORITY_PERIODS = new Set<ChangePeriod>(['3M', '6M'])
+const periodClass = (p: ChangePeriod) => (LOW_PRIORITY_PERIODS.has(p) ? 'fd-col-low' : undefined)
 
 function periodHeader(p: ChangePeriod): { short: string; long: string } {
   if (p === '1G') return { short: '1g', long: 'Variazione ultimo giorno' }
@@ -574,12 +582,9 @@ function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id:
       className="fd-card"
       title="Confronto fondi"
       badge={hasDemo ? <DemoBadge /> : undefined}
-      subtitle="Valore quota e variazioni per periodo. Tocca un’intestazione per ordinare."
+      subtitle="Valore quota e variazioni per periodo. Seleziona un’intestazione per ordinare."
     >
-      <p className="xsmall muted fd-scroll-hint" aria-hidden="true">
-        Scorri la tabella di lato per vedere tutti i periodi →
-      </p>
-      <div className="table-wrap fd-table-wrap fd-compare-wrap">
+      <TableScroll className="fd-compare-wrap">
         <table className="table fd-table fd-sticky-first">
           <caption className="visually-hidden">Confronto dei fondi: valore quota e variazioni per periodo</caption>
           <thead>
@@ -588,7 +593,18 @@ function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id:
               <SortHeader label="Valore quota" sortKey="value" sort={sort} onSort={onSort} numeric />
               {COMPARE_PERIODS.map((p) => {
                 const h = periodHeader(p)
-                return <SortHeader key={p} label={h.short} title={h.long} sortKey={p} sort={sort} onSort={onSort} numeric />
+                return (
+                  <SortHeader
+                    key={p}
+                    label={h.short}
+                    title={h.long}
+                    sortKey={p}
+                    sort={sort}
+                    onSort={onSort}
+                    numeric
+                    className={periodClass(p)}
+                  />
+                )
               })}
             </tr>
           </thead>
@@ -613,7 +629,7 @@ function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id:
                     {gs && <span className="fd-caption">rendimento {lastYieldYear(f)}</span>}
                   </td>
                   {COMPARE_PERIODS.map((p) => (
-                    <td key={p} className="num">
+                    <td key={p} className={['num', periodClass(p)].filter(Boolean).join(' ')}>
                       {gs ? (
                         <span className="muted" title="Rendimento annuo certificato: nessuna variazione giornaliera o di periodo">
                           <span aria-hidden="true">—</span>
@@ -629,7 +645,7 @@ function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id:
             })}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </Card>
   )
 }
@@ -655,19 +671,21 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
       className="fd-card"
       title="Mercati"
       badge={hasDemo ? <DemoBadge /> : undefined}
-      subtitle="Indici, tassi, spread e cambi. Tassi e spread: variazioni in punti base (pb)."
+      subtitle="Indici, tassi, spread e cambi. Tassi e spread: variazioni in punti base (pb); per lo spread un aumento è in rosso."
     >
       {markets.length === 0 ? (
         <p className="muted small">Nessun indice disponibile.</p>
       ) : (
         <>
-          <div className="table-wrap fd-table-wrap fd-only-wide">
+          <TableScroll className="fd-only-wide">
             <table className="table fd-table">
               <caption className="visually-hidden">Mercati: valore e variazioni</caption>
               <thead>
                 <tr>
                   <SortHeader label="Nome" sortKey="name" sort={sort} onSort={onSort} />
-                  <th scope="col">Tipo</th>
+                  <th scope="col" className="fd-col-type">
+                    Tipo
+                  </th>
                   <SortHeader label="Valore" sortKey="value" sort={sort} onSort={onSort} numeric />
                   {MARKET_PERIODS.map((p) => {
                     const h = periodHeader(p)
@@ -686,7 +704,7 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
                       <th scope="row" className="fd-row-head">
                         <SelectLink instrument={m} onSelect={onSelect} />
                       </th>
-                      <td className="muted small">{INSTRUMENT_GROUP_LABEL[m.group]}</td>
+                      <td className="muted small fd-col-type">{INSTRUMENT_GROUP_LABEL[m.group]}</td>
                       <td className="num">{formatLastValue(m)}</td>
                       {MARKET_PERIODS.map((p) => (
                         <td key={p} className="num">
@@ -694,14 +712,14 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
                         </td>
                       ))}
                       <td className="fd-col-trend">
-                        <Sparkline values={spark} width={72} height={24} label={trend(spark)} />
+                        <Sparkline values={spark} width={72} height={24} label={trend(spark)} invert={risingIsBad(m)} />
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScroll>
 
           <ul className="fd-mcards fd-only-narrow" aria-label="Mercati">
             {rows.map((m) => {
@@ -713,7 +731,7 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
                       <SelectLink instrument={m} onSelect={onSelect} />
                       <span className="xsmall muted">{INSTRUMENT_GROUP_LABEL[m.group]}</span>
                     </div>
-                    <Sparkline values={spark} width={64} height={24} label={trend(spark)} />
+                    <Sparkline values={spark} width={64} height={24} label={trend(spark)} invert={risingIsBad(m)} />
                   </div>
                   <div className="fd-mcard-value">
                     <span className="num strong">{formatLastValue(m)}</span>
@@ -747,37 +765,39 @@ function trend(values: number[]): string {
 // ---------------------------------------------------------------- dati importati
 
 function ImportedSection({ imports, onImport }: { imports: Instrument[]; onImport(): void }) {
-  const { setImports } = useMarket()
+  const { updateImports } = useMarket()
   const toast = useToast()
 
   const failMessage = (reason: 'quota' | 'unavailable' | 'error') =>
     reason === 'unavailable' ? 'Archiviazione del browser non disponibile: modifica non salvata.' : 'Modifica non salvata: riprova.'
 
-  const remove = (target: Instrument) => {
-    const previous = imports
-    const result = setImports(imports.filter((i) => i.id !== target.id))
+  /** Ogni modifica parte dalle serie salvate più recenti (anche quelle importate in un'altra scheda). */
+  const removeWithUndo = (ids: string[], message: string) => {
+    let removed: RemovedImport[] = []
+    const result = updateImports((latest) => {
+      const r = removeImports(latest, ids)
+      removed = r.removed
+      return r.next
+    })
     if (!result.ok) {
       toast({ message: failMessage(result.reason) })
       return
     }
-    toast({
-      message: `Valori importati di «${target.name}» rimossi`,
-      actionLabel: 'Annulla',
-      onAction: () => {
-        setImports(previous)
-      },
-    })
+    const undo = () => {
+      const restored = updateImports((latest) => restoreImports(latest, removed))
+      if (!restored.ok) toast({ message: failMessage(restored.reason) })
+    }
+    toast(removed.length > 0 ? { message, actionLabel: 'Annulla', onAction: undo } : { message })
   }
+
+  const remove = (target: Instrument) => removeWithUndo([target.id], `Valori importati di «${target.name}» rimossi`)
 
   const removeAll = () => {
     if (!window.confirm(`Rimuovere tutti i valori importati (${plural(imports.length, 'serie', 'serie')})? Torneranno i valori dimostrativi.`)) return
-    const previous = imports
-    const result = setImports([])
-    if (!result.ok) {
-      toast({ message: failMessage(result.reason) })
-      return
-    }
-    toast({ message: 'Valori importati rimossi', actionLabel: 'Annulla', onAction: () => setImports(previous) })
+    removeWithUndo(
+      imports.map((i) => i.id),
+      'Valori importati rimossi',
+    )
   }
 
   return (
@@ -790,7 +810,7 @@ function ImportedSection({ imports, onImport }: { imports: Instrument[]; onImpor
         imports.length > 0 ? (
           <button type="button" className="btn btn-sm fd-tap" onClick={onImport} aria-haspopup="dialog">
             <FileUp size={14} aria-hidden="true" />
-            Importa
+            Importa valori
           </button>
         ) : undefined
       }
@@ -832,7 +852,9 @@ function ImportedSection({ imports, onImport }: { imports: Instrument[]; onImpor
                     {first && last && (
                       <>
                         {' · '}
-                        {first.date === last.date ? formatDateShort(last.date) : `${formatDateShort(first.date)} – ${formatDateShort(last.date)}`}
+                        {first.date === last.date
+                          ? `il ${formatDateShort(last.date)}`
+                          : `dal ${formatDateShort(first.date)} al ${formatDateShort(last.date)}`}
                       </>
                     )}
                     {i.id.startsWith('imp-') ? ' · nuovo fondo' : ''}

@@ -3,13 +3,13 @@ import { useId, useMemo, useState } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import type { DateKey } from '../../domain/types'
-import { addDays, monthMatrix, parseKey, startOfWeek, timeToMinutes, weekDays } from '../../lib/dates'
+import { addDays, monthMatrix, parseKey, startOfWeek, weekDays } from '../../lib/dates'
 import { formatDayMonth, formatWeekdayDayMonth, plural, WEEKDAY_MIN } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
-import { appointmentsOn, appointmentTypesByDay, indexById } from '../../store/selectors'
+import { appointmentsOn, appointmentTypesByDay, indexById, isAllDay } from '../../store/selectors'
 import { useAppData } from '../../store/StoreContext'
-import { appointmentPhase, defaultStartFor, formatDuration, relativeDayLabel } from './agendaUtils'
+import { appointmentPhase, busyMinutes, defaultStartFor, formatDuration, relativeDayLabel } from './agendaUtils'
 import { DayTimeline } from './DayTimeline'
 import { dayAriaLabel, MiniCalendar, TypeDots } from './MiniCalendar'
 import { useAppointmentEditor } from './useAppointmentEditor'
@@ -54,7 +54,7 @@ export function AgendaTodayWidget() {
 
   const addNew = () => editor.openNew({ date: selected, start: defaultStartFor(selected, now) })
   const isToday = selected === today
-  const totalMinutes = active.reduce((sum, a) => sum + Math.max(0, timeToMinutes(a.end) - timeToMinutes(a.start)), 0)
+  const totalMinutes = busyMinutes(active)
 
   return (
     <Card
@@ -87,9 +87,9 @@ export function AgendaTodayWidget() {
           >
             <Plus size={20} aria-hidden="true" />
           </button>
-          <a className="btn btn-ghost btn-sm ag-w-open" href={buildHref('agenda', { giorno: selected })}>
+          <a className="card-link ag-w-open" href={buildHref('agenda', { giorno: selected })}>
             Apri agenda
-            <ChevronRight size={16} aria-hidden="true" />
+            <ChevronRight size={14} aria-hidden="true" />
           </a>
         </>
       }
@@ -213,12 +213,15 @@ function Summary({
   list: ReturnType<typeof appointmentsOn>
   now: ReturnType<typeof useNow>
 }) {
-  const current = isToday ? list.find((a) => appointmentPhase(a, now) === 'in_corso') : undefined
-  const next = isToday ? list.find((a) => appointmentPhase(a, now) === 'futuro') : undefined
+  // gli eventi "tutto il giorno" non sono né "in corso" né "il prossimo"
+  const timed = isToday ? list.filter((a) => !isAllDay(a)) : []
+  const current = timed.find((a) => appointmentPhase(a, now) === 'in_corso')
+  const next = timed.find((a) => appointmentPhase(a, now) === 'futuro')
   return (
     <p className="ag-w-summary small">
       <span className="num">
-        {plural(list.length, 'appuntamento', 'appuntamenti')} · {formatDuration(totalMinutes)} in agenda
+        {plural(list.length, 'appuntamento', 'appuntamenti')}
+        {totalMinutes > 0 && ` · ${formatDuration(totalMinutes)} in agenda`}
       </span>
       {isToday && (
         <span className="ag-w-summary-next">

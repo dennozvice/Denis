@@ -7,9 +7,13 @@ import {
   effectiveSelection,
   groupImportRows,
   instrumentChange,
+  latestDate,
   looksOffScale,
   matchKey,
   mergeSeries,
+  removeImports,
+  restoreImports,
+  risingIsBad,
   slugify,
   stepDecimals,
 } from './fundsLogic'
@@ -79,6 +83,25 @@ describe('instrumentChange', () => {
 
   it('storia insufficiente → undefined', () => {
     expect(instrumentChange(fund('f', { series: series('2026-09-28', [10]) }), '1A')).toBeUndefined()
+  })
+
+  it('risingIsBad vale solo per gli spread (stessa regola dei colori delle variazioni)', () => {
+    expect(risingIsBad({ unit: 'bp' })).toBe(true)
+    expect(risingIsBad({ unit: 'pct' })).toBe(false)
+    expect(risingIsBad({ unit: 'EUR' })).toBe(false)
+  })
+})
+
+describe('latestDate', () => {
+  it('ultima data tra gli strumenti, esclusa la gestione separata', () => {
+    const list = [
+      fund('a', { series: series('2026-09-28', [1, 2]) }),
+      fund('b', { series: series('2026-09-30', [1, 2]) }),
+      fund('gs', { group: 'gestione_separata', series: [{ date: '2026-12-31', value: 3 }] }),
+      fund('vuoto'),
+    ]
+    expect(latestDate(list)).toBe('2026-10-01')
+    expect(latestDate([])).toBeUndefined()
   })
 })
 
@@ -166,6 +189,36 @@ describe('importazione', () => {
     const rows = Array.from({ length: 9 }, (_, i) => ({ key: `Nuovo ${i}`, date: '2026-09-30', value: 1 }))
     const list = buildImports(groupImportRows(rows, []), [])
     expect(list.map((i) => i.colorIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 1])
+  })
+
+  it('removeImports restituisce le serie tolte con la loro posizione', () => {
+    const list = [fund('a'), fund('b'), fund('c')]
+    const { next, removed } = removeImports(list, ['b', 'x'])
+    expect(next.map((i) => i.id)).toEqual(['a', 'c'])
+    expect(removed).toEqual([{ item: list[1], index: 1 }])
+  })
+
+  it('restoreImports rimette le serie al loro posto senza perdere quelle arrivate nel frattempo', () => {
+    const list = [fund('a'), fund('b'), fund('c')]
+    const { next, removed } = removeImports(list, ['b'])
+    // nel frattempo un'altra scheda ha importato "d"
+    const restored = restoreImports([...next, fund('d')], removed)
+    expect(restored.map((i) => i.id)).toEqual(['a', 'b', 'c', 'd'])
+  })
+
+  it('restoreImports dopo "Rimuovi tutti": prima le serie ripristinate, poi le nuove', () => {
+    const list = [fund('a'), fund('b')]
+    const { next, removed } = removeImports(list, ['a', 'b'])
+    expect(next).toEqual([])
+    expect(restoreImports([fund('z')], removed).map((i) => i.id)).toEqual(['a', 'b', 'z'])
+  })
+
+  it('restoreImports non sovrascrive una serie reimportata dopo la rimozione', () => {
+    const old = fund('a', { series: series('2026-09-01', [1]) })
+    const fresh = fund('a', { series: series('2026-09-01', [1, 2]) })
+    const { removed } = removeImports([old], ['a'])
+    const restored = restoreImports([fresh], removed)
+    expect(restored).toEqual([fresh])
   })
 
   it('looksOffScale segnala probabili errori di separatore', () => {

@@ -228,4 +228,28 @@ describe('parsePriceCsv', () => {
     expect(r.rows).toEqual([])
     expect(r.errors).toEqual([])
   })
+
+  it('con maxDate separa le righe datate nel futuro (con il numero di riga)', () => {
+    const r = parsePriceCsv('id;data;valore\nf-a;01/10/2027;12\nf-a;01/10/2026;11,9\nf-b;02/10/2026;5', {
+      maxDate: '2026-10-01',
+    })
+    expect(r.errors).toEqual([])
+    expect(r.rows).toEqual([{ key: 'f-a', date: '2026-10-01', value: 11.9 }])
+    expect(r.future).toEqual([
+      { key: 'f-a', date: '2027-10-01', value: 12, line: 2 },
+      { key: 'f-b', date: '2026-10-02', value: 5, line: 4 },
+    ])
+  })
+
+  it('senza maxDate nessuna riga è considerata futura; la data limite è ammessa', () => {
+    expect(parsePriceCsv('f-a;01/10/2027;12').future).toEqual([])
+    const r = parsePriceCsv('f-a;01/10/2026;12', { maxDate: '2026-10-01' })
+    expect(r.rows).toHaveLength(1)
+    expect(r.future).toEqual([])
+  })
+
+  it('per i duplicati nel futuro conta la riga dell’ultima occorrenza', () => {
+    const r = parsePriceCsv('f-a;01/10/2027;1\nf-a;2027-10-01;2', { maxDate: '2026-10-01' })
+    expect(r.future).toEqual([{ key: 'f-a', date: '2027-10-01', value: 2, line: 2 }])
+  })
 })

@@ -161,6 +161,8 @@ function TaskForm({ task, defaults, onDone }: { task?: Task; defaults?: Partial<
     } else {
       const input: NewTask = { ...base }
       if (defaults?.status) input.status = defaults.status
+      // collegamento alla scadenza da cui nasce l'attività (evita doppioni "Crea attività")
+      if (defaults?.deadlineId) input.deadlineId = defaults.deadlineId
       actions.addTask(input)
       toast({ message: 'Attività creata' })
     }

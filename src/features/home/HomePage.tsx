@@ -1,6 +1,6 @@
 import { CalendarPlus, ListPlus, UserPlus } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AgendaTodayWidget } from '../agenda/AgendaTodayWidget'
 import { AppointmentFormModal } from '../agenda/AppointmentFormModal'
 import { OpenCasesWidget } from '../cases/OpenCasesWidget'
@@ -10,7 +10,10 @@ import { DeadlinesWidget } from '../deadlines/DeadlinesWidget'
 import { FundsWidget } from '../funds/FundsWidget'
 import { TaskFormModal } from '../tasks/TaskFormModal'
 import { TodayTasksWidget } from '../tasks/TodayTasksWidget'
+import { plural } from '../../lib/format'
 import { useNow } from '../../store/NowContext'
+import { useAppData } from '../../store/StoreContext'
+import { computeKpis } from '../../store/selectors'
 import { GoalsWidget } from './GoalsWidget'
 import { KpiTiles } from './KpiTiles'
 import { MarketStrip } from './MarketStrip'
@@ -23,23 +26,34 @@ type QuickModal = 'task' | 'appointment' | 'client'
 /**
  * Panoramica: la giornata del consulente in una schermata.
  * Ordine nel DOM = ordine su mobile (colonna singola): mercati, KPI, attività, agenda, fondi,
- * scadenze, obiettivi, ricorrenze, pratiche, formazione, note.
+ * obiettivi, scadenze, formazione, ricorrenze, pratiche, note.
+ * Su desktop la seconda fascia ha due colonne indipendenti (fondi + obiettivi | scadenze + formazione)
+ * così le card si impilano senza vuoti, invece di allungarsi tutte all'altezza della più alta.
  */
 export function HomePage() {
+  const data = useAppData()
   const now = useNow()
   const [modal, setModal] = useState<QuickModal | null>(null)
   const close = () => setModal(null)
+  const kpis = useMemo(() => computeKpis(data, now), [data, now])
 
   return (
     <div className="page hm-page">
-      <div className="hm-header">
-        <h1 className="hm-title">Panoramica</h1>
+      <header className="page-header hm-header">
+        <div className="hm-heading">
+          <h1>Panoramica</h1>
+          {/* Stessi conteggi dei KPI; la data è già nella barra in alto */}
+          <p>
+            Oggi: {plural(kpis.tasksOpenToday, 'attività', 'attività')} ·{' '}
+            {plural(kpis.appointmentsToday, 'appuntamento', 'appuntamenti')}
+          </p>
+        </div>
         <div className="hm-quick" role="group" aria-label="Azioni rapide">
           <QuickAction icon={ListPlus} label="Nuova attività" short="Attività" primary onClick={() => setModal('task')} />
           <QuickAction icon={CalendarPlus} label="Nuovo appuntamento" short="Appuntamento" onClick={() => setModal('appointment')} />
           <QuickAction icon={UserPlus} label="Nuovo cliente" short="Cliente" onClick={() => setModal('client')} />
         </div>
-      </div>
+      </header>
 
       <MarketStrip />
       <KpiTiles />
@@ -54,10 +68,11 @@ export function HomePage() {
 
         <div className="col-8 col-md-12 hm-cell">
           <FundsWidget />
+          <GoalsWidget />
         </div>
         <div className="col-4 col-md-12 hm-cell hm-pair">
           <DeadlinesWidget />
-          <GoalsWidget />
+          <TrainingWidget />
         </div>
 
         <div className="col-4 col-md-6 hm-cell">
@@ -66,8 +81,7 @@ export function HomePage() {
         <div className="col-4 col-md-6 hm-cell">
           <OpenCasesWidget />
         </div>
-        <div className="col-4 col-md-12 hm-cell hm-pair">
-          <TrainingWidget />
+        <div className="col-4 col-md-12 hm-cell">
           <QuickNoteWidget />
         </div>
       </div>

@@ -5,7 +5,7 @@ import { useToast } from '../../components/ui/Toast'
 import { CASE_STATUS_LABEL, CASE_STATUS_TONE, CASE_TYPE_LABEL } from '../../domain/labels'
 import type { Case, CaseStatus, CaseType, DateKey } from '../../domain/types'
 import { diffDays } from '../../lib/dates'
-import { formatCurrency, formatNumber } from '../../lib/format'
+import { formatCurrency, formatNumber, formatRelativeDaysChip } from '../../lib/format'
 import { useActions } from '../../store/StoreContext'
 import { formatDeadlineDate, toneVars } from '../deadlines/deadlineUtils'
 import { CASE_TYPE_TONE, caseDueDate, caseDueTone } from './caseUtils'
@@ -43,8 +43,7 @@ export function caseDaysLabel(daysLeft: number): string {
   if (daysLeft < -1) return `Scaduta da ${formatNumber(-daysLeft)} gg`
   if (daysLeft === -1) return 'Scaduta ieri'
   if (daysLeft === 0) return 'Scade oggi'
-  if (daysLeft === 1) return 'Domani'
-  return `Tra ${formatNumber(daysLeft)} gg`
+  return formatRelativeDaysChip(daysLeft)
 }
 
 /**

@@ -82,16 +82,18 @@ export function GoalsWidget() {
         <GoalsEditor groups={groups} onDone={finishEditing} />
       ) : (
         <>
-          {groups.map((group) => (
-            <div key={group.key} className="hm-goal-group">
-              <h3 className="hm-group-title">{group.title}</h3>
-              <ul className="hm-goal-list">
-                {group.goals.map((goal) => (
-                  <GoalRow key={goal.id} goal={goal} today={now.date} />
-                ))}
-              </ul>
-            </div>
-          ))}
+          <div className="hm-goal-columns">
+            {groups.map((group) => (
+              <div key={group.key} className="hm-goal-group">
+                <h3 className="hm-group-title">{group.title}</h3>
+                <ul className="hm-goal-list">
+                  {group.goals.map((goal) => (
+                    <GoalRow key={goal.id} goal={goal} today={now.date} />
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
           <p className="hm-goal-legend">
             <span className="hm-goal-legend-tick" aria-hidden="true" />
             La tacca indica il ritmo atteso a oggi
@@ -207,52 +209,54 @@ function GoalsEditor({ groups, onDone }: { groups: GoalGroup[]; onDone(): void }
         }
       }}
     >
-      {groups.map((group) => (
-        <fieldset key={group.key} className="hm-goal-fieldset">
-          <legend className="hm-group-title">{group.title}</legend>
-          {group.goals.map((goal, index) => {
-            const suffix = goal.unit === 'EUR' ? ' (€)' : ''
-            return (
-              <div key={goal.id} className="hm-goal-edit">
-                <span className="hm-goal-label">{goal.label}</span>
-                <div className="hm-goal-inputs">
-                  {(['current', 'target'] as const).map((field) => {
-                    const key = `${goal.id}:${field}`
-                    const isInvalid = invalid.has(key)
-                    const inputId = `${formId}-${goal.id}-${field}`
-                    return (
-                      <div key={field} className="field">
-                        <label htmlFor={inputId} className="field-label">
-                          <span className="visually-hidden">{goal.label}: </span>
-                          {field === 'current' ? 'Attuale' : 'Obiettivo'}
-                          {suffix}
-                        </label>
-                        <input
-                          id={inputId}
-                          className="input num"
-                          type="text"
-                          inputMode={goal.unit === 'EUR' ? 'decimal' : 'numeric'}
-                          autoComplete="off"
-                          autoFocus={group === groups[0] && index === 0 && field === 'current'}
-                          value={valueOf(goal.id, field)}
-                          aria-invalid={isInvalid || undefined}
-                          aria-describedby={isInvalid ? `${inputId}-err` : undefined}
-                          onChange={(e) => setField(goal.id, field, e.target.value)}
-                        />
-                        {isInvalid && (
-                          <span id={`${inputId}-err`} className="hm-field-error">
-                            {field === 'target' ? 'Inserisci un numero maggiore di zero' : 'Inserisci un numero valido'}
-                          </span>
-                        )}
-                      </div>
-                    )
-                  })}
+      <div className="hm-goal-columns">
+        {groups.map((group) => (
+          <fieldset key={group.key} className="hm-goal-fieldset">
+            <legend className="hm-group-title">{group.title}</legend>
+            {group.goals.map((goal, index) => {
+              const suffix = goal.unit === 'EUR' ? ' (€)' : ''
+              return (
+                <div key={goal.id} className="hm-goal-edit">
+                  <span className="hm-goal-label">{goal.label}</span>
+                  <div className="hm-goal-inputs">
+                    {(['current', 'target'] as const).map((field) => {
+                      const key = `${goal.id}:${field}`
+                      const isInvalid = invalid.has(key)
+                      const inputId = `${formId}-${goal.id}-${field}`
+                      return (
+                        <div key={field} className="field">
+                          <label htmlFor={inputId} className="field-label">
+                            <span className="visually-hidden">{goal.label}: </span>
+                            {field === 'current' ? 'Attuale' : 'Obiettivo'}
+                            {suffix}
+                          </label>
+                          <input
+                            id={inputId}
+                            className="input num"
+                            type="text"
+                            inputMode={goal.unit === 'EUR' ? 'decimal' : 'numeric'}
+                            autoComplete="off"
+                            autoFocus={group === groups[0] && index === 0 && field === 'current'}
+                            value={valueOf(goal.id, field)}
+                            aria-invalid={isInvalid || undefined}
+                            aria-describedby={isInvalid ? `${inputId}-err` : undefined}
+                            onChange={(e) => setField(goal.id, field, e.target.value)}
+                          />
+                          {isInvalid && (
+                            <span id={`${inputId}-err`} className="hm-field-error">
+                              {field === 'target' ? 'Inserisci un numero maggiore di zero' : 'Inserisci un numero valido'}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </fieldset>
-      ))}
+              )
+            })}
+          </fieldset>
+        ))}
+      </div>
       <div className="hm-form-actions">
         <button type="button" className="btn btn-sm hm-tap" onClick={onDone}>
           Annulla

@@ -5,6 +5,7 @@ import {
   decodeIcsBytes,
   escapeText,
   eventExternalId,
+  exportSummary,
   foldLine,
   guessAppointmentType,
   guessLocation,
@@ -680,5 +681,57 @@ describe('appointmentsToIcs', () => {
       expect(b.notes).toBe(original.notes)
     })
     expect(back.find((b) => b.externalId === 'a02@advisor-desk')?.locationDetail).toBe('Via dei Tigli 12, Milano')
+  })
+})
+
+describe('appointmentsToIcs – tutto il giorno e titolo', () => {
+  const NOW = new Date(Date.UTC(2026, 9, 2, 8, 0, 0))
+  const appointments: Appointment[] = [
+    appt({ id: 'a10', title: 'Ferie', type: 'personale', date: '2026-12-31', start: '00:00', end: '23:59' }),
+    appt({
+      id: 'a11',
+      title: 'Firma contratto Rossi Mario',
+      type: 'firma_contratto',
+      date: '2026-10-07',
+      start: '16:00',
+      end: '17:00',
+      clientId: 'c01',
+    }),
+  ]
+  const unfolded = unfoldLines(appointmentsToIcs(appointments, CLIENTS, { now: NOW }))
+
+  it('evento "tutto il giorno": DTSTART/DTEND VALUE=DATE (fine esclusiva, anche a cavallo d\'anno), senza luogo generico', () => {
+    expect(unfolded).toContain('DTSTART;VALUE=DATE:20261231')
+    expect(unfolded).toContain('DTEND;VALUE=DATE:20270101')
+    expect(unfolded.some((l) => l.includes('T000000') || l.includes('T235900'))).toBe(false)
+    const event = unfolded.slice(unfolded.indexOf('UID:a10@advisor-desk'), unfolded.indexOf('END:VEVENT'))
+    expect(event.some((l) => l.startsWith('LOCATION'))).toBe(false)
+  })
+
+  it('il nome del cliente non si ripete nel SUMMARY se il titolo lo contiene già', () => {
+    expect(unfolded).toContain('SUMMARY:Firma contratto Rossi Mario')
+    expect(exportSummary('Revisione portafoglio', CLIENTS[0])).toBe('Revisione portafoglio – Mario Rossi')
+    expect(exportSummary('Revisione – MARIO ROSSI', CLIENTS[0])).toBe('Revisione – MARIO ROSSI')
+    expect(exportSummary('Consulenza De Santis Niccolo', CLIENTS[2])).toBe('Consulenza De Santis Niccolo')
+    // un nome solo simile non conta
+    expect(exportSummary('Revisione Mario Rossini', CLIENTS[0])).toBe('Revisione Mario Rossini – Mario Rossi')
+    expect(exportSummary('Riunione', undefined)).toBe('Riunione')
+  })
+
+  it('andata e ritorno: l\'evento "tutto il giorno" torna 00:00–23:59 di un solo giorno', () => {
+    const { events, warnings } = parseIcs(appointmentsToIcs(appointments, CLIENTS, { now: NOW }))
+    expect(warnings).toEqual([])
+    const back = icsEventsToAppointments(events, CLIENTS)
+    expect(back.find((b) => b.externalId === 'a10@advisor-desk')).toMatchObject({
+      title: 'Ferie',
+      type: 'personale',
+      date: '2026-12-31',
+      start: '00:00',
+      end: '23:59',
+    })
+    expect(back.find((b) => b.externalId === 'a11@advisor-desk')).toMatchObject({
+      title: 'Firma contratto Rossi Mario',
+      clientId: 'c01',
+    })
   })
 })

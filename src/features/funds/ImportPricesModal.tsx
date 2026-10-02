@@ -1,13 +1,14 @@
-import { CircleAlert, FileUp, TriangleAlert } from 'lucide-react'
-import { useDeferredValue, useId, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
+import { CircleAlert, FileUp, TriangleAlert, Upload } from 'lucide-react'
+import { useDeferredValue, useId, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { INSTRUMENT_GROUP_LABEL } from '../../domain/labels'
 import type { Instrument, InstrumentGroup } from '../../domain/types'
-import { parsePriceCsv } from '../../lib/csv'
+import { parsePriceCsv, type PriceCsvResult, type PriceRow } from '../../lib/csv'
 import { lastPoint } from '../../lib/finance'
 import { formatDateShort, formatInstrumentValue, formatNumber, plural } from '../../lib/format'
 import { useMarket } from '../../store/MarketContext'
+import { useNow } from '../../store/NowContext'
 import { buildImports, groupImportRows, looksOffScale, type ImportGroup } from './fundsLogic'
 import './funds.css'
 
@@ -39,23 +40,34 @@ function saveErrorMessage(reason: 'quota' | 'unavailable' | 'error'): string {
   }
 }
 
+/** Righe da importare: quelle con data futura solo se l'utente lo ha confermato. */
+function rowsToImport(result: PriceCsvResult, allowFuture: boolean): PriceRow[] {
+  return allowFuture && result.future.length > 0 ? [...result.rows, ...result.future] : result.rows
+}
+
 /** Importazione dei valori ufficiali (fondi, indici…) da CSV incollato o da file, con anteprima. */
 export function ImportPricesModal({ open, onClose }: { open: boolean; onClose(): void }) {
-  const { instruments, imports, setImports } = useMarket()
+  const { instruments, updateImports } = useMarket()
+  const { date: today } = useNow()
   const toast = useToast()
   const uid = useId()
   const [text, setText] = useState('')
   const [defaultKey, setDefaultKey] = useState('')
+  const [allowFuture, setAllowFuture] = useState(false)
   const [fileName, setFileName] = useState<string>()
   const [fileError, setFileError] = useState<string>()
   const [saveError, setSaveError] = useState<string>()
+  const [dragging, setDragging] = useState(false)
 
   const deferredText = useDeferredValue(text)
   const parsed = useMemo(
-    () => parsePriceCsv(deferredText, { defaultKey: defaultKey || undefined }),
-    [deferredText, defaultKey],
+    () => parsePriceCsv(deferredText, { defaultKey: defaultKey || undefined, maxDate: today }),
+    [deferredText, defaultKey, today],
   )
-  const groups = useMemo(() => groupImportRows(parsed.rows, instruments), [parsed.rows, instruments])
+  const groups = useMemo(
+    () => groupImportRows(rowsToImport(parsed, allowFuture), instruments),
+    [parsed, allowFuture, instruments],
+  )
   const pointCount = groups.reduce((n, g) => n + g.points.length, 0)
   const stale = deferredText !== text
 
@@ -67,41 +79,61 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
   const close = () => {
     setText('')
     setDefaultKey('')
+    setAllowFuture(false)
     setFileName(undefined)
     setFileError(undefined)
     setSaveError(undefined)
+    setDragging(false)
     onClose()
   }
 
-  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const input = e.currentTarget
-    const file = input.files?.[0]
+  /** Nuovo testo da importare: la conferma per le date future va ridata. */
+  const changeText = (value: string) => {
+    setText(value)
+    setAllowFuture(false)
+    setSaveError(undefined)
+  }
+
+  const readFile = async (file: File | undefined) => {
     if (!file) return
+    if (!/\.(csv|txt|tsv)$/i.test(file.name) && file.type && !file.type.startsWith('text/')) {
+      setFileError('Seleziona un file .csv o .txt.')
+      return
+    }
     if (file.size > MAX_FILE_BYTES) {
       setFileError('Il file è troppo grande (massimo 5 MB).')
-      input.value = ''
       return
     }
     try {
-      const content = await readFileText(file)
-      setText(content)
+      changeText(await readFileText(file))
       setFileName(file.name)
       setFileError(undefined)
-      setSaveError(undefined)
     } catch {
       setFileError('Impossibile leggere il file selezionato.')
     }
-    input.value = ''
+  }
+
+  const onFile = (e: ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget
+    const file = input.files?.[0]
+    input.value = '' // si può ricaricare lo stesso file
+    void readFile(file)
+  }
+
+  const onDrop = (e: DragEvent<HTMLLabelElement>) => {
+    e.preventDefault()
+    setDragging(false)
+    void readFile(e.dataTransfer.files?.[0])
   }
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // si usa sempre il testo attuale, anche se l'anteprima differita non è ancora aggiornata
-    const current = parsePriceCsv(text, { defaultKey: defaultKey || undefined })
-    const toImport = groupImportRows(current.rows, instruments)
+    const current = parsePriceCsv(text, { defaultKey: defaultKey || undefined, maxDate: today })
+    const toImport = groupImportRows(rowsToImport(current, allowFuture), instruments)
     if (toImport.length === 0) return
-    const next = buildImports(toImport, imports)
-    const result = setImports(next)
+    // si parte dalle serie salvate più recenti: non si perdono import fatti in un'altra scheda
+    const result = updateImports((latest) => buildImports(toImport, latest))
     if (!result.ok) {
       setSaveError(saveErrorMessage(result.reason))
       return
@@ -113,17 +145,18 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
   }
 
   const errorCount = parsed.errors.length
+  const futureCount = parsed.future.length
   const missingKeyOnly = errorCount > 0 && parsed.rows.length === 0 && parsed.errors.every((er) => er.message.startsWith('Manca lo strumento'))
 
   return (
     <Modal
       open={open}
-      title="Importa valori quota"
+      title="Importa valori (.csv)"
       onClose={close}
       wide
       footer={
         <>
-          <button type="button" className="btn" onClick={close}>
+          <button type="button" className="btn btn-ghost" onClick={close}>
             Annulla
           </button>
           <button type="submit" form={FORM_ID} className="btn btn-primary" disabled={pointCount === 0 || stale}>
@@ -202,30 +235,35 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
             </select>
           </label>
           <div className="field">
-            <span className="field-label" id={`${uid}-file-label`}>
+            <span className="field-label" aria-hidden="true">
               Carica un file (.csv, .txt)
             </span>
-            <div className="fd-file-row">
+            <label
+              className={`fd-drop${dragging ? ' is-dragging' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                setDragging(true)
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+            >
               <input
-                id={`${uid}-file`}
                 type="file"
-                accept=".csv,.txt,text/csv,text/plain"
-                className="visually-hidden fd-file-input"
-                onChange={(e) => void onFile(e)}
-                aria-labelledby={`${uid}-file-label`}
+                accept=".csv,.txt,.tsv,text/csv,text/plain"
+                className="visually-hidden"
+                onChange={onFile}
+                aria-label="Carica un file con i valori (.csv, .txt)"
                 aria-describedby={`${uid}-file-status`}
+                aria-invalid={fileError ? true : undefined}
               />
-              <label htmlFor={`${uid}-file`} className="btn fd-tap fd-file-btn">
-                <FileUp size={16} aria-hidden="true" />
-                Scegli un file…
-              </label>
-              <span
-                id={`${uid}-file-status`}
-                className={`xsmall truncate ${fileError ? 'fd-error-text' : 'muted'}`}
-              >
-                {fileError ?? (fileName ? `Caricato: ${fileName}` : 'Nessun file selezionato')}
+              <span className="btn btn-sm fd-drop-pick" aria-hidden="true">
+                <Upload size={16} />
+                Scegli file…
               </span>
-            </div>
+              <span id={`${uid}-file-status`} className={`fd-drop-name${fileError ? ' fd-error-text' : ''}`}>
+                {fileError ?? (fileName ? `Caricato: ${fileName}` : 'Nessun file selezionato · oppure trascinalo qui')}
+              </span>
+            </label>
           </div>
           <label className="field span-2">
             <span>Dati da importare</span>
@@ -237,10 +275,7 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
               autoCapitalize="off"
               autoCorrect="off"
               placeholder={EXAMPLE}
-              onChange={(e) => {
-                setText(e.target.value)
-                setSaveError(undefined)
-              }}
+              onChange={(e) => changeText(e.target.value)}
             />
           </label>
         </div>
@@ -262,7 +297,9 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
             <>
               <p className="small">
                 {groups.length === 0
-                  ? 'Nessun valore valido trovato.'
+                  ? futureCount > 0
+                    ? 'Nessun valore da importare.'
+                    : 'Nessun valore valido trovato.'
                   : `${pointCount === 1 ? '1 valore' : `${formatNumber(pointCount)} valori`} per ${plural(groups.length, 'strumento', 'strumenti')}`}
                 {parsed.hasHeader && <span className="muted"> · intestazione ignorata</span>}
               </p>
@@ -272,6 +309,33 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
                     <PreviewItem key={g.match.id} group={g} />
                   ))}
                 </ul>
+              )}
+              {futureCount > 0 && (
+                <div className="fd-preview-errors">
+                  <p className="xsmall strong">
+                    <TriangleAlert size={14} aria-hidden="true" />{' '}
+                    {allowFuture
+                      ? `${plural(futureCount, 'riga', 'righe')} con data nel futuro: ${futureCount === 1 ? 'verrà importata' : 'verranno importate'}`
+                      : `${plural(futureCount, 'riga esclusa', 'righe escluse')}. Data nel futuro: controlla l’anno`}
+                  </p>
+                  <ul className="xsmall">
+                    {parsed.future.slice(0, MAX_ERRORS_SHOWN).map((r) => (
+                      <li key={r.line} className="num">
+                        Riga {r.line}: {formatDateShort(r.date)} · {r.key}
+                      </li>
+                    ))}
+                    {futureCount > MAX_ERRORS_SHOWN && <li className="muted">…e altre {futureCount - MAX_ERRORS_SHOWN}</li>}
+                  </ul>
+                  <label className="fd-inline-check fd-future-check">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      checked={allowFuture}
+                      onChange={(e) => setAllowFuture(e.target.checked)}
+                    />
+                    <span>Importa comunque le righe con data nel futuro</span>
+                  </label>
+                </div>
               )}
               {missingKeyOnly && (
                 <p className="xsmall fd-error-text">
@@ -322,7 +386,7 @@ function PreviewItem({ group }: { group: ImportGroup }) {
         )}
       </div>
       <div className="xsmall muted num">
-        {plural(points.length, 'valore', 'valori')} · {first === last ? formatDateShort(first) : `dal ${formatDateShort(first)} al ${formatDateShort(last)}`} · ultimo{' '}
+        {plural(points.length, 'valore', 'valori')} · {first === last ? `il ${formatDateShort(first)}` : `dal ${formatDateShort(first)} al ${formatDateShort(last)}`} · ultimo{' '}
         <span className="text-2 strong">{formatInstrumentValue(lastValue, unit, decimals)}</span>
       </div>
       {suspicious && current !== undefined && (

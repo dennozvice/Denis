@@ -16,16 +16,6 @@
   text-transform: none;
 }
 
-.cs-footer-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 40px;
-  margin: calc(var(--sp-2) * -1) 0;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-}
-
 .icon-btn.cs-icon-btn {
   color: var(--text-3);
 }
@@ -337,7 +327,7 @@
 }
 
 .cs-td-case {
-  min-width: 240px;
+  min-width: 200px;
 }
 
 .cs-case-cell {
@@ -360,6 +350,10 @@
   letter-spacing: 0.02em;
 }
 
+.cs-table .cs-case-type {
+  white-space: nowrap;
+}
+
 .cs-case-title {
   padding: 0;
   border: none;
@@ -376,10 +370,6 @@
 .cs-case-title:hover {
   color: var(--primary-text);
   text-decoration: underline;
-}
-
-.cs-td-client {
-  min-width: 130px;
 }
 
 .cs-client-link {
@@ -417,11 +407,23 @@
 .cs-due-note {
   font-size: var(--fs-xs);
   color: var(--text-3);
-  white-space: nowrap;
 }
 
+/* La colonna si adatta al selettore, largo quanto l'etichetta più lunga ("In attesa documenti"): mai troncata */
 .cs-td-status {
-  width: 216px;
+  width: 1%;
+}
+
+.cs-td-status .select.cs-status-select {
+  width: auto;
+}
+
+/* Tabella stretta: il titolo va a capo, le righe secondarie (età, nota del reclamo) si nascondono */
+@container cs-cases (max-width: 1079px) {
+  .cs-table .cs-sub,
+  .cs-table .cs-due-note {
+    display: none;
+  }
 }
 
 .cs-td-amount {
@@ -572,10 +574,9 @@
     height: 44px;
   }
 
-  .cs-footer-link {
+  .card-link.cs-footer-link {
     min-height: 44px;
   }
-
 
   .select.cs-status-select {
     min-height: 44px;

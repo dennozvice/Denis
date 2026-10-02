@@ -4,9 +4,9 @@ import { APPOINTMENT_TYPE_LABEL } from '../../domain/labels'
 import type { Appointment, Client, DateKey } from '../../domain/types'
 import { timeToMinutes, type RomeNow } from '../../lib/dates'
 import { buildHref } from '../../router/router'
-import { clientFullName } from '../../store/selectors'
+import { clientFullName, isAllDay } from '../../store/selectors'
 import { appointmentPhase, mapsHref, needsOutcome, phoneFor, telHref, videoHref } from './agendaUtils'
-import { LocationIcon, StatusPill, locationText, typeStyle } from './AppointmentBits'
+import { hasLocation, LocationIcon, StatusPill, locationText, timeRangeText, typeStyle } from './AppointmentBits'
 import './agenda.css'
 
 interface DayTimelineProps {
@@ -36,8 +36,8 @@ export function DayTimeline({
   className,
 }: DayTimelineProps) {
   const isToday = day === now.date
-  // la linea "adesso" va prima del primo appuntamento che deve ancora iniziare
-  const nowIndex = isToday ? appointments.findIndex((a) => timeToMinutes(a.start) > now.minutes) : -1
+  // la linea "adesso" va prima del primo appuntamento che deve ancora iniziare (gli eventi "tutto il giorno" restano in cima)
+  const nowIndex = isToday ? appointments.findIndex((a) => !isAllDay(a) && timeToMinutes(a.start) > now.minutes) : -1
   const nowAt = isToday ? (nowIndex === -1 ? appointments.length : nowIndex) : -1
 
   return (
@@ -93,22 +93,34 @@ function TimelineItem({
   const typeLabel = APPOINTMENT_TYPE_LABEL[a.type]
   // il tipo si omette se il titolo lo ripete già ("Revisione portafoglio")
   const showType = !a.title.toLowerCase().includes(typeLabel.toLowerCase())
+  const allDay = isAllDay(a)
 
-  const cls = ['ag-tl-item', `ag-tl-item--${phase}`, cancelled && 'ag-tl-item--cancelled'].filter(Boolean).join(' ')
+  const cls = [
+    'ag-tl-item',
+    `ag-tl-item--${phase}`,
+    allDay && 'ag-tl-item--allday',
+    cancelled && 'ag-tl-item--cancelled',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <li className={cls} style={typeStyle(a)}>
-      <div className="ag-tl-time num" aria-hidden="true">
-        <span className="ag-tl-start">{a.start}</span>
-        <span className="ag-tl-end">{a.end}</span>
-      </div>
+      {allDay ? (
+        <div className="ag-tl-time" aria-hidden="true">
+          <span className="ag-tl-allday">Tutto il giorno</span>
+        </div>
+      ) : (
+        <div className="ag-tl-time num" aria-hidden="true">
+          <span className="ag-tl-start">{a.start}</span>
+          <span className="ag-tl-end">{a.end}</span>
+        </div>
+      )}
       <div className="ag-tl-body">
         <div className="ag-tl-top">
           <div className="ag-tl-head">
             <button type="button" className="ag-tl-title" onClick={() => onEdit(a)}>
-              <span className="visually-hidden">
-                {a.start}–{a.end},{' '}
-              </span>
+              <span className="visually-hidden">{timeRangeText(a)}, </span>
               {a.title}
             </button>
             <StatusPill appointment={a} phase={phase} />
@@ -137,10 +149,12 @@ function TimelineItem({
             </a>
           )}
         </p>
-        <p className="ag-tl-loc" title={a.locationDetail || undefined}>
-          <LocationIcon mode={a.location} />
-          <span className="truncate">{locationText(a)}</span>
-        </p>
+        {hasLocation(a) && (
+          <p className="ag-tl-loc" title={a.locationDetail || undefined}>
+            <LocationIcon mode={a.location} />
+            <span className="truncate">{locationText(a)}</span>
+          </p>
+        )}
         {(recordOutcome || (active && ((a.location === 'telefono' && tel) || address || video))) && (
           <div className="ag-tl-actions">
             {active && a.location === 'telefono' && tel && (

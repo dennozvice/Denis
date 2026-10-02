@@ -175,17 +175,25 @@ export function complianceLabel(status: ComplianceStatus, feminine = false): str
 export interface LastContactInfo {
   /** Giorni dall'ultimo contatto; undefined se mai contattato. */
   days?: number
-  /** true se mai contattato o se sono passati più giorni della soglia impostata. */
+  /**
+   * true se il cliente va ricontattato: mai contattato o più giorni della soglia impostata.
+   * Vale solo per i clienti con polizze (i prospect no), come `clientsToRecontact` e il widget della home.
+   */
   stale: boolean
   /** "oggi", "ieri", "12 gg fa", "Mai contattato". */
   label: string
 }
 
-export function lastContactInfo(client: Pick<Client, 'lastContact'>, today: DateKey, afterDays: number): LastContactInfo {
-  if (!client.lastContact) return { stale: true, label: 'Mai contattato' }
+export function lastContactInfo(
+  client: Pick<Client, 'lastContact' | 'policies'>,
+  today: DateKey,
+  afterDays: number,
+): LastContactInfo {
+  const tracked = client.policies.length > 0
+  if (!client.lastContact) return { stale: tracked, label: 'Mai contattato' }
   const days = Math.max(0, diffDays(client.lastContact, today))
   const label = days === 0 ? 'oggi' : days === 1 ? 'ieri' : `${days} gg fa`
-  return { days, stale: days > afterDays, label }
+  return { days, stale: tracked && days > afterDays, label }
 }
 
 // ---------------------------------------------------------------- polizze

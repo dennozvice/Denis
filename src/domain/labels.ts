@@ -109,7 +109,7 @@ export const APPOINTMENT_TYPE_TONE: Record<AppointmentType, Tone> = {
 export const APPOINTMENT_TYPE_COLOR: Record<AppointmentType, string> = {
   primo_incontro: 'var(--primary)',
   revisione_portafoglio: 'var(--accent)',
-  firma_contratto: 'var(--positive)',
+  firma_contratto: 'var(--series-8)',
   consegna_polizza: 'var(--violet)',
   call: 'var(--series-7)',
   formazione: 'var(--warning)',

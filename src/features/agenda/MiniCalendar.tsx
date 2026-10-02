@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { APPOINTMENT_TYPE_TONE, TONE_COLOR } from '../../domain/labels'
+import { APPOINTMENT_TYPE_COLOR } from '../../domain/labels'
 import type { AppointmentType, DateKey } from '../../domain/types'
 import { addDays, addMonths, isSameMonth, monthMatrix, parseKey, startOfMonth, weekdayIndex } from '../../lib/dates'
 import { capitalize, formatDateLong, formatMonthYear, plural, WEEKDAY_MIN } from '../../lib/format'
@@ -32,7 +32,10 @@ export function dayAriaLabel(day: DateKey, count: number, today: DateKey): strin
   return label
 }
 
-/** Pallini colorati per tipo di appuntamento (massimo 3, poi "+"). */
+/** Pallini massimi per giorno: oltre, un conteggio "+N" (le caselle sono strette). */
+const MAX_DOTS = 2
+
+/** Pallini colorati per tipo di appuntamento (massimo 2, poi "+N"). */
 export function TypeDots({
   types,
   className = 'ag-dots',
@@ -41,12 +44,13 @@ export function TypeDots({
   className?: string
 }) {
   if (!types || types.length === 0) return null
+  const extra = types.length - MAX_DOTS
   return (
     <span className={className} aria-hidden="true">
-      {types.slice(0, 3).map((t, i) => (
-        <span key={i} className="ag-dot" style={{ background: TONE_COLOR[APPOINTMENT_TYPE_TONE[t]] }} />
+      {types.slice(0, MAX_DOTS).map((t, i) => (
+        <span key={i} className="ag-dot" style={{ background: APPOINTMENT_TYPE_COLOR[t] }} />
       ))}
-      {types.length > 3 && <span className="ag-dot-more">+</span>}
+      {extra > 0 && <span className="ag-dot-more num">+{extra}</span>}
     </span>
   )
 }

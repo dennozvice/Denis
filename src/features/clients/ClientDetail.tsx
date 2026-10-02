@@ -2,6 +2,7 @@ import {
   ArrowLeft,
   Cake,
   CalendarPlus,
+  Check,
   ClipboardCheck,
   FileText,
   FolderPlus,
@@ -44,13 +45,22 @@ import {
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { useActions, useAppData, type NewAppointment, type NewTask } from '../../store/StoreContext'
-import { clientFullName, compareAppointments, isOpen, sortTasks } from '../../store/selectors'
+import {
+  clientFullName,
+  compareAppointments,
+  computeDeadlines,
+  findTaskForDeadline,
+  indexById,
+  isOpen,
+  sortTasks,
+} from '../../store/selectors'
 import { AppointmentFormModal } from '../agenda/AppointmentFormModal'
 import { CaseFormModal } from '../cases/CaseFormModal'
 import { TaskFormModal } from '../tasks/TaskFormModal'
 import { ClientFormModal } from './ClientFormModal'
 import {
   COMPLIANCE_TONE,
+  EXPIRING_WITHIN_DAYS,
   complianceLabel,
   complianceState,
   iddDueDate,
@@ -145,6 +155,19 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
 
   const createTask = (defaults: Partial<NewTask>) => setModal({ kind: 'task', defaults: { clientId: client.id, ...defaults } })
 
+  /**
+   * Scadenze di adempimento del cliente (doc-, aml-, idd-<id>) scadute o entro 30 giorni:
+   * servono a riconoscere un'attività aperta già collegata, per non proporne un doppione.
+   */
+  const deadlines = useMemo(
+    () => indexById(computeDeadlines({ ...data, clients: [client], cases: [] }, today, { horizonDays: EXPIRING_WITHIN_DAYS })),
+    [data, client, today],
+  )
+  const linkedTask = (deadlineId: string) => {
+    const deadline = deadlines.get(deadlineId)
+    return deadline ? findTaskForDeadline(data.tasks, deadline) : undefined
+  }
+
   const iddDue = iddDueDate(client, data.settings.iddValidityMonths)
   const compliance: ComplianceRowProps[] = [
     {
@@ -153,6 +176,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
       feminine: false,
       state: complianceState(client.docExpiry, today),
       describe: (due, expired) => `${expired ? 'Scaduto il' : 'Scade il'} ${formatDateShort(due)}`,
+      deadlineId: `doc-${client.id}`,
       task: { title: "Richiedere documento d'identità aggiornato", category: 'documento' },
     },
     {
@@ -161,6 +185,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
       feminine: true,
       state: complianceState(client.amlReviewDue, today),
       describe: (due, expired) => `${expired ? 'Rinnovo scaduto il' : 'Rinnovo entro il'} ${formatDateShort(due)}`,
+      deadlineId: `aml-${client.id}`,
       task: { title: "Rinnovare l'adeguata verifica", category: 'compliance' },
     },
     {
@@ -170,6 +195,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
       state: complianceState(iddDue, today),
       describe: (due, expired) =>
         `${client.iddQuestionnaireDate ? `Compilato il ${formatDateShort(client.iddQuestionnaireDate)} · ` : ''}${expired ? 'scaduto il' : 'valido fino al'} ${formatDateShort(due)} (${data.settings.iddValidityMonths} mesi)`,
+      deadlineId: `idd-${client.id}`,
       task: { title: 'Aggiornare il questionario di adeguatezza', category: 'adeguatezza' },
     },
   ]
@@ -297,7 +323,10 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
             <ComplianceRow
               key={row.label}
               {...row}
-              onCreateTask={(due) => createTask({ ...row.task, dueDate: taskDueFor(due, today), priority: 'alta' })}
+              linkedTask={linkedTask(row.deadlineId)}
+              onCreateTask={(due) =>
+                createTask({ ...row.task, deadlineId: row.deadlineId, dueDate: taskDueFor(due, today), priority: 'alta' })
+              }
             />
           ))}
         </ul>
@@ -444,6 +473,8 @@ interface ComplianceRowProps {
   feminine: boolean
   state: ComplianceState
   describe(due: DateKey, expired: boolean): string
+  /** ID della scadenza calcolata corrispondente (vedi computeDeadlines), salvato nell'attività creata. */
+  deadlineId: string
   task: { title: string; category: TaskCategory }
 }
 
@@ -453,8 +484,9 @@ function ComplianceRow({
   feminine,
   state,
   describe,
+  linkedTask,
   onCreateTask,
-}: ComplianceRowProps & { onCreateTask(due: DateKey | undefined): void }) {
+}: ComplianceRowProps & { linkedTask?: Task; onCreateTask(due: DateKey | undefined): void }) {
   const tone = COMPLIANCE_TONE[state.status]
   const needsAction = state.status === 'scaduto' || state.status === 'in_scadenza'
   const relative = state.daysLeft === undefined ? undefined : formatRelativeDays(state.daysLeft)
@@ -472,18 +504,30 @@ function ComplianceRow({
       </div>
       <div className="cl-comp-side">
         <Pill tone={tone}>{complianceLabel(state.status, feminine)}</Pill>
-        {needsAction && (
-          <button
-            type="button"
-            className="icon-btn cl-icon-btn"
-            onClick={() => onCreateTask(state.due)}
-            aria-label={`Crea attività: ${label}`}
-            title="Crea attività"
-            aria-haspopup="dialog"
-          >
-            <ListPlus size={18} aria-hidden="true" />
-          </button>
-        )}
+        {needsAction &&
+          (linkedTask ? (
+            <a
+              className="pill cl-comp-task"
+              data-tone="positive"
+              href={buildHref('attivita', { id: linkedTask.id })}
+              title={`Apri l'attività collegata: ${linkedTask.title}`}
+            >
+              <Check size={12} aria-hidden="true" />
+              Attività presente
+              <span className="visually-hidden">: {linkedTask.title}</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="icon-btn cl-icon-btn"
+              onClick={() => onCreateTask(state.due)}
+              aria-label={`Crea attività: ${label}`}
+              title="Crea attività"
+              aria-haspopup="dialog"
+            >
+              <ListPlus size={18} aria-hidden="true" />
+            </button>
+          ))}
       </div>
     </li>
   )

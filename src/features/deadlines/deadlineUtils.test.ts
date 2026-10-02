@@ -9,11 +9,10 @@ import {
   deadlineDaysLabel,
   deadlineDaysTone,
   deadlineHref,
-  deadlineTaskKey,
   formatDeadlineDate,
   groupDeadlinesByMonth,
+  linkedTasksByDeadline,
   matchesDeadlineFilter,
-  openTaskKeys,
   taskDefaultsForDeadline,
 } from './deadlineUtils'
 
@@ -35,6 +34,7 @@ describe('etichette dei giorni', () => {
     expect(deadlineDaysLabel(0)).toBe('Oggi')
     expect(deadlineDaysLabel(1)).toBe('Domani')
     expect(deadlineDaysLabel(12)).toBe('Tra 12 gg')
+    expect(deadlineDaysLabel(5)).toBe('Tra 5 gg')
   })
   it('tono', () => {
     expect(deadlineDaysTone({ daysLeft: -2, severity: 'scaduta' })).toBe('negative')
@@ -98,26 +98,46 @@ describe('collegamenti e attività', () => {
   })
   it('valori iniziali dell’attività', () => {
     const expired = taskDefaultsForDeadline(dl({ kind: 'antiriciclaggio', date: '2026-09-28', daysLeft: -4, severity: 'scaduta', clientId: 'c03' }), TODAY)
-    expect(expired).toMatchObject({ category: 'compliance', clientId: 'c03', dueDate: TODAY, priority: 'alta' })
+    expect(expired).toMatchObject({ category: 'compliance', clientId: 'c03', deadlineId: 'x', dueDate: TODAY, priority: 'alta' })
     const later = taskDefaultsForDeadline(dl({ kind: 'scadenza_polizza', date: '2026-10-25', daysLeft: 23, severity: 'prossima', detail: 'Opportunità di reinvestimento' }), TODAY)
     expect(later).toMatchObject({ category: 'scadenza_polizza', dueDate: '2026-10-25', priority: 'media', notes: 'Opportunità di reinvestimento' })
   })
-  it('riconosce un’attività aperta per lo stesso cliente e categoria', () => {
-    const task = (patch: Partial<Task>): Task => ({
-      id: 't',
-      title: 'Richiedere documento',
-      category: 'documento',
-      priority: 'alta',
-      dueDate: TODAY,
-      status: 'da_fare',
-      createdAt: '2026-10-01T08:00:00.000Z',
-      clientId: 'c02',
-      ...patch,
-    })
-    const keys = openTaskKeys([task({}), task({ id: 't2', clientId: 'c05', status: 'completata', category: 'compliance' })])
-    expect(keys.has(deadlineTaskKey(dl({ kind: 'documento', clientId: 'c02' })))).toBe(true)
-    expect(keys.has(deadlineTaskKey(dl({ kind: 'antiriciclaggio', clientId: 'c02' })))).toBe(false)
-    expect(keys.has(deadlineTaskKey(dl({ kind: 'antiriciclaggio', clientId: 'c05' })))).toBe(false)
+  const task = (patch: Partial<Task>): Task => ({
+    id: 't',
+    title: 'Richiedere documento',
+    category: 'documento',
+    priority: 'alta',
+    dueDate: TODAY,
+    status: 'da_fare',
+    createdAt: '2026-10-01T08:00:00.000Z',
+    clientId: 'c02',
+    ...patch,
+  })
+  it('adempimenti unici per cliente: basta un’attività aperta con stesso cliente e categoria', () => {
+    const doc = dl({ id: 'doc-c02', kind: 'documento', clientId: 'c02' })
+    const aml = dl({ id: 'aml-c02', kind: 'antiriciclaggio', clientId: 'c02' })
+    const amlDone = dl({ id: 'aml-c05', kind: 'antiriciclaggio', clientId: 'c05' })
+    const linked = linkedTasksByDeadline([task({}), task({ id: 't2', clientId: 'c05', status: 'completata', category: 'compliance' })], [doc, aml, amlDone])
+    expect(linked.get('doc-c02')?.id).toBe('t')
+    expect(linked.has('aml-c02')).toBe(false)
+    expect(linked.has('aml-c05')).toBe(false)
+  })
+  it('ricorrenze: una sola attività "ricorrenza" non copre compleanno e anniversari dello stesso cliente', () => {
+    const bday = dl({ id: 'bday-c01-2026-10-05', kind: 'compleanno', clientId: 'c01', severity: 'info' })
+    const ann = dl({ id: 'ann-p01-2026-11-11', kind: 'anniversario_polizza', clientId: 'c01', severity: 'info' })
+    const generic = task({ id: 'r1', category: 'ricorrenza', clientId: 'c01' })
+    expect(linkedTasksByDeadline([generic], [bday, ann]).size).toBe(0)
+    const fromBday = task({ id: 'r2', category: 'ricorrenza', clientId: 'c01', deadlineId: bday.id })
+    const linked = linkedTasksByDeadline([generic, fromBday], [bday, ann])
+    expect(linked.get(bday.id)?.id).toBe('r2')
+    expect(linked.has(ann.id)).toBe(false)
+  })
+  it('l’attività creata da una scadenza vi resta collegata (deadlineId), finché è aperta', () => {
+    const ann = dl({ id: 'ann-p01-2026-11-11', kind: 'anniversario_polizza', clientId: 'c01', severity: 'info' })
+    const defaults = taskDefaultsForDeadline(ann, TODAY)
+    const created = task({ ...defaults, id: 'n1' })
+    expect(linkedTasksByDeadline([created], [ann]).get(ann.id)?.id).toBe('n1')
+    expect(linkedTasksByDeadline([{ ...created, status: 'completata' }], [ann]).size).toBe(0)
   })
 })
 
@@ -128,8 +148,8 @@ describe('dati dimostrativi', () => {
     const counts = countByBucket(list)
     expect(counts.scadute).toBeGreaterThan(0)
     expect(counts.settimana).toBeGreaterThan(0)
-    const keys = openTaskKeys(data.tasks)
-    const withTask = list.filter((d) => keys.has(deadlineTaskKey(d)))
+    const linked = linkedTasksByDeadline(data.tasks, list)
+    const withTask = list.filter((d) => linked.has(d.id))
     expect(withTask.length).toBeGreaterThan(0)
     expect(withTask.length).toBeLessThan(list.length)
   })

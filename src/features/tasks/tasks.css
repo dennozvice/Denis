@@ -293,12 +293,6 @@
   gap: var(--sp-3);
 }
 
-.btn.tk-see-all {
-  font-size: var(--fs-sm);
-  padding: 0 var(--sp-3);
-  color: var(--primary-text);
-}
-
 .tk-progress {
   display: flex;
   align-items: center;
@@ -333,9 +327,13 @@
 }
 
 @media (min-width: 768px) {
-  /* Oltre ~10 righe la lista scorre dentro il widget; le ombre indicano che c'è altro contenuto. */
+  /*
+   * La lista occupa l'altezza che resta nella card (allineata all'agenda accanto) e scorre dentro
+   * il widget: base 0 così non è la lista ad allungare la riga; le ombre indicano che c'è altro.
+   */
   .tk-scroll {
-    max-height: 560px;
+    flex: 1 1 0;
+    min-height: 240px;
     overflow-y: auto;
     overscroll-behavior: contain;
     background:
@@ -396,15 +394,6 @@
 .btn.tk-quickadd-btn {
   flex: none;
   min-height: 40px;
-}
-
-.tk-tomorrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  font-size: var(--fs-sm);
-  font-weight: 500;
 }
 
 /* ---------- Pagina Attività ---------- */
@@ -638,16 +627,18 @@
     min-height: 44px;
   }
 
-  .btn.tk-see-all {
+  /* Titolo corto: "+" e "Vedi tutte" restano sulla stessa riga invece di andare a capo */
+  .card.tk-widget .card-title {
+    flex-basis: 8rem;
+  }
+
+  .card-link.tk-see-all,
+  .card-link.tk-tomorrow {
     min-height: 44px;
   }
 
   .input.tk-quickadd-input,
   .btn.tk-quickadd-btn {
-    min-height: 44px;
-  }
-
-  .tk-tomorrow {
     min-height: 44px;
   }
 

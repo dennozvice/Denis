@@ -9,7 +9,7 @@
  * Semplificazioni volute (l'agenda dell'app è "un giorno, un orario"):
  * - eventi ricorrenti: si importa solo la prima occorrenza (con avviso);
  * - eventi su più giorni: si tiene solo il primo giorno (con avviso);
- * - eventi "tutto il giorno": 00:00–23:59.
+ * - eventi "tutto il giorno": 00:00–23:59 nell'app, di nuovo VALUE=DATE nell'export.
  */
 import type { Appointment, AppointmentType, Client, DateKey, LocationMode, TimeKey } from '../domain/types'
 import { dayNumber, fromDayNumber, instantToRome, isDateKey, minutesToTime, timeToMinutes, toKey } from './dates'
@@ -706,7 +706,22 @@ export function foldLine(line: string): string {
   return out
 }
 
-const icsDateTime = (date: DateKey, time: TimeKey) => `${date.replace(/-/g, '')}T${time.replace(':', '')}00`
+const icsDate = (date: DateKey) => date.replace(/-/g, '')
+const icsDateTime = (date: DateKey, time: TimeKey) => `${icsDate(date)}T${time.replace(':', '')}00`
+
+/** Appuntamento "tutto il giorno" (00:00–23:59, come lo crea l'import di un evento VALUE=DATE). */
+const isAllDayAppointment = (a: Pick<Appointment, 'start' | 'end'>) => a.start === '00:00' && a.end === '23:59'
+
+/** Titolo dell'evento esportato: "Titolo – Nome Cognome", senza ripetere il nome se il titolo lo contiene già. */
+export function exportSummary(title: string, client: Pick<Client, 'firstName' | 'lastName'> | undefined): string {
+  if (!client) return title
+  const name = `${client.firstName} ${client.lastName}`.trim()
+  const first = normalize(client.firstName)
+  const last = normalize(client.lastName)
+  const haystack = ` ${normalize(title)} `
+  const named = [`${first} ${last}`, `${last} ${first}`].some((n) => n.trim() && haystack.includes(` ${n.trim()} `))
+  return name && !named ? `${title} – ${name}` : title
+}
 
 function icsUtcStamp(instant: Date): string {
   return (
@@ -781,23 +796,31 @@ export function appointmentsToIcs(
   ]
   for (const a of appointments) {
     const client = a.clientId ? byId.get(a.clientId) : undefined
-    const clientName = client ? `${client.firstName} ${client.lastName}`.trim() : ''
-    const summary = clientName ? `${a.title} – ${clientName}` : a.title
-    const startMin = timeToMinutes(a.start)
-    const end =
-      timeToMinutes(a.end) > startMin ? a.end : minutesToTime(Math.min(startMin + DEFAULT_DURATION, LAST_MINUTE))
-    const location =
-      a.locationDetail?.trim() || (a.location === 'telefono' && client?.phone) || LOCATION_TEXT[a.location]
+    const allDay = isAllDayAppointment(a)
     const status = a.status === 'annullato' ? 'CANCELLED' : a.status === 'pianificato' ? 'TENTATIVE' : 'CONFIRMED'
-    lines.push(
-      'BEGIN:VEVENT',
-      `UID:${a.id}@advisor-desk`,
-      `DTSTAMP:${stamp}`,
-      `DTSTART;TZID=Europe/Rome:${icsDateTime(a.date, a.start)}`,
-      `DTEND;TZID=Europe/Rome:${icsDateTime(a.date, end)}`,
-      `SUMMARY:${escapeText(summary)}`,
-      `LOCATION:${escapeText(location)}`,
-    )
+    lines.push('BEGIN:VEVENT', `UID:${a.id}@advisor-desk`, `DTSTAMP:${stamp}`)
+    if (allDay) {
+      // DTEND di un evento "tutto il giorno" è esclusivo: il giorno dopo
+      lines.push(
+        `DTSTART;VALUE=DATE:${icsDate(a.date)}`,
+        `DTEND;VALUE=DATE:${icsDate(fromDayNumber(dayNumber(a.date) + 1))}`,
+      )
+    } else {
+      const startMin = timeToMinutes(a.start)
+      const end =
+        timeToMinutes(a.end) > startMin ? a.end : minutesToTime(Math.min(startMin + DEFAULT_DURATION, LAST_MINUTE))
+      lines.push(
+        `DTSTART;TZID=Europe/Rome:${icsDateTime(a.date, a.start)}`,
+        `DTEND;TZID=Europe/Rome:${icsDateTime(a.date, end)}`,
+      )
+    }
+    lines.push(`SUMMARY:${escapeText(exportSummary(a.title, client))}`)
+    // per gli eventi "tutto il giorno" (ferie, festività) il luogo generico predefinito non si esporta
+    const location =
+      a.locationDetail?.trim() ||
+      (a.location === 'telefono' && client?.phone) ||
+      (allDay ? undefined : LOCATION_TEXT[a.location])
+    if (location) lines.push(`LOCATION:${escapeText(location)}`)
     if (a.notes?.trim()) lines.push(`DESCRIPTION:${escapeText(a.notes.trim())}`)
     lines.push(`CATEGORIES:${escapeText(TYPE_TEXT[a.type])}`, `STATUS:${status}`, 'END:VEVENT')
   }

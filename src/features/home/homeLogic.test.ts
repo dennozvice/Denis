@@ -6,6 +6,7 @@ import {
   marketChange,
   parseItalianNumber,
   periodElapsed,
+  scrollEdges,
   toInputValue,
   trainingSummary,
 } from './homeLogic'
@@ -135,5 +136,22 @@ describe('trainingSummary', () => {
     const s = trainingSummary({ ...training, hoursRequired: 10 })
     expect(s.remaining).toBe(0)
     expect(s.progress).toBe(1)
+  })
+})
+
+describe('scrollEdges', () => {
+  it('nessuna dissolvenza se il contenuto sta nel riquadro', () => {
+    expect(scrollEdges({ scrollLeft: 0, scrollWidth: 778, clientWidth: 778 })).toEqual({ start: false, end: false })
+  })
+
+  it('altro a destra all\'inizio, a sinistra alla fine, su entrambi i lati a metà', () => {
+    expect(scrollEdges({ scrollLeft: 0, scrollWidth: 695, clientWidth: 356 })).toEqual({ start: false, end: true })
+    expect(scrollEdges({ scrollLeft: 150, scrollWidth: 695, clientWidth: 356 })).toEqual({ start: true, end: true })
+    expect(scrollEdges({ scrollLeft: 339, scrollWidth: 695, clientWidth: 356 })).toEqual({ start: true, end: false })
+  })
+
+  it('ignora le differenze sotto il pixel', () => {
+    expect(scrollEdges({ scrollLeft: 0.5, scrollWidth: 701, clientWidth: 700 })).toEqual({ start: false, end: false })
+    expect(scrollEdges({ scrollLeft: 338.5, scrollWidth: 695, clientWidth: 356 })).toEqual({ start: true, end: false })
   })
 })

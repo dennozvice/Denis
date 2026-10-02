@@ -3,7 +3,8 @@ import { Cake, CalendarHeart, Check, ClipboardCheck, FileClock, FolderClock, IdC
 import { useMemo, useState } from 'react'
 import { Pill } from '../../components/ui/Pill'
 import { DEADLINE_KIND_LABEL, DEADLINE_KIND_TONE } from '../../domain/labels'
-import type { DateKey, Deadline, DeadlineKind } from '../../domain/types'
+import type { DateKey, Deadline, DeadlineKind, Task } from '../../domain/types'
+import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { useAppData } from '../../store/StoreContext'
 import { clientNameById, indexById } from '../../store/selectors'
@@ -12,9 +13,8 @@ import {
   deadlineDaysLabel,
   deadlineDaysTone,
   deadlineHref,
-  deadlineTaskKey,
   formatDeadlineDate,
-  openTaskKeys,
+  linkedTasksByDeadline,
   taskDefaultsForDeadline,
   toneVars,
 } from './deadlineUtils'
@@ -48,7 +48,7 @@ interface DeadlineListProps {
 export function DeadlineList({ deadlines, onCreateTask, caseParams, ariaLabel }: DeadlineListProps) {
   const { tasks, clients } = useAppData()
   const { date: today } = useNow()
-  const taskKeys = useMemo(() => openTaskKeys(tasks), [tasks])
+  const linkedTasks = useMemo(() => linkedTasksByDeadline(tasks, deadlines), [tasks, deadlines])
   const clientIndex = useMemo(() => indexById(clients), [clients])
 
   return (
@@ -59,7 +59,7 @@ export function DeadlineList({ deadlines, onCreateTask, caseParams, ariaLabel }:
           deadline={d}
           today={today}
           clientName={clientNameById(clientIndex, d.clientId)}
-          hasTask={taskKeys.has(deadlineTaskKey(d))}
+          task={linkedTasks.get(d.id)}
           href={deadlineHref(d, caseParams)}
           onCreateTask={onCreateTask}
         />
@@ -72,14 +72,15 @@ function DeadlineRow({
   deadline: d,
   today,
   clientName,
-  hasTask,
+  task,
   href,
   onCreateTask,
 }: {
   deadline: Deadline
   today: DateKey
   clientName: string
-  hasTask: boolean
+  /** Attività aperta già collegata alla scadenza. */
+  task?: Task
   href: string
   onCreateTask(deadline: Deadline): void
 }) {
@@ -90,14 +91,17 @@ function DeadlineRow({
     .filter(Boolean)
     .join(' · ')
 
+  // Tutta la riga apre la scadenza (link esteso sul titolo); il link all'attività resta sopra.
   return (
     <li className="cs-dl-row" data-severity={d.severity}>
-      <a className="cs-dl-link" href={href} data-nosub={sub ? undefined : ''}>
+      <div className="cs-dl-main" data-nosub={sub ? undefined : ''}>
         <span className="cs-dl-icon" style={toneVars(DEADLINE_KIND_TONE[d.kind])} title={DEADLINE_KIND_LABEL[d.kind]} aria-hidden="true">
           <Icon size={16} strokeWidth={2} />
         </span>
         <span className="cs-dl-body">
-          <span className="cs-dl-title">{d.title}</span>
+          <a className="cs-dl-title" href={href}>
+            {d.title}
+          </a>
           <span className="cs-dl-meta">
             <span className="cs-dl-days">
               <Pill tone={tone}>{deadlineDaysLabel(d.daysLeft)}</Pill>
@@ -107,19 +111,23 @@ function DeadlineRow({
               {formatDeadlineDate(d.date, today)}
             </span>
             {sub && <span className="cs-dl-sub">{sub}</span>}
-            {hasTask && (
-              <span className="cs-dl-task">
-                <Pill tone="positive" title="Esiste già un'attività aperta per questo cliente e questo adempimento">
-                  <Check size={12} aria-hidden="true" />
-                  Attività presente
-                </Pill>
-              </span>
+            {task && (
+              <a
+                className="pill cs-dl-task"
+                data-tone="positive"
+                href={buildHref('attivita', { id: task.id })}
+                title={`Apri l'attività collegata: ${task.title}`}
+              >
+                <Check size={12} aria-hidden="true" />
+                Attività presente
+                <span className="visually-hidden">: {task.title}</span>
+              </a>
             )}
           </span>
         </span>
-      </a>
+      </div>
       <div className="cs-dl-action">
-        {!hasTask && (
+        {!task && (
           <button
             type="button"
             className="icon-btn cs-dl-add"

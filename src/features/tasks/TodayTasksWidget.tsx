@@ -92,14 +92,15 @@ export function TodayTasksWidget() {
           >
             <Plus size={18} aria-hidden="true" />
           </button>
-          <a className="btn btn-ghost tk-see-all" href={buildHref('attivita')}>
+          <a className="card-link tk-see-all" href={buildHref('attivita')}>
             Vedi tutte
+            <ChevronRight size={14} aria-hidden="true" />
           </a>
         </>
       }
       footer={
         tomorrowCount > 0 ? (
-          <a className="tk-tomorrow" href={buildHref('attivita')}>
+          <a className="card-link tk-tomorrow" href={buildHref('attivita')}>
             Domani: {formatNumber(tomorrowCount)} attività
             <ChevronRight size={14} aria-hidden="true" />
           </a>
