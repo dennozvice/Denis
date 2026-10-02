@@ -3,10 +3,10 @@ import type { CSSProperties } from 'react'
 import { PRIORITY_LABEL, PRIORITY_TONE, TASK_CATEGORY_LABEL, TONE_COLOR } from '../../domain/labels'
 import type { DateKey, Task } from '../../domain/types'
 import { diffDays } from '../../lib/dates'
-import { formatRelativeDays } from '../../lib/format'
+import { capitalize, formatRelativeDays } from '../../lib/format'
 import { buildHref } from '../../router/router'
-import { daysOverdue } from '../../store/selectors'
-import { completedOn, formatDueShort } from './taskUtils'
+import { completedOn, daysOverdue } from '../../store/selectors'
+import { formatDueForMessage, formatDueShort, postponedDate } from './taskUtils'
 import type { TaskCommands } from './useTaskCommands'
 import './tasks.css'
 
@@ -26,6 +26,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
   const late = daysOverdue(task, today)
   const style = { '--tk-prio': TONE_COLOR[PRIORITY_TONE[task.priority]] } as CSSProperties
   const doneOn = done ? completedOn(task) : undefined
+  const priorityLabel = `Priorità ${PRIORITY_LABEL[task.priority].toLowerCase()}`
 
   return (
     <li className={`tk-row tk-row-${variant}`} data-done={done || undefined} style={style}>
@@ -48,10 +49,11 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
           {task.title}
         </button>
         <div className="tk-meta">
-          <span className="visually-hidden">Priorità {PRIORITY_LABEL[task.priority].toLowerCase()}</span>
-          {task.priority === 'alta' && (
-            <span className="tk-flag" title="Priorità alta" aria-hidden="true">
-              <Flag size={12} />
+          <span className="visually-hidden">{priorityLabel}</span>
+          {/* Indizio non solo cromatico: bandierina piena = alta, vuota = media, nessuna = bassa */}
+          {task.priority !== 'bassa' && (
+            <span className="tk-flag" data-priority={task.priority} title={priorityLabel} aria-hidden="true">
+              <Flag size={12} fill={task.priority === 'alta' ? 'currentColor' : 'none'} />
             </span>
           )}
           <span className="tk-meta-clip">
@@ -108,6 +110,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
           <div className="tk-actions">
             {!done && (
               <>
+                {/* Il nome accessibile inizia con il testo visibile (WCAG 2.5.3, comandi vocali) */}
                 <button
                   type="button"
                   className="tk-postpone"
@@ -116,8 +119,8 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
                     keepFocusNearby(e.currentTarget, 'postpone-1')
                     commands.postpone(task, 1)
                   }}
-                  aria-label={`Rimanda di un giorno: ${task.title}`}
-                  title="Rimanda di un giorno"
+                  aria-label={`+1 g: ${postponeHint(task, 1, today)}, ${task.title}`}
+                  title={capitalize(postponeHint(task, 1, today))}
                 >
                   +1 g
                 </button>
@@ -129,8 +132,8 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
                     keepFocusNearby(e.currentTarget, 'postpone-7')
                     commands.postpone(task, 7)
                   }}
-                  aria-label={`Rimanda di una settimana: ${task.title}`}
-                  title="Rimanda di una settimana"
+                  aria-label={`+1 sett.: ${postponeHint(task, 7, today)}, ${task.title}`}
+                  title={capitalize(postponeHint(task, 7, today))}
                 >
                   +1 sett.
                 </button>
@@ -163,6 +166,11 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
       )}
     </li>
   )
+}
+
+/** "rimanda a domani", "rimanda a ven 9 ott": la data che si otterrà rimandando. */
+function postponeHint(task: Task, days: number, today: DateKey): string {
+  return `rimanda a ${formatDueForMessage(postponedDate(task, days, today), today)}`
 }
 
 function formatCompletion(day: DateKey, today: DateKey): string {

@@ -1,4 +1,4 @@
-import { Check, Pencil, Target } from 'lucide-react'
+import { Check, History, Pencil, RotateCcw, Target } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -7,10 +7,21 @@ import { Pill } from '../../components/ui/Pill'
 import { useToast } from '../../components/ui/Toast'
 import type { Tone } from '../../domain/labels'
 import type { DateKey, Goal } from '../../domain/types'
-import { formatMonthYear, formatNumber } from '../../lib/format'
+import { goalPeriodKey } from '../../data/demoSeed'
+import { formatNumber } from '../../lib/format'
 import { useNow } from '../../store/NowContext'
 import { useActions, useAppData } from '../../store/StoreContext'
-import { formatGoalValue, goalStatus, parseItalianNumber, toInputValue, type GoalPace } from './homeLogic'
+import {
+  formatGoalValue,
+  goalRollover,
+  goalStatus,
+  isGoalStale,
+  monthName,
+  parseItalianNumber,
+  toInputValue,
+  type GoalPace,
+  type GoalRollover,
+} from './homeLogic'
 import './home.css'
 
 const PACE: Record<GoalPace, { label: string; tone: Tone; meter: 'primary' | 'positive' | 'warning' }> = {
@@ -20,19 +31,25 @@ const PACE: Record<GoalPace, { label: string; tone: Tone; meter: 'primary' | 'po
   non_impostato: { label: 'Da impostare', tone: 'neutral', meter: 'primary' },
 }
 
+/** Obiettivo con i valori del periodo precedente. */
+const STALE: (typeof PACE)[GoalPace] = { label: 'Da aggiornare', tone: 'neutral', meter: 'primary' }
+
 interface GoalGroup {
   key: Goal['period']
   title: string
   goals: Goal[]
+  /** Presente se alcuni valori sono ancora del periodo precedente (mese o anno appena concluso). */
+  rollover?: GoalRollover
 }
 
 function groupGoals(goals: Goal[], today: DateKey, year: number): GoalGroup[] {
-  const month = formatMonthYear(today).replace(/\s*\d{4}$/, '')
   const groups: GoalGroup[] = [
-    { key: 'mese', title: `Questo mese (${month})`, goals: goals.filter((g) => g.period === 'mese') },
+    { key: 'mese', title: `Questo mese (${monthName(today)})`, goals: goals.filter((g) => g.period === 'mese') },
     { key: 'anno', title: `Anno ${year}`, goals: goals.filter((g) => g.period === 'anno') },
   ]
-  return groups.filter((g) => g.goals.length > 0)
+  return groups
+    .filter((g) => g.goals.length > 0)
+    .map((g) => ({ ...g, rollover: goalRollover(g.goals, g.key, today) }))
 }
 
 /**
@@ -41,6 +58,8 @@ function groupGoals(goals: Goal[], today: DateKey, year: number): GoalGroup[] {
  */
 export function GoalsWidget() {
   const { goals } = useAppData()
+  const { updateGoal } = useActions()
+  const toast = useToast()
   const now = useNow()
   const [editing, setEditing] = useState(false)
   const editButton = useRef<HTMLButtonElement>(null)
@@ -61,6 +80,21 @@ export function GoalsWidget() {
 
   const groups = groupGoals(goals, now.date, now.year)
 
+  // Nuovo mese (o anno): i valori del periodo concluso si azzerano, con possibilità di annullare.
+  const startNewPeriod = (rollover: GoalRollover) => {
+    const previous = rollover.goals.map((g) => ({ id: g.id, current: g.current, periodKey: g.periodKey }))
+    for (const g of rollover.goals) updateGoal(g.id, { current: 0, periodKey: rollover.periodKey })
+    toast({
+      message: rollover.goals.length === 1 ? 'Obiettivo azzerato' : 'Obiettivi azzerati',
+      actionLabel: 'Annulla',
+      onAction: () => {
+        for (const p of previous) updateGoal(p.id, { current: p.current, periodKey: p.periodKey })
+      },
+    })
+    // L'avviso sparisce: il focus va su "Aggiorna", il passo successivo naturale.
+    editButton.current?.focus()
+  }
+
   return (
     <Card
       id="obiettivi"
@@ -79,13 +113,14 @@ export function GoalsWidget() {
       {goals.length === 0 ? (
         <EmptyState icon={Target} title="Nessun obiettivo" text="Gli obiettivi di produzione compariranno qui." />
       ) : editing ? (
-        <GoalsEditor groups={groups} onDone={finishEditing} />
+        <GoalsEditor groups={groups} today={now.date} onDone={finishEditing} />
       ) : (
         <>
           <div className="hm-goal-columns">
             {groups.map((group) => (
               <div key={group.key} className="hm-goal-group">
                 <h3 className="hm-group-title">{group.title}</h3>
+                {group.rollover && <RolloverNotice rollover={group.rollover} onStart={startNewPeriod} />}
                 <ul className="hm-goal-list">
                   {group.goals.map((goal) => (
                     <GoalRow key={goal.id} goal={goal} today={now.date} />
@@ -104,9 +139,27 @@ export function GoalsWidget() {
   )
 }
 
+/** Avviso "I valori si riferiscono a settembre 2026" con il pulsante per iniziare il periodo nuovo. */
+function RolloverNotice({ rollover, onStart }: { rollover: GoalRollover; onStart(rollover: GoalRollover): void }) {
+  return (
+    <div className="hm-goal-stale">
+      <p className="hm-goal-stale-text">
+        <History size={14} aria-hidden="true" />
+        {rollover.notice}
+      </p>
+      <button type="button" className="btn btn-sm hm-tap" onClick={() => onStart(rollover)}>
+        <RotateCcw size={14} aria-hidden="true" />
+        {rollover.action}
+      </button>
+    </div>
+  )
+}
+
 function GoalRow({ goal, today }: { goal: Goal; today: DateKey }) {
   const { progress, expected, pace } = goalStatus(goal, today)
-  const style = PACE[pace]
+  // Valori del periodo precedente: il confronto con il ritmo di oggi non avrebbe senso.
+  const stale = isGoalStale(goal, today)
+  const style = stale ? STALE : PACE[pace]
   const pct = Math.round(progress * 100)
   const expectedPct = Math.round(expected * 100)
   return (
@@ -114,13 +167,13 @@ function GoalRow({ goal, today }: { goal: Goal; today: DateKey }) {
       <div className="hm-goal-top">
         <span className="hm-goal-label">{goal.label}</span>
         <Pill tone={style.tone}>
-          {pace === 'raggiunto' && <Check size={12} aria-hidden="true" />}
+          {!stale && pace === 'raggiunto' && <Check size={12} aria-hidden="true" />}
           {style.label}
         </Pill>
       </div>
       <div className="hm-goal-track">
         <Meter value={progress} label={`Avanzamento: ${goal.label}`} tone={style.meter} />
-        {pace !== 'non_impostato' && (
+        {!stale && pace !== 'non_impostato' && (
           <span className="hm-goal-tick" style={{ left: `${Math.min(100, expected * 100)}%` }} aria-hidden="true" />
         )}
       </div>
@@ -131,7 +184,8 @@ function GoalRow({ goal, today }: { goal: Goal; today: DateKey }) {
           <span className="num">{formatGoalValue(goal.target, goal.unit)}</span>
         </span>
         <span className="num muted">
-          {formatNumber(pct)}%<span className="visually-hidden">, ritmo atteso {formatNumber(expectedPct)}%</span>
+          {formatNumber(pct)}%
+          {!stale && <span className="visually-hidden">, ritmo atteso {formatNumber(expectedPct)}%</span>}
         </span>
       </div>
     </li>
@@ -143,7 +197,7 @@ interface DraftValue {
   target: string
 }
 
-function GoalsEditor({ groups, onDone }: { groups: GoalGroup[]; onDone(): void }) {
+function GoalsEditor({ groups, today, onDone }: { groups: GoalGroup[]; today: DateKey; onDone(): void }) {
   const { updateGoal } = useActions()
   const toast = useToast()
   const formId = useId()
@@ -186,10 +240,12 @@ function GoalsEditor({ groups, onDone }: { groups: GoalGroup[]; onDone(): void }
       document.getElementById(`${formId}-${first.replace(':', '-')}`)?.focus()
       return
     }
+    // Salvando, i valori inseriti diventano quelli del periodo in corso.
     let changed = 0
     for (const { goal, current, target } of parsed) {
-      if (goal.current !== current || goal.target !== target) {
-        updateGoal(goal.id, { current, target })
+      const periodKey = goalPeriodKey(goal.period, today)
+      if (goal.current !== current || goal.target !== target || goal.periodKey !== periodKey) {
+        updateGoal(goal.id, { current, target, periodKey })
         changed++
       }
     }
@@ -213,6 +269,7 @@ function GoalsEditor({ groups, onDone }: { groups: GoalGroup[]; onDone(): void }
         {groups.map((group) => (
           <fieldset key={group.key} className="hm-goal-fieldset">
             <legend className="hm-group-title">{group.title}</legend>
+            {group.rollover && <p className="hm-goal-stale-hint">{group.rollover.editHint}</p>}
             {group.goals.map((goal, index) => {
               const suffix = goal.unit === 'EUR' ? ' (€)' : ''
               return (

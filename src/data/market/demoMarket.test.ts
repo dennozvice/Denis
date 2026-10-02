@@ -40,6 +40,8 @@ describe('dati di mercato dimostrativi', () => {
     expect(f.source).toBe('import')
     expect(f.series).toHaveLength(1)
     expect(f.colorIndex).toBe(2)
+    expect(f.sri).toBeUndefined()
+    expect(f.description).toBeUndefined()
     expect(merged).toHaveLength(list.length)
   })
 })

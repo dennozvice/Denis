@@ -1,5 +1,5 @@
 import { CircleAlert, ChevronRight, RefreshCw } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { ChangeValue } from '../../components/ui/ChangeValue'
 import { DemoBadge } from '../../components/ui/DemoBadge'
 import type { Instrument } from '../../domain/types'
@@ -7,7 +7,7 @@ import { lastPoint } from '../../lib/finance'
 import { formatDayMonth, formatInstrumentValue } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useMarket } from '../../store/MarketContext'
-import { marketChange, scrollEdges, type ScrollEdges } from './homeLogic'
+import { latestDate, marketChange, scrollEdges, type ScrollEdges } from './homeLogic'
 import './home.css'
 
 const SKELETON_ITEMS = 7
@@ -40,10 +40,15 @@ function useScrollEdges(): [ScrollEdges, (node: HTMLElement | null) => (() => vo
  * Striscia dei mercati (indici, tassi, spread, cambi) con valore e variazione giornaliera.
  * Statica: su schermi piccoli si scorre in orizzontale con lo scroll-snap, senza animazioni automatiche;
  * una dissolvenza sul bordo indica che c'è altro da scorrere.
+ * Il badge "Dati dimostrativi" precede l'elenco nel DOM (letto per primo). Su desktop badge, data e
+ * "Dettagli" stanno nella colonna a destra; su tablet e mobile formano la riga in testa alla striscia,
+ * così il badge resta sempre visibile mentre l'elenco scorre.
  */
 export function MarketStrip() {
-  const { status, markets, asOf, reload } = useMarket()
+  const { status, markets, reload } = useMarket()
   const hasDemo = markets.some((i) => i.source === 'demo')
+  // Data dei soli strumenti della striscia: i fondi importati possono essere più recenti (o più vecchi).
+  const asOf = useMemo(() => latestDate(markets), [markets])
   const [edges, scrollRef] = useScrollEdges()
 
   let body
@@ -90,24 +95,31 @@ export function MarketStrip() {
   }
 
   return (
-    <section className="card hm-market" aria-labelledby="hm-market-title" aria-busy={status === 'loading'}>
+    <section
+      className="card hm-market"
+      aria-labelledby="hm-market-title"
+      aria-busy={status === 'loading'}
+      data-demo={hasDemo || undefined}
+    >
       <h2 id="hm-market-title" className="visually-hidden">
         Mercati
       </h2>
-      {body}
+      {hasDemo && (
+        <div className="hm-market-badge">
+          <DemoBadge />
+        </div>
+      )}
+      <div className="hm-market-body">{body}</div>
       <div className="hm-market-meta">
-        {hasDemo && <DemoBadge />}
-        <span className="hm-market-meta-row">
-          {asOf && status === 'ready' && (
-            <span className="xsmall muted">
-              al <time dateTime={asOf}>{formatDayMonth(asOf)}</time>
-            </span>
-          )}
-          <a className="card-link hm-market-more" href={buildHref('fondi')}>
-            Dettagli
-            <ChevronRight size={14} aria-hidden="true" />
-          </a>
-        </span>
+        {asOf && status === 'ready' && (
+          <span className="xsmall muted">
+            al <time dateTime={asOf}>{formatDayMonth(asOf)}</time>
+          </span>
+        )}
+        <a className="card-link hm-market-more" href={buildHref('fondi')}>
+          Dettagli
+          <ChevronRight size={14} aria-hidden="true" />
+        </a>
       </div>
     </section>
   )
@@ -131,6 +143,7 @@ function MarketItem({ instrument }: { instrument: Instrument }) {
             decimals={change?.decimals}
             suffix={change?.suffix}
             invert={change?.invert}
+            neutral={change?.neutral}
             variant="text"
           />
         </span>

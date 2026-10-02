@@ -5,10 +5,13 @@ export function Sparkline({
   height = 24,
   label,
   invert = false,
+  neutral = false,
 }: {
   values: number[]
   /** true se un aumento è negativo (es. spread): il pallino finale diventa rosso quando sale. */
   invert?: boolean
+  /** true se l'andamento non è né buono né cattivo (es. tassi): pallino finale neutro. */
+  neutral?: boolean
   width?: number
   height?: number
   /** Testo per lettori di schermo, es. "Andamento 30 giorni: in crescita". */
@@ -36,7 +39,7 @@ export function Sparkline({
       style={{ display: 'block', overflow: 'visible' }}
     >
       <path d={d} fill="none" stroke="var(--text-3)" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={x(last)} cy={y(values[last])} r={2.5} fill={up ? 'var(--positive)' : 'var(--negative)'} />
+      <circle cx={x(last)} cy={y(values[last])} r={2.5} fill={neutral ? 'var(--text-2)' : up ? 'var(--positive)' : 'var(--negative)'} />
     </svg>
   )
 }

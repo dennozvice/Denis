@@ -1,4 +1,15 @@
-import { ArrowDown, ArrowUpRight, CalendarClock, CalendarDays, CircleCheck, ListChecks, ShieldAlert, TrendingUp, TriangleAlert } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowUpRight,
+  CalendarClock,
+  CalendarDays,
+  CircleCheck,
+  History,
+  ListChecks,
+  ShieldAlert,
+  TrendingUp,
+  TriangleAlert,
+} from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useMemo, type ReactNode } from 'react'
 import { Pill } from '../../components/ui/Pill'
@@ -8,6 +19,7 @@ import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { useAppData } from '../../store/StoreContext'
 import { clientNameById, computeKpis, currentAppointment, goalProgress } from '../../store/selectors'
+import { goalRollover } from './homeLogic'
 import './home.css'
 
 /** Porta in vista il widget Obiettivi (id="obiettivi") e gli sposta il focus. */
@@ -50,9 +62,49 @@ export function KpiTiles() {
     )
   }
 
-  // ---- produzione del mese
+  // ---- produzione del mese (se il valore è ancora del mese scorso non lo si spaccia per quello di questo mese)
   const production = kpis.productionMonth
+  const productionStale = production ? goalRollover([production], 'mese', now.date) : undefined
   const productionPct = production ? Math.round(goalProgress(production) * 100) : 0
+
+  let productionMeta: ReactNode
+  if (production && productionStale) {
+    productionMeta = (
+      <span className="hm-kpi-meta">
+        <Pill tone="warning">
+          <History size={12} aria-hidden="true" />
+          Da aggiornare
+        </Pill>
+        <span className="hm-kpi-note">ultimo dato: {productionStale.periodLabel}</span>
+      </span>
+    )
+  } else if (production && production.target > 0) {
+    productionMeta = (
+      <span className="hm-kpi-meta hm-kpi-meta-stack">
+        <span
+          className="meter hm-kpi-meter"
+          data-tone={productionPct >= 100 ? 'positive' : undefined}
+          role="progressbar"
+          aria-label="Avanzamento della produzione del mese"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.min(100, productionPct)}
+        >
+          <span style={{ width: `${Math.min(100, productionPct)}%` }} />
+        </span>
+        <span className="hm-kpi-note">
+          <span className="num strong">{formatNumber(productionPct)}%</span> di{' '}
+          <span className="num">{formatCurrency(production.target)}</span>
+        </span>
+      </span>
+    )
+  } else {
+    productionMeta = (
+      <span className="hm-kpi-meta">
+        <span className="hm-kpi-note">Nessun obiettivo impostato</span>
+      </span>
+    )
+  }
 
   return (
     <section className="hm-kpis" aria-labelledby="hm-kpis-title">
@@ -94,48 +146,29 @@ export function KpiTiles() {
         <li>
           <button type="button" className="hm-kpi" onClick={scrollToGoals}>
             <TileHead icon={TrendingUp} label="Produzione del mese" arrow="scroll" />
-            <span className="hm-kpi-value num">{production ? formatCurrency(production.current) : '—'}</span>
-            {production && production.target > 0 ? (
-              <span className="hm-kpi-meta hm-kpi-meta-stack">
-                <span
-                  className="meter hm-kpi-meter"
-                  data-tone={productionPct >= 100 ? 'positive' : undefined}
-                  role="progressbar"
-                  aria-label="Avanzamento della produzione del mese"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={Math.min(100, productionPct)}
-                >
-                  <span style={{ width: `${Math.min(100, productionPct)}%` }} />
-                </span>
-                <span className="hm-kpi-note">
-                  <span className="num strong">{formatNumber(productionPct)}%</span> di{' '}
-                  <span className="num">{formatCurrency(production.target)}</span>
-                </span>
-              </span>
-            ) : (
-              <span className="hm-kpi-meta">
-                <span className="hm-kpi-note">Nessun obiettivo impostato</span>
-              </span>
-            )}
+            <span className="hm-kpi-value num">
+              {production && !productionStale ? formatCurrency(production.current) : '—'}
+            </span>
+            {productionMeta}
             <span className="visually-hidden"> · Mostra gli obiettivi</span>
           </button>
         </li>
 
         <li>
-          <a className="hm-kpi" href={buildHref('pratiche', { vista: 'scadenze' })}>
+          {/* Stesso perimetro del KPI (adempimenti, scadute incluse): la pagina Pratiche filtra con tipo=adempimenti */}
+          <a className="hm-kpi" href={buildHref('pratiche', { vista: 'scadenze', tipo: 'adempimenti' })}>
             <TileHead icon={CalendarClock} label={"Scadenze 30\u00a0gg"} />
             <span className="hm-kpi-value num">{formatNumber(kpis.deadlines30)}</span>
             <span className="hm-kpi-meta">
               {kpis.deadlinesUrgent > 0 ? (
                 <Pill tone="negative">
                   <ShieldAlert size={12} aria-hidden="true" />
-                  {formatNumber(kpis.deadlinesUrgent)} {kpis.deadlinesUrgent === 1 ? 'urgente' : 'urgenti'}
+                  {formatNumber(kpis.deadlinesUrgent)} {kpis.deadlinesUrgent === 1 ? 'scaduta o urgente' : 'scadute o urgenti'}
                 </Pill>
               ) : (
                 <Pill tone="positive">
                   <CircleCheck size={12} aria-hidden="true" />
-                  Nessuna urgente
+                  Nessuna scaduta o urgente
                 </Pill>
               )}
               <span className="hm-kpi-note">fino al {formatDayMonth(addDays(now.date, 30))}</span>

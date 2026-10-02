@@ -26,11 +26,42 @@
 }
 
 /* ---------- Striscia mercati ---------- */
+/* Desktop: elenco a sinistra; badge "Dati dimostrativi", data e "Dettagli" nella colonna a destra */
 .card.hm-market {
-  flex-direction: row;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    'list badge'
+    'list meta';
   gap: 0;
   padding: var(--sp-2);
+}
+
+.card.hm-market:not([data-demo]) {
+  grid-template-rows: 1fr;
+  grid-template-areas: 'list meta';
+}
+
+.hm-market-body {
+  grid-area: list;
+  display: flex;
+  min-width: 0;
+}
+
+.hm-market-badge,
+.hm-market-meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-left: var(--sp-1);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border-left: 1px solid var(--border);
+}
+
+.hm-market-badge {
+  grid-area: badge;
+  align-items: flex-end;
+  padding-bottom: 2px;
 }
 
 .hm-market-list {
@@ -125,22 +156,15 @@ a.hm-market-cell:focus-visible {
 }
 
 .hm-market-meta {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 2px;
-  margin-left: var(--sp-1);
-  padding: 0 var(--sp-2) 0 var(--sp-4);
-  border-left: 1px solid var(--border);
-}
-
-.hm-market-meta-row {
-  display: flex;
+  grid-area: meta;
   align-items: center;
   gap: var(--sp-2);
   white-space: nowrap;
+}
+
+/* Con il badge: data e "Dettagli" subito sotto il badge (il gruppo è centrato in verticale) */
+.card.hm-market[data-demo] .hm-market-meta {
+  align-self: start;
 }
 
 .card-link.hm-market-more {
@@ -398,6 +422,38 @@ a.hm-market-cell:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+/* Valori del mese (o anno) precedente: avviso con il pulsante per azzerarli */
+.hm-goal-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--warning-bg);
+}
+
+.hm-goal-stale-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.hm-goal-stale-text svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.hm-goal-stale-hint {
+  margin-top: calc(var(--sp-1) * -1);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
 }
 
 .hm-goal-list {
@@ -731,10 +787,41 @@ a.hm-market-cell:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Striscia mercati: elenco scorrevole a tutta larghezza, informazioni sotto */
-  .card.hm-market {
-    flex-direction: column;
-    padding: var(--sp-2) 0 0;
+  /* Striscia mercati: riga con badge, data e "Dettagli" in testa (il badge resta visibile mentre
+     l'elenco scorre), sotto l'elenco scorrevole a tutta larghezza */
+  .card.hm-market,
+  .card.hm-market:not([data-demo]) {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'badge meta'
+      'list list';
+    padding: 0 0 var(--sp-2);
+  }
+
+  .card.hm-market:not([data-demo]) {
+    grid-template-areas:
+      'meta meta'
+      'list list';
+  }
+
+  .hm-market-badge,
+  .hm-market-meta,
+  .card.hm-market[data-demo] .hm-market-meta {
+    align-self: stretch;
+    align-items: center;
+    margin: 0 0 var(--sp-2);
+    border-left: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hm-market-badge {
+    justify-content: flex-start;
+    padding: 0 0 0 var(--sp-4);
+  }
+
+  .hm-market-meta {
+    padding: 0 var(--sp-3) 0 var(--sp-2);
   }
 
   .hm-market-list {
@@ -752,20 +839,6 @@ a.hm-market-cell:focus-visible {
     scroll-snap-align: start;
   }
 
-  .hm-market-meta {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--sp-2);
-    margin: var(--sp-2) 0 0;
-    padding: 0 var(--sp-3) 0 var(--sp-4);
-    border-left: none;
-    border-top: 1px solid var(--border);
-  }
-
-  .hm-market-meta-row {
-    margin-left: auto;
-  }
 }
 
 @media (min-width: 768px) and (max-width: 1199px) {
@@ -828,10 +901,6 @@ a.hm-market-cell:focus-visible {
 
   .hm-qa-short {
     display: inline;
-  }
-
-  .card.hm-market {
-    padding: var(--sp-2) 0 0;
   }
 
   .hm-market-cell {

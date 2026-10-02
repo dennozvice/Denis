@@ -13,7 +13,7 @@ import { TaskFormModal } from './TaskFormModal'
 import { TaskRow } from './TaskRow'
 import {
   clientSortName,
-  completedOn,
+  countTasks,
   groupForPage,
   matchesSearch,
   sortClientsByLastName,
@@ -59,20 +59,8 @@ export function TasksPage() {
     return sortClientsByLastName(clients.filter((c) => withTasks.has(c.id)))
   }, [tasks, clients])
 
-  const counts = useMemo(() => {
-    let open = 0
-    let late = 0
-    let dueToday = 0
-    let doneToday = 0
-    for (const t of tasks) {
-      if (isOpen(t)) {
-        open++
-        if (t.dueDate < today) late++
-        else if (t.dueDate === today) dueToday++
-      } else if (completedOn(t) === today) doneToday++
-    }
-    return { open, late, dueToday, doneToday }
-  }, [tasks, today])
+  // Stessi selettori del KPI e del widget della Panoramica: i numeri coincidono.
+  const counts = useMemo(() => countTasks(tasks, today), [tasks, today])
 
   const filtered = useMemo(
     () =>

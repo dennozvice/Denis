@@ -91,7 +91,7 @@
 .tk-meta-clip {
   flex: 1 1 auto;
   min-width: 0;
-  clip-path: inset(-4px -4px -4px 0);
+  clip-path: inset(-8px -8px -8px 0);
 }
 
 .tk-meta-list {
@@ -110,6 +110,7 @@
   font-weight: 400;
 }
 
+/* Priorità: bandierina piena (alta) o vuota (media), oltre al colore della barra laterale */
 .tk-flag {
   display: inline-flex;
   flex: none;
@@ -118,7 +119,17 @@
   color: var(--negative);
 }
 
+.tk-flag[data-priority='media'] {
+  color: var(--warning);
+}
+
+/* Area di tocco di almeno 24px in altezza senza cambiare l'altezza della riga (WCAG 2.5.8);
+   sopra le voci della riga successiva quando la meta va a capo (z-index locale a .tk-meta-clip) */
 .tk-client {
+  position: relative;
+  z-index: 1;
+  padding: 3px 0;
+  margin: -3px 0;
   color: var(--text-2);
   font-weight: 500;
 }

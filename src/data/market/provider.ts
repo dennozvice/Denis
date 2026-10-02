@@ -27,7 +27,15 @@ export function mergeImported(base: Instrument[], imported: Instrument[]): Instr
     const existing = byId.get(imp.id)
     if (existing) {
       const idx = result.findIndex((i) => i.id === imp.id)
-      result[idx] = { ...existing, ...imp, source: 'import', colorIndex: existing.colorIndex }
+      // SRI e descrizione dimostrativi NON passano a una serie reale importata sullo stesso ID
+      result[idx] = {
+        ...existing,
+        ...imp,
+        sri: imp.sri,
+        description: imp.description,
+        source: 'import',
+        colorIndex: existing.colorIndex,
+      }
     } else {
       result.push({ ...imp, source: 'import' })
     }

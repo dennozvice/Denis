@@ -879,7 +879,16 @@ function trend(values: number[]): string {
 function MarketTrend({ instrument, width }: { instrument: Instrument; width: number }) {
   const values = trendValues(instrument.series)
   if (!values) return <NotApplicable title="Meno di 3 valori negli ultimi 30 giorni" srText="andamento 30 giorni non disponibile" />
-  return <Sparkline values={values} width={width} height={24} label={trend(values)} invert={risingIsBad(instrument)} />
+  return (
+    <Sparkline
+      values={values}
+      width={width}
+      height={24}
+      label={trend(values)}
+      invert={risingIsBad(instrument)}
+      neutral={instrument.unit === 'pct'}
+    />
+  )
 }
 
 // ---------------------------------------------------------------- dati importati

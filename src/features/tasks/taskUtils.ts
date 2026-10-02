@@ -1,8 +1,8 @@
 /** Funzioni pure condivise dal widget "Attività di oggi" e dalla pagina Attività. */
 import type { Client, DateKey, Task, TaskCategory } from '../../domain/types'
-import { addDays, instantToRome, weekdayIndex } from '../../lib/dates'
+import { addDays, weekdayIndex } from '../../lib/dates'
 import { formatDayMonth, formatWeekdayShort } from '../../lib/format'
-import { isOpen, sortTasks } from '../../store/selectors'
+import { isOpen, sortTasks, todayTasks } from '../../store/selectors'
 
 // ---------------------------------------------------------------- filtri per area (widget)
 
@@ -51,13 +51,6 @@ export function matchesSearch(task: Task, query: string, clientName: string): bo
 
 // ---------------------------------------------------------------- date
 
-/** Giorno (ora di Roma) in cui l'attività è stata completata. */
-export function completedOn(task: Task): DateKey | undefined {
-  if (!task.completedAt) return undefined
-  const instant = new Date(task.completedAt)
-  return Number.isNaN(instant.getTime()) ? undefined : instantToRome(instant).date
-}
-
 /** Nuova scadenza quando si rimanda: si parte da oggi se l'attività è già in ritardo. */
 export function postponedDate(task: Task, days: number, today: DateKey): DateKey {
   const base = task.dueDate < today ? today : task.dueDate
@@ -92,29 +85,33 @@ export interface TodayGroups {
 }
 
 /**
- * Come `todayTasks` dei selettori, ma il giorno di completamento è calcolato nel fuso di Roma
- * (completedAt è un istante UTC).
+ * `todayTasks` dei selettori (stessi conteggi dei KPI e della pagina Attività),
+ * con le completate ordinate dalla più recente.
  */
 export function groupToday(tasks: Task[], today: DateKey): TodayGroups {
-  const tomorrow = addDays(today, 1)
-  const overdue: Task[] = []
-  const todayOpen: Task[] = []
-  const done: Task[] = []
-  const tomorrowOpen: Task[] = []
-  for (const t of tasks) {
-    if (isOpen(t)) {
-      if (t.dueDate < today) overdue.push(t)
-      else if (t.dueDate === today) todayOpen.push(t)
-      else if (t.dueDate === tomorrow) tomorrowOpen.push(t)
-    } else if (t.dueDate === today || completedOn(t) === today) {
-      done.push(t)
-    }
-  }
+  const t = todayTasks(tasks, today)
+  return { overdue: t.overdue, today: t.today, done: sortByCompletion(t.doneToday), tomorrow: t.tomorrow }
+}
+
+export interface TaskCounts {
+  /** Tutte le attività aperte. */
+  open: number
+  /** Aperte con scadenza passata. */
+  late: number
+  /** Aperte con scadenza oggi. */
+  dueToday: number
+  /** Completate oggi (giorno di Roma) o in scadenza oggi e già completate: come il KPI della Panoramica. */
+  doneToday: number
+}
+
+/** Conteggi del sottotitolo della pagina Attività, calcolati con gli stessi selettori della Panoramica. */
+export function countTasks(tasks: Task[], today: DateKey): TaskCounts {
+  const t = todayTasks(tasks, today)
   return {
-    overdue: sortTasks(overdue),
-    today: sortTasks(todayOpen),
-    done: sortByCompletion(done),
-    tomorrow: sortTasks(tomorrowOpen),
+    open: tasks.filter(isOpen).length,
+    late: t.overdue.length,
+    dueToday: t.today.length,
+    doneToday: t.doneToday.length,
   }
 }
 

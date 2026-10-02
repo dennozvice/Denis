@@ -3,6 +3,7 @@
  * I dati restano SOLO su questo dispositivo/browser: nessun server, nessun invio in rete.
  */
 import {
+  AML_RISK_LABEL,
   APPOINTMENT_OUTCOME_LABEL,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
@@ -10,7 +11,9 @@ import {
   CASE_TYPE_LABEL,
   LOCATION_LABEL,
   POLICY_KIND_LABEL,
+  PREMIUM_TYPE_LABEL,
   PRIORITY_LABEL,
+  RISK_PROFILE_LABEL,
   TASK_CATEGORY_LABEL,
   TASK_STATUS_LABEL,
 } from '../domain/labels'
@@ -119,6 +122,9 @@ export function normalizeAppData(raw: unknown): AppData | null {
       city: optString(c.city),
       notes: optString(c.notes),
       tags: Array.isArray(c.tags) ? c.tags.filter(isString) : undefined,
+      riskProfile: isString(c.riskProfile) && c.riskProfile in RISK_PROFILE_LABEL ? c.riskProfile : undefined,
+      amlRisk: isString(c.amlRisk) && c.amlRisk in AML_RISK_LABEL ? c.amlRisk : undefined,
+      marketingConsent: typeof c.marketingConsent === 'boolean' ? c.marketingConsent : undefined,
       birthDate: optDate(c.birthDate),
       docExpiry: optDate(c.docExpiry),
       amlReviewDue: optDate(c.amlReviewDue),
@@ -129,6 +135,7 @@ export function normalizeAppData(raw: unknown): AppData | null {
         kind: oneOf(POLICY_KIND_LABEL, p.kind, 'altro'),
         ref: isString(p.ref) ? p.ref : '',
         productName: optString(p.productName),
+        premiumType: isString(p.premiumType) && p.premiumType in PREMIUM_TYPE_LABEL ? p.premiumType : undefined,
         maturityDate: optDate(p.maturityDate),
         annualPremium: optNumber(p.annualPremium),
         pac:

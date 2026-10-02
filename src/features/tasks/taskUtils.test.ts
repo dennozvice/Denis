@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Task } from '../../domain/types'
+import { completedOn, computeKpis } from '../../store/selectors'
+import { createDemoData } from '../../data/demoSeed'
 import {
   categoryGroupOf,
-  completedOn,
+  countTasks,
   endOfWeek,
   formatDueForMessage,
   groupForPage,
@@ -112,6 +114,32 @@ describe('groupToday', () => {
     expect(g.today.map((t) => t.id).sort()).toEqual([now.id, waiting.id].sort())
     expect(g.done.map((t) => t.id)).toEqual([doneEarlyFuture.id, doneToday.id])
     expect(g.tomorrow.map((t) => t.id)).toEqual([tomorrow.id])
+  })
+})
+
+describe('countTasks', () => {
+  it('"completate oggi" come il KPI della Panoramica (giorno di Roma, scadenza oggi inclusa)', () => {
+    const list = [
+      task({ dueDate: '2026-09-30' }),
+      task({ dueDate: TODAY }),
+      task({ dueDate: '2026-10-08' }),
+      // completata alle 00:30 di Roma del 2 ottobre (22:30 UTC del 1°)
+      task({ dueDate: '2026-10-05', status: 'completata', completedAt: '2026-10-01T22:30:00.000Z' }),
+      // in scadenza oggi, completata ieri
+      task({ dueDate: TODAY, status: 'completata', completedAt: '2026-10-01T09:00:00.000Z' }),
+      // completata ieri, scadenza ieri: non conta
+      task({ dueDate: '2026-10-01', status: 'completata', completedAt: '2026-10-01T09:00:00.000Z' }),
+    ]
+    expect(countTasks(list, TODAY)).toEqual({ open: 3, late: 1, dueToday: 1, doneToday: 2 })
+  })
+
+  it('coincide con i KPI sui dati dimostrativi', () => {
+    const data = createDemoData(TODAY)
+    const kpis = computeKpis(data, { date: TODAY, time: '10:00', minutes: 600, year: 2026 })
+    const counts = countTasks(data.tasks, TODAY)
+    expect(counts.doneToday).toBe(kpis.tasksDoneToday)
+    expect(counts.late).toBe(kpis.tasksOverdue)
+    expect(counts.late + counts.dueToday).toBe(kpis.tasksOpenToday)
   })
 })
 

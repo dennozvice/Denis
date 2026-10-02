@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Goal, PricePoint, Training } from '../../domain/types'
 import {
+  formatGoalPeriod,
   formatGoalValue,
+  goalRollover,
   goalStatus,
+  isGoalStale,
+  latestDate,
   marketChange,
+  monthName,
   parseItalianNumber,
   periodElapsed,
   scrollEdges,
@@ -54,6 +59,52 @@ describe('goalStatus', () => {
   })
 })
 
+describe('cambio di periodo degli obiettivi', () => {
+  const TODAY = '2026-10-02'
+
+  it('un obiettivo è da azzerare se il suo periodo non è quello in corso', () => {
+    expect(isGoalStale(goal({ periodKey: '2026-10' }), TODAY)).toBe(false)
+    expect(isGoalStale(goal({ periodKey: '2026-09' }), TODAY)).toBe(true)
+    expect(isGoalStale(goal({ period: 'anno', periodKey: '2026' }), TODAY)).toBe(false)
+    expect(isGoalStale(goal({ period: 'anno', periodKey: '2025' }), '2026-01-01')).toBe(true)
+    // dati salvati prima del campo periodKey: periodo sconosciuto, nessun avviso
+    expect(isGoalStale(goal({}), TODAY)).toBe(false)
+  })
+
+  it('periodo leggibile', () => {
+    expect(monthName(TODAY)).toBe('ottobre')
+    expect(formatGoalPeriod('mese', '2026-09')).toBe('settembre 2026')
+    expect(formatGoalPeriod('anno', '2025')).toBe('2025')
+    expect(formatGoalPeriod('mese', '2026-13')).toBeUndefined()
+    expect(formatGoalPeriod('anno', '2026-09')).toBeUndefined()
+  })
+
+  it('avviso e azione per gli obiettivi mensili del mese scorso', () => {
+    const goals = [
+      goal({ id: 'a', periodKey: '2026-09', current: 18000 }),
+      goal({ id: 'b', periodKey: '2026-10', current: 2 }),
+      goal({ id: 'c', period: 'anno', periodKey: '2026' }),
+    ]
+    const r = goalRollover(goals, 'mese', TODAY)
+    expect(r?.goals.map((g) => g.id)).toEqual(['a'])
+    expect(r?.periodKey).toBe('2026-10')
+    expect(r?.notice).toBe('I valori si riferiscono a settembre 2026')
+    expect(r?.action).toBe('Azzera e inizia ottobre')
+    expect(r?.periodLabel).toBe('settembre 2026')
+    expect(goalRollover(goals, 'anno', TODAY)).toBeUndefined()
+  })
+
+  it('obiettivi annuali e periodi misti', () => {
+    const r = goalRollover([goal({ period: 'anno', periodKey: '2025' })], 'anno', '2026-01-02')
+    expect(r?.notice).toBe('I valori si riferiscono al 2025')
+    expect(r?.action).toBe('Azzera e inizia il 2026')
+    expect(r?.editHint).toBe('I valori attuali si riferiscono al 2025: salvando si riferiranno al 2026.')
+    const mixed = goalRollover([goal({ periodKey: '2026-08' }), goal({ periodKey: '2026-09' })], 'mese', TODAY)
+    expect(mixed?.notice).toBe('I valori si riferiscono a un periodo precedente')
+    expect(mixed?.goals).toHaveLength(2)
+  })
+})
+
 describe('formatGoalValue', () => {
   it('valuta o numero semplice', () => {
     expect(formatGoalValue(16200, 'EUR').replace(/\s/g, ' ')).toBe('16.200 €')
@@ -96,6 +147,7 @@ describe('marketChange', () => {
     expect(c?.kind).toBe('pct')
     expect(c?.value).toBeCloseTo(1)
     expect(c?.invert).toBe(false)
+    expect(c?.neutral).toBe(false)
   })
 
   it('tassi: variazione assoluta in punti base', () => {
@@ -104,16 +156,28 @@ describe('marketChange', () => {
     expect(c?.suffix).toBe(' pb')
     expect(c?.value).toBeCloseTo(3)
     expect(c?.decimals).toBe(0)
+    // un rialzo dei tassi non è né buono né cattivo: nessun colore
+    expect(c?.neutral).toBe(true)
+    expect(c?.invert).toBe(false)
   })
 
   it('spread: punti base con colore invertito', () => {
     const c = marketChange({ unit: 'bp', series: series(110, 104) })
     expect(c?.value).toBeCloseTo(-6)
     expect(c?.invert).toBe(true)
+    expect(c?.neutral).toBe(false)
   })
 
   it('serie troppo corta', () => {
     expect(marketChange({ unit: 'pt', series: [] })).toBeUndefined()
+  })
+})
+
+describe('latestDate', () => {
+  it('data più recente tra gli strumenti indicati, ignorando le serie vuote', () => {
+    const s = (date: string): PricePoint[] => [{ date, value: 1 }]
+    expect(latestDate([{ series: s('2026-09-30') }, { series: s('2026-10-01') }, { series: [] }])).toBe('2026-10-01')
+    expect(latestDate([])).toBeUndefined()
   })
 })
 
