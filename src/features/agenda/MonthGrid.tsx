@@ -3,9 +3,9 @@ import type { Appointment, Client, DateKey } from '../../domain/types'
 import { isSameMonth, isWeekend, monthMatrix, parseKey, type RomeNow } from '../../lib/dates'
 import { capitalize, WEEKDAY_SHORT } from '../../lib/format'
 import { isAllDay } from '../../store/selectors'
-import { appointmentPhase } from './agendaUtils'
-import { appointmentAriaLabel, timeRangeText, typeStyle } from './AppointmentBits'
-import { dayAriaLabel, WEEKDAY_LONG } from './MiniCalendar'
+import { appointmentPhase, dayAriaLabel } from './agendaUtils'
+import { appointmentAriaLabel, appointmentTooltip, typeStyle } from './AppointmentBits'
+import { WEEKDAY_LONG } from './MiniCalendar'
 import './agenda.css'
 
 interface MonthGridProps {
@@ -58,7 +58,7 @@ export function MonthGrid({ day, appointments, now, clients, onEdit, onOpenDay, 
             <tr key={week[0]}>
               {week.map((d) => {
                 const list = byDay.get(d) ?? []
-                const activeCount = list.filter((a) => a.status !== 'annullato').length
+                const activeTypes = list.filter((a) => a.status !== 'annullato').map((a) => a.type)
                 const more = list.length - MAX_CHIPS
                 const cls = [
                   'ag-mg-cell',
@@ -79,7 +79,7 @@ export function MonthGrid({ day, appointments, now, clients, onEdit, onOpenDay, 
                       type="button"
                       className="ag-mg-num num"
                       onClick={() => onOpenDay(d)}
-                      aria-label={`${dayAriaLabel(d, activeCount, now.date)}: apri il giorno`}
+                      aria-label={`${dayAriaLabel(d, activeTypes, now.date)}. Apri il giorno`}
                       aria-current={d === now.date ? 'date' : undefined}
                     >
                       {parseKey(d).day}
@@ -98,7 +98,7 @@ export function MonthGrid({ day, appointments, now, clients, onEdit, onOpenDay, 
                                 a.clientId ? clients.get(a.clientId) : undefined,
                                 appointmentPhase(a, now),
                               )}
-                              title={`${timeRangeText(a)} · ${a.title}`}
+                              title={appointmentTooltip(a, a.clientId ? clients.get(a.clientId) : undefined)}
                             >
                               {!isAllDay(a) && <span className="ag-chip-time num">{a.start}</span>}
                               <span className="ag-chip-title">{a.title}</span>

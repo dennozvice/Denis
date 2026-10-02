@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import type { Appointment } from '../../domain/types'
+import type { Appointment, Client } from '../../domain/types'
 import type { RomeNow } from '../../lib/dates'
 import {
+  appointmentHeadline,
   appointmentPhase,
   busyMinutes,
+  dayAriaLabel,
   defaultStartFor,
   endAfter,
   followUpTask,
@@ -207,6 +209,36 @@ describe('link', () => {
   it("mapsHref codifica l'indirizzo", () => {
     expect(mapsHref('Via dei Tigli 12, Milano')).toBe(
       'https://www.google.com/maps/search/?api=1&query=Via%20dei%20Tigli%2012%2C%20Milano',
+    )
+  })
+})
+
+describe('testi accessibili', () => {
+  const rossi: Client = { id: 'c1', firstName: 'Mario', lastName: 'Rossi', policies: [] }
+
+  it('appointmentHeadline: titolo, cliente e tipo (se il titolo non lo contiene già)', () => {
+    expect(appointmentHeadline({ title: 'Firma', type: 'firma_contratto' }, rossi)).toBe(
+      'Firma – Mario Rossi (Firma contratto)',
+    )
+    expect(appointmentHeadline({ title: 'Revisione portafoglio', type: 'revisione_portafoglio' }, rossi)).toBe(
+      'Revisione portafoglio – Mario Rossi',
+    )
+    expect(appointmentHeadline({ title: 'Esito proposta PAC', type: 'call' }, undefined)).toBe(
+      'Esito proposta PAC (Telefonata)',
+    )
+  })
+
+  it('dayAriaLabel: data, oggi, numero di appuntamenti e tipi', () => {
+    expect(dayAriaLabel('2026-10-03', [], '2026-10-02')).toBe('sabato 3 ottobre 2026')
+    expect(
+      dayAriaLabel(
+        '2026-10-02',
+        ['revisione_portafoglio', 'primo_incontro', 'revisione_portafoglio', 'call'],
+        '2026-10-02',
+      ),
+    ).toBe('venerdì 2 ottobre 2026, oggi, 4 appuntamenti: Revisione portafoglio (2), Primo incontro, Telefonata')
+    expect(dayAriaLabel('2026-10-05', ['firma_contratto'], '2026-10-02')).toBe(
+      'lunedì 5 ottobre 2026, 1 appuntamento: Firma contratto',
     )
   })
 })

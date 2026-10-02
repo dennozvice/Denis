@@ -9,6 +9,7 @@ import {
   IdCard,
   ListPlus,
   Mail,
+  Megaphone,
   Pencil,
   Phone,
   PhoneCall,
@@ -20,6 +21,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Pill } from '../../components/ui/Pill'
 import { useToast } from '../../components/ui/Toast'
 import {
+  AML_RISK_LABEL,
   APPOINTMENT_OUTCOME_LABEL,
   APPOINTMENT_TYPE_LABEL,
   CASE_STATUS_LABEL,
@@ -27,6 +29,8 @@ import {
   CASE_TYPE_LABEL,
   CLIENT_SEGMENT_LABEL,
   POLICY_KIND_LABEL,
+  PREMIUM_TYPE_LABEL,
+  RISK_PROFILE_LABEL,
   TASK_CATEGORY_LABEL,
   type Tone,
 } from '../../domain/labels'
@@ -66,6 +70,7 @@ import {
   iddDueDate,
   lastContactInfo,
   policyTotals,
+  premiumTypeOf,
   tagTone,
   type ComplianceState,
 } from './clientUtils'
@@ -187,6 +192,11 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
       describe: (due, expired) => `${expired ? 'Rinnovo scaduto il' : 'Rinnovo entro il'} ${formatDateShort(due)}`,
       deadlineId: `aml-${client.id}`,
       task: { title: "Rinnovare l'adeguata verifica", category: 'compliance' },
+      extra: {
+        label: 'Rischio antiriciclaggio',
+        value: labelOf(AML_RISK_LABEL, client.amlRisk),
+        alert: client.amlRisk === 'alto',
+      },
     },
     {
       icon: ClipboardCheck,
@@ -197,6 +207,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
         `${client.iddQuestionnaireDate ? `Compilato il ${formatDateShort(client.iddQuestionnaireDate)} · ` : ''}${expired ? 'scaduto il' : 'valido fino al'} ${formatDateShort(due)} (${data.settings.iddValidityMonths} mesi)`,
       deadlineId: `idd-${client.id}`,
       task: { title: 'Aggiornare il questionario di adeguatezza', category: 'adeguatezza' },
+      extra: { label: 'Profilo di rischio', value: labelOf(RISK_PROFILE_LABEL, client.riskProfile) },
     },
   ]
 
@@ -261,6 +272,16 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
         </div>
       )}
 
+      <p className="cl-consent">
+        <Megaphone size={16} aria-hidden="true" />
+        <span>
+          Consenso comunicazioni commerciali:{' '}
+          <strong data-unset={client.marketingConsent === undefined || undefined}>
+            {client.marketingConsent === undefined ? 'Non registrato' : client.marketingConsent ? 'Sì' : 'No'}
+          </strong>
+        </span>
+      </p>
+
       <div className="cl-actions" role="group" aria-label={`Azioni per ${name}`}>
         <button type="button" className="btn" onClick={() => setModal({ kind: 'edit' })} aria-haspopup="dialog">
           <Pencil size={16} aria-hidden="true" />
@@ -306,7 +327,15 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
         </div>
         <div className="cl-fact">
           <dt>Premi annui</dt>
-          <dd className="num">{totals.annualPremium > 0 ? formatCurrency(totals.annualPremium) : '—'}</dd>
+          <dd className="num">
+            {totals.annualPremium > 0 ? formatCurrency(totals.annualPremium) : '—'}
+            {totals.singlePremium > 0 && (
+              <span className="cl-fact-sub">+ {formatCurrency(totals.singlePremium)} premi unici</span>
+            )}
+            {totals.recurringPayments > 0 && (
+              <span className="cl-fact-sub">+ {formatCurrency(totals.recurringPayments)} versamenti</span>
+            )}
+          </dd>
         </div>
         <div className="cl-fact">
           <dt>PAC mensili</dt>
@@ -467,6 +496,10 @@ function taskDueFor(due: DateKey | undefined, today: DateKey): DateKey {
 
 const capitalizeFirst = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s)
 
+/** Etichetta di un valore facoltativo; undefined se assente o non riconosciuto (dati importati). */
+const labelOf = <T extends string>(labels: Record<T, string>, value: T | undefined): string | undefined =>
+  value !== undefined && Object.hasOwn(labels, value) ? labels[value] : undefined
+
 interface ComplianceRowProps {
   icon: LucideIcon
   label: string
@@ -476,6 +509,8 @@ interface ComplianceRowProps {
   /** ID della scadenza calcolata corrispondente (vedi computeDeadlines), salvato nell'attività creata. */
   deadlineId: string
   task: { title: string; category: TaskCategory }
+  /** Esito collegato all'adempimento (rischio AML, profilo di rischio): undefined = non registrato. */
+  extra?: { label: string; value?: string; alert?: boolean }
 }
 
 function ComplianceRow({
@@ -484,6 +519,7 @@ function ComplianceRow({
   feminine,
   state,
   describe,
+  extra,
   linkedTask,
   onCreateTask,
 }: ComplianceRowProps & { linkedTask?: Task; onCreateTask(due: DateKey | undefined): void }) {
@@ -501,6 +537,14 @@ function ComplianceRow({
           {state.due ? describe(state.due, state.status === 'scaduto') : 'Nessuna data registrata'}
           {relative && <span className="num"> · {relative}</span>}
         </span>
+        {extra && (
+          <span className="cl-comp-extra">
+            {extra.label}:{' '}
+            <strong data-unset={extra.value === undefined || undefined} data-alert={extra.alert || undefined}>
+              {extra.value ?? 'Non registrato'}
+            </strong>
+          </span>
+        )}
       </div>
       <div className="cl-comp-side">
         <Pill tone={tone}>{complianceLabel(state.status, feminine)}</Pill>
@@ -543,11 +587,15 @@ function PolicyItem({ policy: p, today }: { policy: Policy; today: DateKey }) {
       ? candidate
       : undefined
   const years = anniversary ? ageOn(p.startDate, anniversary) : undefined
+  const premiumType = premiumTypeOf(p)
 
   return (
     <li className="cl-pol">
       <div className="cl-pol-head">
-        <span className="cl-pol-kind">{POLICY_KIND_LABEL[p.kind]}</span>
+        <span className="cl-pol-kind">
+          {POLICY_KIND_LABEL[p.kind]}
+          {p.productName && <span className="cl-pol-product"> · {p.productName}</span>}
+        </span>
         <span className="cl-pol-ref num" title="Ultime 4 cifre del numero di polizza">
           {p.ref}
         </span>
@@ -567,7 +615,7 @@ function PolicyItem({ policy: p, today }: { policy: Policy; today: DateKey }) {
           <dd className="num">{p.maturityDate ? formatDateShort(p.maturityDate) : 'Nessuna'}</dd>
         </div>
         <div>
-          <dt>Premio annuo</dt>
+          <dt>{PREMIUM_TYPE_LABEL[premiumType]}</dt>
           <dd className="num">{p.annualPremium ? formatCurrency(p.annualPremium) : '—'}</dd>
         </div>
         <div>

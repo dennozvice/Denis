@@ -56,11 +56,17 @@ export function CasesPage() {
     }
   }, [cases, data, today])
 
+  // Scadenze operative (come il riquadro "Scadenze 30 gg" della home): scadute e in arrivo contate a parte.
+  const deadlinesText = [
+    summary.expired > 0 ? `${formatNumber(summary.expired)} ${summary.expired === 1 ? 'scaduta' : 'scadute'}` : null,
+    `${formatNumber(summary.upcoming)} nei prossimi 30 giorni`,
+  ]
+    .filter(Boolean)
+    .join(', ')
   const subtitle = [
     summary.open === 1 ? '1 pratica aperta' : `${formatNumber(summary.open)} pratiche aperte`,
     summary.reclami > 0 ? `${formatNumber(summary.reclami)} ${summary.reclami === 1 ? 'reclamo' : 'reclami'} in corso` : null,
-    summary.expired > 0 ? `${formatNumber(summary.expired)} adempimenti scaduti` : null,
-    `${formatNumber(summary.upcoming)} scadenze nei prossimi 30 giorni`,
+    `Scadenze: ${deadlinesText}`,
   ]
     .filter(Boolean)
     .join(' · ')

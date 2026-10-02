@@ -1,11 +1,23 @@
 /** Piccoli elementi condivisi da widget e pagina dei fondi. */
-import { useCallback, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { ChangeValue } from '../../components/ui/ChangeValue'
 import type { Instrument } from '../../domain/types'
 import { lastPoint } from '../../lib/finance'
-import { formatInstrumentValue, formatPercent } from '../../lib/format'
+import { formatDateShort, formatInstrumentValue, formatPercent } from '../../lib/format'
+import { useMarket } from '../../store/MarketContext'
 import { seriesColor } from '../../components/charts/LineChart'
-import { isGestioneSeparata, type ChangeInfo } from './fundsLogic'
+import {
+  instrumentChange,
+  isDemoFund,
+  isFundGroup,
+  isGestioneSeparata,
+  lastChangeRef,
+  loadShowDemoFunds,
+  saveShowDemoFunds,
+  SHOW_DEMO_FUNDS_KEY,
+  withoutDemoMeta,
+  type ChangeInfo,
+} from './fundsLogic'
 import './funds.css'
 
 /** Indicatore sintetico di rischio (SRI) 1-7: 7 segmenti, i primi N pieni, più il numero. */
@@ -42,10 +54,54 @@ export function ChangeCell({
       decimals={info?.decimals}
       suffix={info?.suffix}
       invert={info?.invert}
+      neutral={info?.neutral}
       variant={variant}
     />
   )
   return title ? <span title={title}>{content}</span> : content
+}
+
+/**
+ * Ultima variazione ("1g"): se il valore precedente è di più di 4 giorni prima (dati settimanali o mensili)
+ * lo dice in chiaro, con la data di confronto, invece di farla passare per una variazione giornaliera.
+ */
+export function LastChangeCell({ instrument, variant = 'pill' }: { instrument: Instrument; variant?: 'pill' | 'text' }) {
+  const ref = lastChangeRef(instrument.series)
+  const info = instrumentChange(instrument, '1G')
+  if (!ref?.wide || !info) return <ChangeCell info={info} variant={variant} />
+  const since = formatDateShort(ref.previous)
+  return (
+    <span className="fd-last-change" title={`Variazione rispetto al valore del ${since} (${ref.gapDays} giorni prima)`}>
+      <ChangeCell info={info} variant={variant} />
+      <span className="fd-caption" aria-hidden="true">
+        dal {since.slice(0, 5)}
+      </span>
+      <span className="visually-hidden">rispetto al valore del {since}</span>
+    </span>
+  )
+}
+
+/** Cella senza dato pertinente (es. variazioni di periodo della gestione separata), con la spiegazione. */
+export function NotApplicable({ title, srText = 'non applicabile' }: { title: string; srText?: string }) {
+  return (
+    <span className="muted" title={title}>
+      <span aria-hidden="true">—</span>
+      <span className="visually-hidden">{srText}</span>
+    </span>
+  )
+}
+
+/** Fonte dei valori della riga: "Demo" (simulati) o "Importato" (caricati dall'utente). */
+export function SourceTag({ source }: { source: Instrument['source'] }) {
+  return source === 'demo' ? (
+    <span className="pill fd-src" data-tone="warning" title="Valori simulati a scopo dimostrativo: non sono quotazioni reali">
+      Demo
+    </span>
+  ) : (
+    <span className="pill fd-src" data-tone="positive" title="Valori importati da file">
+      Importato
+    </span>
+  )
 }
 
 /** Pallino del colore della serie: identità visiva accanto al nome (mai sul testo). */
@@ -65,6 +121,93 @@ export function formatLastValue(instrument: Instrument): string {
 export function lastYieldYear(instrument: Instrument): string | undefined {
   return lastPoint(instrument.series)?.date.slice(0, 4)
 }
+
+// ---------------------------------------------------------------- "Mostra fondi dimostrativi"
+
+/** Valore corrente in memoria: resta valido anche se il browser non consente di salvarlo. */
+let showDemoValue: boolean | undefined
+const showDemoListeners = new Set<() => void>()
+
+function getShowDemo(): boolean {
+  if (showDemoValue === undefined) showDemoValue = loadShowDemoFunds()
+  return showDemoValue
+}
+
+function subscribeShowDemo(callback: () => void) {
+  showDemoListeners.add(callback)
+  // scelta cambiata in un'altra scheda
+  const onStorage = (e: StorageEvent) => {
+    if (e.key !== SHOW_DEMO_FUNDS_KEY && e.key !== null) return
+    showDemoValue = loadShowDemoFunds()
+    callback()
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    showDemoListeners.delete(callback)
+    window.removeEventListener('storage', onStorage)
+  }
+}
+
+function setShowDemo(show: boolean) {
+  showDemoValue = show
+  saveShowDemoFunds(show)
+  for (const l of showDemoListeners) l()
+}
+
+/** Preferenza "Mostra fondi dimostrativi", condivisa tra widget della home e pagina Fondi. */
+export function useShowDemoFunds(): [boolean, (show: boolean) => void] {
+  const show = useSyncExternalStore(subscribeShowDemo, getShowDemo, () => true)
+  return [show, setShowDemo]
+}
+
+export interface FundsView {
+  /** Tutti gli strumenti (anche i fondi dimostrativi nascosti), senza SRI e descrizione dimostrativi sulle serie importate. */
+  instruments: Instrument[]
+  /** Fondi e gestione separata da mostrare (senza i dimostrativi se l'utente li ha nascosti). */
+  funds: Instrument[]
+  /** Indici, tassi, spread e cambi. */
+  markets: Instrument[]
+  /** Quanti fondi dimostrativi ci sono (mostrati o no): se zero, l'interruttore non serve. */
+  demoFundCount: number
+  /** true se tra i fondi mostrati ci sono sia dimostrativi sia importati. */
+  mixedFunds: boolean
+  showDemo: boolean
+  setShowDemo(show: boolean): void
+}
+
+/** Dati di mercato come li mostra la sezione Fondi: preferenza sui fondi dimostrativi e metadati ripuliti. */
+export function useFundsView(): FundsView {
+  const { instruments: all } = useMarket()
+  const [showDemo, setShow] = useShowDemoFunds()
+  return useMemo(() => {
+    const instruments = all.map(withoutDemoMeta)
+    const allFunds = instruments.filter(isFundGroup)
+    const funds = showDemo ? allFunds : allFunds.filter((f) => !isDemoFund(f))
+    const demoFundCount = allFunds.filter(isDemoFund).length
+    return {
+      instruments,
+      funds,
+      markets: instruments.filter((i) => !isFundGroup(i)),
+      demoFundCount,
+      mixedFunds: funds.some((f) => f.source === 'demo') && funds.some((f) => f.source === 'import'),
+      showDemo,
+      setShowDemo: setShow,
+    }
+  }, [all, showDemo, setShow])
+}
+
+/** Interruttore "Mostra fondi dimostrativi". */
+export function ShowDemoToggle({ className }: { className?: string }) {
+  const [show, setShow] = useShowDemoFunds()
+  return (
+    <label className={`fd-inline-check${className ? ` ${className}` : ''}`}>
+      <input type="checkbox" className="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} />
+      <span>Mostra fondi dimostrativi</span>
+    </label>
+  )
+}
+
+// ---------------------------------------------------------------- dimensioni
 
 const MOBILE_QUERY = '(max-width: 767px)'
 

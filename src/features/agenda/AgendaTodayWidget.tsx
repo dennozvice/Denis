@@ -9,9 +9,16 @@ import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { appointmentsOn, appointmentTypesByDay, indexById, isAllDay } from '../../store/selectors'
 import { useAppData } from '../../store/StoreContext'
-import { appointmentPhase, busyMinutes, defaultStartFor, formatDuration, relativeDayLabel } from './agendaUtils'
+import {
+  appointmentPhase,
+  busyMinutes,
+  dayAriaLabel,
+  defaultStartFor,
+  formatDuration,
+  relativeDayLabel,
+} from './agendaUtils'
 import { DayTimeline } from './DayTimeline'
-import { dayAriaLabel, MiniCalendar, TypeDots } from './MiniCalendar'
+import { MiniCalendar, TypeDots } from './MiniCalendar'
 import { useAppointmentEditor } from './useAppointmentEditor'
 import './agenda.css'
 
@@ -142,7 +149,7 @@ export function AgendaTodayWidget() {
                   className={`ag-ws-day${day === today ? ' ag-ws-day--today' : ''}${i >= 5 ? ' ag-ws-day--weekend' : ''}`}
                   aria-pressed={day === selected}
                   aria-current={day === today ? 'date' : undefined}
-                  aria-label={dayAriaLabel(day, marks.get(day)?.length ?? 0, today)}
+                  aria-label={dayAriaLabel(day, marks.get(day) ?? [], today)}
                   onClick={() => select(day)}
                 >
                   <span className="ag-ws-wd" aria-hidden="true">

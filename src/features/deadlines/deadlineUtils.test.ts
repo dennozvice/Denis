@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoData } from '../../data/demoSeed'
-import type { Deadline, Task } from '../../domain/types'
+import type { Deadline, DeadlineKind, Task } from '../../domain/types'
 import { complianceDeadlines, computeDeadlines } from '../../store/selectors'
 import {
   countByBucket,
   countByFilter,
   deadlineBucket,
   deadlineDaysLabel,
+  deadlineFilterFromParam,
   deadlineDaysTone,
   deadlineHref,
   formatDeadlineDate,
@@ -66,7 +67,35 @@ describe('filtri per tipo', () => {
     expect(matchesDeadlineFilter({ kind: 'compleanno' }, 'adempimenti')).toBe(false)
     expect(matchesDeadlineFilter({ kind: 'pratica' }, 'tutte')).toBe(true)
     const counts = countByFilter([dl({ kind: 'documento' }), dl({ kind: 'compleanno' }), dl({ kind: 'pratica' })])
-    expect(counts).toEqual({ tutte: 3, adempimenti: 1, polizze: 0, compleanni: 1, pratiche: 1 })
+    expect(counts).toEqual({ tutte: 3, operative: 2, adempimenti: 1, polizze: 0, compleanni: 1, pratiche: 1 })
+  })
+  it('"Senza ricorrenze" = gli stessi tipi di complianceDeadlines (riquadro "Scadenze 30 gg" della home)', () => {
+    const kinds: DeadlineKind[] = [
+      'documento',
+      'antiriciclaggio',
+      'adeguatezza',
+      'scadenza_polizza',
+      'anniversario_polizza',
+      'compleanno',
+      'pratica',
+    ]
+    for (const kind of kinds) {
+      expect(matchesDeadlineFilter({ kind }, 'operative')).toBe(complianceDeadlines([dl({ kind })]).length === 1)
+    }
+  })
+  it('parametro ?tipo=adempimenti del link della home', () => {
+    expect(deadlineFilterFromParam('adempimenti')).toBe('operative')
+    expect(deadlineFilterFromParam(undefined)).toBeNull()
+    expect(deadlineFilterFromParam('xyz')).toBeNull()
+  })
+  it('con il filtro preimpostato e 30 giorni il totale coincide con il riquadro della home', () => {
+    const data = createDemoData(TODAY)
+    const all = computeDeadlines(data, TODAY, { horizonDays: 30 })
+    const filter = deadlineFilterFromParam('adempimenti')!
+    const kpi = complianceDeadlines(all)
+    expect(all.filter((d) => matchesDeadlineFilter(d, filter)).map((d) => d.id)).toEqual(kpi.map((d) => d.id))
+    expect(countByFilter(all).operative).toBe(kpi.length)
+    expect(kpi.length).toBeLessThan(all.length) // i compleanni restano fuori
   })
 })
 

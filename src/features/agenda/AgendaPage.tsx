@@ -2,19 +2,16 @@ import { CalendarDays, ChevronLeft, ChevronRight, Download, Plus, Upload } from 
 import { useMemo, useState } from 'react'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Segmented } from '../../components/ui/Segmented'
-import { useToast } from '../../components/ui/Toast'
 import { APPOINTMENT_TYPE_COLOR, APPOINTMENT_TYPE_LABEL } from '../../domain/labels'
 import type { AppointmentType, DateKey, TimeKey } from '../../domain/types'
 import { addDays, diffDays, isDateKey, timeToMinutes, weekDays } from '../../lib/dates'
-import { formatDateShort, formatRelativeDays, formatWeekdayDayMonth, capitalize, plural } from '../../lib/format'
-import { appointmentsToIcs } from '../../lib/ics'
+import { formatRelativeDays, formatWeekdayDayMonth, capitalize, plural } from '../../lib/format'
 import { navigate, useRoute } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import {
   appointmentsBetween,
   appointmentsOn,
   appointmentTypesByDay,
-  compareAppointments,
   indexById,
   nextAppointment,
 } from '../../store/selectors'
@@ -32,6 +29,7 @@ import {
   type AgendaView,
 } from './agendaUtils'
 import { DayTimeline } from './DayTimeline'
+import { IcsExportModal } from './IcsExportModal'
 import { IcsImportModal } from './IcsImportModal'
 import { MiniCalendar } from './MiniCalendar'
 import { MonthGrid } from './MonthGrid'
@@ -55,13 +53,13 @@ export function AgendaPage() {
   const { params } = useRoute()
   const now = useNow()
   const today = now.date
-  const { appointments, clients, settings } = useAppData()
-  const toast = useToast()
+  const { appointments, clients } = useAppData()
   const editor = useAppointmentEditor()
   const isMobile = useMediaQuery('(max-width: 767px)')
   // sotto i 1024px le 7 colonne sono troppo strette per i titoli: la settimana diventa un elenco per giorno
   const weekAsList = useMediaQuery('(max-width: 1023px)')
   const [importOpen, setImportOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('tutti')
   // mese mostrato nel mini-calendario laterale, se diverso da quello del giorno scelto
   const [asideMonth, setAsideMonth] = useState<{ forDay: DateKey; month: DateKey } | null>(null)
@@ -105,25 +103,6 @@ export function AgendaPage() {
       start: start ?? defaultStartFor(date, now),
       ...(typeFilter !== 'tutti' ? { type: typeFilter } : {}),
     })
-
-  const exportIcs = () => {
-    const since = addDays(today, -30)
-    const list = appointments.filter((a) => a.status !== 'annullato' && a.date >= since).sort(compareAppointments)
-    if (list.length === 0) {
-      toast({ message: 'Nessun appuntamento da esportare' })
-      return
-    }
-    const ics = appointmentsToIcs(list, clients, { calendarName: `Agenda ${settings.brandName || ''}`.trim() })
-    const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `agenda-${today}.ics`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.setTimeout(() => URL.revokeObjectURL(url), 2000)
-    toast({ message: `Esportati ${plural(list.length, 'appuntamento', 'appuntamenti')} dal ${formatDateShort(since)}` })
-  }
 
   // ---------------------------------------------------------------- viste
   const [prevLabel, nextLabel] = STEP_LABEL[view]
@@ -302,7 +281,7 @@ export function AgendaPage() {
               Importa
             </span>
           </button>
-          <button type="button" className="btn" onClick={exportIcs}>
+          <button type="button" className="btn" onClick={() => setExportOpen(true)} aria-haspopup="dialog">
             <Download size={18} aria-hidden="true" />
             <span className="ag-label-long">Esporta .ics</span>
             <span className="ag-label-short" aria-hidden="true">
@@ -402,6 +381,7 @@ export function AgendaPage() {
 
       {editor.modal}
       <IcsImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <IcsExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </div>
   )
 }

@@ -55,9 +55,11 @@ export function countByBucket(list: Deadline[]): Record<DeadlineBucket, number> 
 
 // ---------------------------------------------------------------- filtri per tipo (scadenzario)
 
-export type DeadlineFilter = 'tutte' | 'adempimenti' | 'polizze' | 'compleanni' | 'pratiche'
+export type DeadlineFilter = 'tutte' | 'operative' | 'adempimenti' | 'polizze' | 'compleanni' | 'pratiche'
 
 const FILTER_KINDS: Record<Exclude<DeadlineFilter, 'tutte'>, DeadlineKind[]> = {
+  // gli stessi tipi di complianceDeadlines: è il totale "Scadenze 30 gg" della home
+  operative: ['documento', 'antiriciclaggio', 'adeguatezza', 'scadenza_polizza', 'pratica'],
   adempimenti: ['documento', 'antiriciclaggio', 'adeguatezza'],
   polizze: ['scadenza_polizza', 'anniversario_polizza'],
   compleanni: ['compleanno'],
@@ -66,9 +68,14 @@ const FILTER_KINDS: Record<Exclude<DeadlineFilter, 'tutte'>, DeadlineKind[]> = {
 
 export const DEADLINE_FILTER_OPTIONS: { value: DeadlineFilter; label: string; title?: string }[] = [
   { value: 'tutte', label: 'Tutte' },
+  {
+    value: 'operative',
+    label: 'Senza ricorrenze',
+    title: 'Adempimenti, scadenze di polizza e termini delle pratiche, esclusi compleanni e anniversari',
+  },
   { value: 'adempimenti', label: 'Adempimenti', title: "Documento d'identità, adeguata verifica, questionario di adeguatezza" },
   { value: 'polizze', label: 'Polizze', title: 'Scadenze e anniversari di polizza' },
-  { value: 'compleanni', label: 'Compleanni' },
+  { value: 'compleanni', label: 'Compleanni', title: 'Compleanni dei clienti' },
   { value: 'pratiche', label: 'Pratiche', title: 'Termini delle pratiche aperte' },
 ]
 
@@ -77,13 +84,22 @@ export function matchesDeadlineFilter(d: Pick<Deadline, 'kind'>, filter: Deadlin
 }
 
 export function countByFilter(list: Deadline[]): Record<DeadlineFilter, number> {
-  const counts: Record<DeadlineFilter, number> = { tutte: list.length, adempimenti: 0, polizze: 0, compleanni: 0, pratiche: 0 }
+  const counts: Record<DeadlineFilter, number> = { tutte: list.length, operative: 0, adempimenti: 0, polizze: 0, compleanni: 0, pratiche: 0 }
   for (const d of list) {
     for (const key of Object.keys(FILTER_KINDS) as Exclude<DeadlineFilter, 'tutte'>[]) {
       if (FILTER_KINDS[key].includes(d.kind)) counts[key]++
     }
   }
   return counts
+}
+
+/**
+ * Filtro preimpostato dal parametro `tipo` dello scadenzario (#/pratiche?vista=scadenze&tipo=adempimenti):
+ * "adempimenti" = tutte le scadenze operative (esclusi compleanni e anniversari), cioè quelle contate
+ * dal riquadro "Scadenze 30 gg" della home. Altri valori: nessun filtro.
+ */
+export function deadlineFilterFromParam(tipo: string | undefined): DeadlineFilter | null {
+  return tipo === 'adempimenti' ? 'operative' : null
 }
 
 // ---------------------------------------------------------------- raggruppamento per mese

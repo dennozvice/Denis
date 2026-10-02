@@ -1,5 +1,5 @@
 import { CircleAlert, FileUp, TriangleAlert, Upload } from 'lucide-react'
-import { useDeferredValue, useId, useMemo, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
+import { useDeferredValue, useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { INSTRUMENT_GROUP_LABEL } from '../../domain/labels'
@@ -9,7 +9,7 @@ import { lastPoint } from '../../lib/finance'
 import { formatDateShort, formatInstrumentValue, formatNumber, plural } from '../../lib/format'
 import { useMarket } from '../../store/MarketContext'
 import { useNow } from '../../store/NowContext'
-import { buildImports, groupImportRows, looksOffScale, type ImportGroup } from './fundsLogic'
+import { buildImports, groupImportRows, isFundGroup, looksOffScale, replacesDemo, type ImportGroup } from './fundsLogic'
 import './funds.css'
 
 const FORM_ID = 'fd-import-form'
@@ -58,6 +58,14 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
   const [fileError, setFileError] = useState<string>()
   const [saveError, setSaveError] = useState<string>()
   const [dragging, setDragging] = useState(false)
+  /** Nomi scelti per gli strumenti dimostrativi sostituiti (ID → nome). */
+  const [names, setNames] = useState<Record<string, string>>({})
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // focus iniziale sul campo dei dati, non sul bottone "Chiudi" (l'effetto del Modal, figlio, ha già aperto il dialog)
+  useEffect(() => {
+    if (open) textareaRef.current?.focus()
+  }, [open])
 
   const deferredText = useDeferredValue(text)
   const parsed = useMemo(
@@ -84,6 +92,7 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
     setFileError(undefined)
     setSaveError(undefined)
     setDragging(false)
+    setNames({})
     onClose()
   }
 
@@ -133,7 +142,9 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
     const toImport = groupImportRows(rowsToImport(current, allowFuture), instruments)
     if (toImport.length === 0) return
     // si parte dalle serie salvate più recenti: non si perdono import fatti in un'altra scheda
-    const result = updateImports((latest) => buildImports(toImport, latest))
+    // nomi solo per gli strumenti dimostrativi sostituiti in questa importazione
+    const renames = Object.fromEntries(toImport.filter(replacesDemo).flatMap((g) => (names[g.match.id] ? [[g.match.id, names[g.match.id]]] : [])))
+    const result = updateImports((latest) => buildImports(toImport, latest, renames))
     if (!result.ok) {
       setSaveError(saveErrorMessage(result.reason))
       return
@@ -167,7 +178,7 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
       }
     >
       <form id={FORM_ID} className="form fd-import" onSubmit={onSubmit} noValidate>
-        <p className="small text-2">
+        <p id={`${uid}-intro`} className="small text-2">
           Incolla i valori ufficiali o carica un file CSV salvato da Excel: una riga per valore con codice dello
           strumento, data e valore. I valori importati sostituiscono quelli dimostrativi dello stesso strumento e restano
           salvati solo in questo browser.
@@ -268,6 +279,8 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
           <label className="field span-2">
             <span>Dati da importare</span>
             <textarea
+              ref={textareaRef}
+              aria-describedby={`${uid}-intro`}
               className="textarea fd-textarea"
               rows={8}
               value={text}
@@ -306,7 +319,12 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
               {groups.length > 0 && (
                 <ul className="fd-preview-list">
                   {groups.map((g) => (
-                    <PreviewItem key={g.match.id} group={g} />
+                    <PreviewItem
+                      key={g.match.id}
+                      group={g}
+                      name={names[g.match.id]}
+                      onRename={(name) => setNames((prev) => ({ ...prev, [g.match.id]: name }))}
+                    />
                   ))}
                 </ul>
               )}
@@ -365,13 +383,23 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
   )
 }
 
-function PreviewItem({ group }: { group: ImportGroup }) {
+/** Cosa si perde sostituendo uno strumento dimostrativo: "rischio (SRI) e descrizione dimostrativi verranno rimossi". */
+function demoLossText(existing: Instrument): string | undefined {
+  const parts = [existing.sri ? 'rischio (SRI)' : undefined, existing.description ? 'descrizione' : undefined].filter(Boolean)
+  if (parts.length === 0) return undefined
+  return `${parts.join(' e ')} ${parts.length > 1 ? 'dimostrativi verranno rimossi' : existing.sri ? 'dimostrativo verrà rimosso' : 'dimostrativa verrà rimossa'}`
+}
+
+function PreviewItem({ group, name, onRename }: { group: ImportGroup; name: string | undefined; onRename(name: string): void }) {
+  const uid = useId()
   const { match, points, first, last, lastValue } = group
   const existing: Instrument | undefined = match.existing
   const unit = existing?.unit ?? 'EUR'
   const decimals = existing?.decimals ?? 3
   const current = existing ? lastPoint(existing.series)?.value : undefined
   const suspicious = looksOffScale(lastValue, current)
+  const demo = existing && replacesDemo(group) ? existing : undefined
+  const loss = demo ? demoLossText(demo) : undefined
   return (
     <li className="fd-preview-item">
       <div className="fd-preview-name">
@@ -385,6 +413,25 @@ function PreviewItem({ group }: { group: ImportGroup }) {
           <span className="strong">Nuovo fondo: {match.key}</span>
         )}
       </div>
+      {demo && (
+        <div className="fd-replace">
+          <p id={`${uid}-warn`} className="xsmall fd-warn-text">
+            <TriangleAlert size={12} aria-hidden="true" /> Stai sostituendo {isFundGroup(demo) ? 'il fondo' : 'lo strumento'}{' '}
+            dimostrativo «{demo.name}»{loss ? `: ${loss}` : ''}; puoi rinominarlo.
+          </p>
+          <label className="field fd-replace-name">
+            <span>Nome {isFundGroup(demo) ? 'del fondo' : 'dello strumento'}</span>
+            <input
+              className="input"
+              value={name ?? demo.name}
+              maxLength={80}
+              onChange={(e) => onRename(e.target.value)}
+              aria-describedby={`${uid}-warn`}
+              autoComplete="off"
+            />
+          </label>
+        </div>
+      )}
       <div className="xsmall muted num">
         {plural(points.length, 'valore', 'valori')} · {first === last ? `il ${formatDateShort(first)}` : `dal ${formatDateShort(first)} al ${formatDateShort(last)}`} · ultimo{' '}
         <span className="text-2 strong">{formatInstrumentValue(lastValue, unit, decimals)}</span>

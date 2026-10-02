@@ -1,5 +1,5 @@
 import { CalendarRange, FileUp, Info, TriangleAlert, Upload } from 'lucide-react'
-import { useId, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { APPOINTMENT_TYPE_LABEL } from '../../domain/labels'
@@ -21,6 +21,8 @@ interface Parsed {
   fileName: string
   items: ImportedAppointment[]
   warnings: string[]
+  /** Serie ricorrenti iniziate in passato con una regola non gestita: resta solo la prima occorrenza, passata. */
+  unsupportedSeries: number
 }
 
 const FORM_ID = 'ag-import-form'
@@ -30,7 +32,8 @@ const OWN_UID_SUFFIX = '@advisor-desk'
 
 /**
  * Import di un file .ics esportato da Outlook o Google Calendar: anteprima (numero di eventi, periodo,
- * avvisi, aggiornamenti di eventi già importati) e conferma.
+ * avvisi, aggiornamenti di eventi già importati) e conferma. Delle serie ricorrenti già iniziate si importa
+ * la prossima occorrenza (vedi `parseIcs`).
  */
 export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
   const { appointments, clients } = useAppData()
@@ -44,6 +47,14 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
   const [busy, setBusy] = useState(false)
   const [fileName, setFileName] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  // Il <dialog> mette il focus sul primo elemento ("Chiudi"): lo spostiamo sulla scelta del file.
+  useEffect(() => {
+    if (!open) return
+    const frame = window.requestAnimationFrame(() => fileRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [open])
 
   const close = () => {
     setParsed(null)
@@ -73,14 +84,19 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
         setError('Il file non sembra un calendario .ics valido.')
         return
       }
-      const { events, warnings } = parseIcs(text)
+      const { events, warnings } = parseIcs(text, { today })
       if (events.length === 0) {
         setError(
           warnings.length ? `Nessun evento importabile. ${warnings.join(' ')}` : 'Nessun evento trovato nel file.',
         )
         return
       }
-      setParsed({ fileName: file.name, items: icsEventsToAppointments(events, clients), warnings })
+      setParsed({
+        fileName: file.name,
+        items: icsEventsToAppointments(events, clients),
+        warnings,
+        unsupportedSeries: events.filter((e) => e.recurrenceUnsupported).length,
+      })
     } catch {
       setError('Impossibile leggere il file. Riprova oppure esporta di nuovo il calendario.')
     } finally {
@@ -118,6 +134,7 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
   const updates = toImport.filter((a) => a.externalId && knownExternal.has(a.externalId)).length
   const fresh = toImport.length - updates
   const skippedPast = all.length - candidates.length
+  const skippedSeries = onlyFuture ? (parsed?.unsupportedSeries ?? 0) : 0
   const first = all[0]?.date
   const last = all[all.length - 1]?.date
 
@@ -165,8 +182,9 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
               </li>
             </ul>
             <p className="xsmall">
-              Gli eventi già importati in precedenza vengono aggiornati, non duplicati. Il file resta sul tuo
-              dispositivo.
+              Gli eventi già importati in precedenza vengono aggiornati, non duplicati: cambiano titolo, data, orari e
+              luogo, mentre tipo, stato, esito, note e cliente scelti qui restano come sono. Delle serie ricorrenti si
+              importa solo la prossima occorrenza. Il file resta sul tuo dispositivo.
             </p>
           </div>
         </div>
@@ -185,6 +203,7 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
             onDrop={onDrop}
           >
             <input
+              ref={fileRef}
               type="file"
               className="visually-hidden"
               accept=".ics,text/calendar"
@@ -263,7 +282,15 @@ export function IcsImportModal({ open, onClose }: IcsImportModalProps) {
                 {updates === 1
                   ? 'aggiornerà un appuntamento già importato'
                   : 'aggiorneranno appuntamenti già importati'}
+                {updates > 0 && ' (titolo, data, orari e luogo)'}
               </li>
+              {skippedSeries > 0 && (
+                <li>
+                  <strong className="num">{skippedSeries}</strong>{' '}
+                  {skippedSeries === 1 ? 'serie ricorrente esclusa' : 'serie ricorrenti escluse'}: la ripetizione non è
+                  gestita e la prima occorrenza è già passata. Aggiungi a mano le prossime date.
+                </li>
+              )}
               {alreadyHere > 0 && (
                 <li>
                   <strong className="num">{alreadyHere}</strong> già presenti in agenda (esportati da qui): saltati

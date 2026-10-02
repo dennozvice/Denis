@@ -46,6 +46,10 @@
   color: var(--negative);
 }
 
+.ag-form-required-note {
+  margin-bottom: calc(-1 * var(--sp-2));
+}
+
 .ag-error,
 .field > .ag-error {
   font-size: var(--fs-xs);
@@ -489,8 +493,13 @@
   display: none;
 }
 
+/* bersaglio alto almeno 24px (WCAG 2.5.8) senza allargare la riga: il padding è compensato dal margine */
 .ag-tl-client {
+  display: inline-block;
+  padding-block: 2px;
+  margin-block: -2px;
   font-weight: 500;
+  line-height: 20px;
 }
 
 .ag-tl-loc {
@@ -1670,6 +1679,41 @@
       'title'
       'meta';
   }
+}
+
+/* ---------- Export .ics ---------- */
+.ag-exp-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.ag-exp-options legend {
+  margin-bottom: var(--sp-2);
+  padding: 0;
+}
+
+.ag-exp-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ag-exp-option .checkbox {
+  margin-top: 2px;
+}
+
+/* l'etichetta occupa tutta la riga: bersaglio comodo anche al tocco */
+.ag-exp-label {
+  display: block;
+  min-height: 24px;
+  font-weight: 500;
+  color: var(--text-1);
+  cursor: pointer;
 }
 
 /* ---------- Mobile ---------- */

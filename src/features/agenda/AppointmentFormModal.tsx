@@ -331,6 +331,12 @@ function AppointmentForm({
 
   return (
     <form id={FORM_ID} className="form ag-form" onSubmit={submit} noValidate>
+      <p className="field-hint ag-form-required-note">
+        <span className="ag-required" aria-hidden="true">
+          *
+        </span>{' '}
+        Campi obbligatori
+      </p>
       <div className="form-grid">
         <label className="field span-2">
           <span>
@@ -403,7 +409,12 @@ function AppointmentForm({
           </label>
 
           <label className="field">
-            <span>Inizio</span>
+            <span>
+              Inizio{' '}
+              <span className="ag-required" aria-hidden="true">
+                *
+              </span>
+            </span>
             <input
               ref={startRef}
               type="time"
@@ -418,7 +429,12 @@ function AppointmentForm({
             {error('start')}
           </label>
           <label className="field">
-            <span>Fine</span>
+            <span>
+              Fine{' '}
+              <span className="ag-required" aria-hidden="true">
+                *
+              </span>
+            </span>
             <input
               ref={endRef}
               type="time"
@@ -524,7 +540,7 @@ function AppointmentForm({
       {appointment?.source === 'ics' && (
         <p className="field-hint">
           Importato da un calendario esterno (.ics): un nuovo import dello stesso file aggiornerà titolo, data, orari e
-          luogo; cliente ed esito registrati qui vengono mantenuti.
+          luogo; tipo, stato, esito, note e cliente scelti qui vengono mantenuti.
         </p>
       )}
     </form>

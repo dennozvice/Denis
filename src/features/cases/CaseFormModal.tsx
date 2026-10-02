@@ -4,13 +4,19 @@ import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { CASE_STATUS_LABEL, CASE_TYPE_LABEL } from '../../domain/labels'
 import type { Case, CaseStatus, CaseType } from '../../domain/types'
-import { addDays, isDateKey } from '../../lib/dates'
-import { formatDateShort } from '../../lib/format'
+import { isDateKey } from '../../lib/dates'
 import { useNow } from '../../store/NowContext'
 import { useActions, useAppData, type NewCase } from '../../store/StoreContext'
 import { clientFullName } from '../../store/selectors'
 import { CASE_STATUSES } from './CaseBits'
-import { RECLAMO_RESPONSE_DAYS, formatAmountInput, parseAmount, sortClientsByLastName, suggestCaseTitle } from './caseUtils'
+import {
+  caseDueHint,
+  formatAmountInput,
+  parseAmount,
+  sortClientsByLastName,
+  suggestCaseDueDate,
+  suggestCaseTitle,
+} from './caseUtils'
 import './cases.css'
 
 export interface CaseFormModalProps {
@@ -70,7 +76,10 @@ interface FormState {
   titleAuto: boolean
   openedOn: string
   dueDate: string
-  /** true finché l'utente non tocca la scadenza: per i reclami vale apertura + 45 giorni. */
+  /**
+   * true finché l'utente non tocca la scadenza: si propone il termine di riferimento del tipo
+   * (reclamo 45 giorni; riscatto, liquidazione, sinistro 30 giorni solo per le nuove pratiche).
+   */
   dueAuto: boolean
   status: CaseStatus
   amount: string
@@ -116,8 +125,9 @@ function CaseForm({ caseItem, defaults, onDone }: { caseItem?: Case; defaults?: 
   const suggestedTitle = suggestCaseTitle(form.type, client ? clientFullName(client) : '')
   const title = form.titleAuto ? suggestedTitle : form.title
   const isReclamo = form.type === 'reclamo'
-  const autoDue = isReclamo && isDateKey(form.openedOn) ? addDays(form.openedOn, RECLAMO_RESPONSE_DAYS) : ''
+  const autoDue = suggestCaseDueDate(form.type, form.openedOn, !caseItem)
   const dueDate = form.dueAuto ? autoDue : form.dueDate
+  const dueHint = caseDueHint(form.type)
 
   // All'apertura il <dialog> mette il focus sul primo elemento (la X): lo spostiamo sul primo campo.
   useEffect(() => {
@@ -250,13 +260,7 @@ function CaseForm({ caseItem, defaults, onDone }: { caseItem?: Case; defaults?: 
         <Field
           id={fid('due')}
           label="Scadenza (facoltativa)"
-          hint={
-            isReclamo
-              ? `Termine di risposta al reclamo: ${RECLAMO_RESPONSE_DAYS} giorni${
-                  form.dueAuto && autoDue ? ` (entro il ${formatDateShort(autoDue)})` : ''
-                }`
-              : undefined
-          }
+          hint={dueHint}
           error={errors.dueDate}
         >
           <input
@@ -268,10 +272,11 @@ function CaseForm({ caseItem, defaults, onDone }: { caseItem?: Case; defaults?: 
             min={isDateKey(form.openedOn) ? form.openedOn : undefined}
             onChange={(e) => set({ dueDate: e.target.value, dueAuto: false })}
             onBlur={(e) => {
+              // il termine del reclamo vale comunque: svuotando il campo torna quello calcolato
               if (!e.target.value && isReclamo) set({ dueDate: '', dueAuto: true })
             }}
             aria-invalid={errors.dueDate ? true : undefined}
-            aria-describedby={describedBy(fid('due'), isReclamo, errors.dueDate)}
+            aria-describedby={describedBy(fid('due'), dueHint !== undefined, errors.dueDate)}
           />
         </Field>
 

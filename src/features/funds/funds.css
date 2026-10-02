@@ -186,6 +186,12 @@
   width: 80px;
 }
 
+/* "Var. ultimo dato" va a capo invece di allargare la colonna */
+.fd-table th.num.fd-col-last {
+  white-space: normal;
+  min-width: 72px;
+}
+
 .fd-check {
   display: inline-grid;
   place-items: center;
@@ -266,6 +272,33 @@
 
 .fd-table .fd-row-head {
   white-space: nowrap;
+}
+
+/* fonte dei valori (Demo / Importato) accanto al nome o alla categoria */
+.pill.fd-src {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.fd-fund-meta,
+.fd-row-name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.fd-row-name {
+  gap: 4px 8px;
+}
+
+/* "Var. ultimo dato" con la data di confronto sotto */
+.fd-last-change {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 /* intestazioni ordinabili */
@@ -458,6 +491,36 @@ th[aria-sort='descending'] .fd-sort-icon {
 }
 
 /* ---------- Pagina ---------- */
+.fd-page .page-header .fd-disclaimer {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.fd-page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.fd-markets-demo {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.fd-gs-note {
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--border-input);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-chip) var(--r-chip) 0;
+}
+
+/* interruttore "Mostra fondi dimostrativi" nel footer del widget: allineato al testo della card */
+.fd-demo-toggle {
+  margin-left: calc(var(--sp-2) * -1);
+}
+
 .fd-demo-banner {
   align-items: center;
   flex-wrap: wrap;
@@ -885,6 +948,27 @@ th[aria-sort='descending'] .fd-sort-icon {
 .fd-preview-name {
   font-size: var(--fs-sm);
   overflow-wrap: anywhere;
+}
+
+/* sostituzione di uno strumento dimostrativo: avviso e nome da dare al fondo reale */
+.fd-replace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: 4px;
+}
+
+.fd-replace .fd-warn-text {
+  align-items: flex-start;
+}
+
+.fd-replace .fd-warn-text svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.fd-replace-name {
+  max-width: 360px;
 }
 
 .fd-preview-errors {

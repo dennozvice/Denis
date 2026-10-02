@@ -10,7 +10,7 @@ import { Segmented } from '../../components/ui/Segmented'
 import { useToast } from '../../components/ui/Toast'
 import { INSTRUMENT_GROUP_LABEL, PERIOD_LABEL, PERIODS } from '../../domain/labels'
 import type { Instrument, InstrumentGroup, PerformancePeriod } from '../../domain/types'
-import { annualizedVolatility, lastPoint, maxDrawdown, rebaseToPct, sliceSeries, tailValues, usesAbsoluteChange } from '../../lib/finance'
+import { lastPoint, maxDrawdown, rebaseToPct, sliceSeries, usesAbsoluteChange } from '../../lib/finance'
 import {
   formatCurrency,
   formatDateShort,
@@ -24,22 +24,34 @@ import { useMarket } from '../../store/MarketContext'
 import {
   ChangeCell,
   formatLastValue,
+  LastChangeCell,
   lastYieldYear,
+  NotApplicable,
   SeriesDot,
+  ShowDemoToggle,
+  SourceTag,
   SriMeter,
   TableScroll,
+  useFundsView,
   useIsMobile,
   useMeasuredWidth,
 } from './FundBits'
 import {
+  annualizedVolatilityByFrequency,
   changeSortValue,
+  FREQUENCY_DATA_LABEL,
+  hasWideLastChange,
   instrumentChange,
   isGestioneSeparata,
+  lastChangeRef,
   lastValue,
+  latestDate,
+  rebaseAtCommonStart,
   removeImports,
   restoreImports,
   risingIsBad,
   stepDecimals,
+  trendValues,
   type ChangePeriod,
   type RemovedImport,
 } from './fundsLogic'
@@ -60,20 +72,34 @@ const SELECT_GROUPS: { label: string; groups: InstrumentGroup[] }[] = [
 
 /** Pagina #/fondi: dettaglio di un fondo o indice, confronto fondi, mercati e serie importate. */
 export function FundsPage() {
-  const { status, error, instruments, funds, markets, hasDemo, imports, reload } = useMarket()
+  const { status, error, imports, reload } = useMarket()
+  const { instruments, funds, markets, demoFundCount, showDemo } = useFundsView()
   const { params } = useRoute()
   const [importOpen, setImportOpen] = useState(false)
   const openImport = () => setImportOpen(true)
 
+  // un ID esplicito nell'indirizzo vale anche per un fondo dimostrativo nascosto; altrimenti si sceglie tra quelli mostrati
+  const visible = [...funds, ...markets]
   const selected =
     instruments.find((i) => i.id === params.id) ??
-    instruments.find((i) => i.id === DEFAULT_DETAIL_ID) ??
+    visible.find((i) => i.id === DEFAULT_DETAIL_ID) ??
     funds[0] ??
-    instruments[0]
+    visible[0]
+  const hasDemo = visible.some((i) => i.source === 'demo')
 
+  /** Scelta da una tabella: si porta il dettaglio in vista e il focus sul suo titolo (annunciato dai lettori di schermo). */
   const select = (id: string, scroll = false) => {
     navigate('fondi', { id }, true)
-    if (scroll) document.getElementById('fd-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    if (!scroll) return
+    // dopo il nuovo render: il titolo annuncia già il nuovo strumento
+    window.requestAnimationFrame(() => {
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+      document.getElementById('fd-detail')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+      const heading = document.getElementById('fd-detail-title')
+      if (!heading) return
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+    })
   }
 
   return (
@@ -82,12 +108,18 @@ export function FundsPage() {
         <div>
           <h1>Fondi e mercati</h1>
           <p>Valori quota, indici di mercato e rendimenti</p>
+          <p className="xsmall fd-disclaimer">I rendimenti passati non sono indicativi di quelli futuri.</p>
         </div>
-        {!hasDemo && (
-          <button type="button" className="btn fd-tap" onClick={openImport} aria-haspopup="dialog">
-            <FileUp size={16} aria-hidden="true" />
-            Importa valori
-          </button>
+        {(demoFundCount > 0 || !hasDemo) && (
+          <div className="fd-page-actions">
+            {demoFundCount > 0 && <ShowDemoToggle />}
+            {!hasDemo && (
+              <button type="button" className="btn fd-tap" onClick={openImport} aria-haspopup="dialog">
+                <FileUp size={16} aria-hidden="true" />
+                Importa valori
+              </button>
+            )}
+          </div>
         )}
       </header>
 
@@ -121,8 +153,18 @@ export function FundsPage() {
 
       {status === 'ready' && selected && (
         <>
-          <DetailSection instrument={selected} instruments={instruments} onSelect={(id) => select(id)} />
-          <CompareSection funds={funds} onSelect={(id) => select(id, true)} />
+          <DetailSection
+            instrument={selected}
+            instruments={instruments}
+            options={visible.includes(selected) ? visible : [...visible, selected]}
+            onSelect={(id) => select(id)}
+          />
+          <CompareSection
+            funds={funds}
+            demoHidden={demoFundCount > 0 && !showDemo}
+            onSelect={(id) => select(id, true)}
+            onImport={openImport}
+          />
           <MarketsSection markets={markets} onSelect={(id) => select(id, true)} />
           <ImportedSection imports={imports} onImport={openImport} />
         </>
@@ -167,10 +209,13 @@ type DetailMode = 'valore' | 'pct'
 function DetailSection({
   instrument,
   instruments,
+  options,
   onSelect,
 }: {
   instrument: Instrument
   instruments: Instrument[]
+  /** Strumenti elencati nella scelta (senza i fondi dimostrativi nascosti). */
+  options: Instrument[]
   onSelect(id: string): void
 }) {
   const gs = isGestioneSeparata(instrument)
@@ -182,7 +227,12 @@ function DetailSection({
     <Card
       id="fd-detail"
       className="fd-card fd-detail-card"
-      title={isFund ? 'Dettaglio fondo' : 'Dettaglio mercato'}
+      title={
+        <>
+          {isFund ? 'Dettaglio fondo' : 'Dettaglio mercato'}
+          <span className="visually-hidden">: {instrument.name}</span>
+        </>
+      }
       badge={showDemo ? <DemoBadge /> : undefined}
       subtitle={instrument.name}
       actions={
@@ -190,7 +240,7 @@ function DetailSection({
           <span className="visually-hidden">Scegli il fondo o l’indice da visualizzare</span>
           <select className="select" value={instrument.id} onChange={(e) => onSelect(e.target.value)}>
             {SELECT_GROUPS.map((g) => {
-              const list = instruments.filter((i) => g.groups.includes(i.group))
+              const list = options.filter((i) => g.groups.includes(i.group))
               if (list.length === 0) return null
               return (
                 <optgroup key={g.label} label={g.label}>
@@ -220,33 +270,32 @@ function SeriesDetail({ instrument, benchmark }: { instrument: Instrument; bench
   const withBenchmark = compare && !!benchmark
   const effMode: DetailMode = absolute ? 'valore' : withBenchmark ? 'pct' : mode
 
-  const series = useMemo<LineSeries[]>(() => {
+  const { series, compareStart } = useMemo(() => {
     const main = sliceSeries(instrument.series, period)
+    const line: LineSeries = { id: instrument.id, label: instrument.name, colorIndex: instrument.colorIndex, points: main }
+    if (!(withBenchmark && benchmark)) {
+      return { series: [{ ...line, points: effMode === 'pct' ? rebaseToPct(main) : main }], compareStart: undefined }
+    }
+    // fondo e benchmark ribasati alla stessa data, anche se uno dei due ha una storia più corta
+    const rebased = rebaseAtCommonStart([main, sliceSeries(benchmark.series, period)])
     const list: LineSeries[] = [
+      { ...line, points: rebased.series[0] },
       {
-        id: instrument.id,
-        label: instrument.name,
-        colorIndex: instrument.colorIndex,
-        points: effMode === 'pct' ? rebaseToPct(main) : main,
-      },
-    ]
-    if (withBenchmark && benchmark) {
-      const b = sliceSeries(benchmark.series, period)
-      list.push({
         id: `bench-${benchmark.id}`,
         label: `Benchmark: ${benchmark.name}`,
         colorIndex: benchmark.colorIndex === instrument.colorIndex ? (instrument.colorIndex % 8) + 1 : benchmark.colorIndex,
-        points: rebaseToPct(b),
+        points: rebased.series[1],
         dashed: true,
-      })
-    }
-    return list
+      },
+    ]
+    return { series: list, compareStart: rebased.start }
   }, [instrument, benchmark, period, effMode, withBenchmark])
 
   const last = lastPoint(instrument.series)
   const daily = instrumentChange(instrument, '1G')
+  const changeRef = lastChangeRef(instrument.series)
   const oneYear = sliceSeries(instrument.series, '1A')
-  const vol = absolute ? undefined : annualizedVolatility(oneYear)
+  const vol = absolute ? undefined : annualizedVolatilityByFrequency(oneYear)
   const dd = absolute ? undefined : maxDrawdown(oneYear)
 
   return (
@@ -259,7 +308,14 @@ function SeriesDetail({ instrument, benchmark }: { instrument: Instrument; bench
             <span className="xsmall muted">
               {last ? (
                 <>
-                  ultimo giorno · valore al <time dateTime={last.date}>{formatDateShort(last.date)}</time>
+                  {changeRef?.wide ? (
+                    <>
+                      rispetto al <time dateTime={changeRef.previous}>{formatDateShort(changeRef.previous)}</time>
+                    </>
+                  ) : (
+                    'ultimo giorno'
+                  )}{' '}
+                  · valore al <time dateTime={last.date}>{formatDateShort(last.date)}</time>
                 </>
               ) : (
                 'nessun valore'
@@ -290,7 +346,8 @@ function SeriesDetail({ instrument, benchmark }: { instrument: Instrument; bench
         </div>
         {withBenchmark && benchmark && (
           <p className="xsmall muted">
-            Rendimento % nel periodo, base 0% a inizio periodo. Benchmark: {benchmark.name}
+            Rendimento % nel periodo, base 0% {compareStart ? `al ${formatDateShort(compareStart)}` : 'a inizio periodo'}.
+            Benchmark: {benchmark.name}
             {benchmark.source === 'demo' ? ' (valori dimostrativi)' : ''}.
           </p>
         )}
@@ -321,8 +378,10 @@ function SeriesDetail({ instrument, benchmark }: { instrument: Instrument; bench
           {!absolute && (
             <>
               <div>
-                <dt>Volatilità annua (1A)</dt>
-                <dd className="num">{vol === undefined ? '—' : formatPercent(vol, 1)}</dd>
+                <dt>
+                  Volatilità annua (1A{vol ? `, ${FREQUENCY_DATA_LABEL[vol.frequency]}` : ''})
+                </dt>
+                <dd className="num">{vol === undefined ? '—' : formatPercent(vol.value, 1)}</dd>
               </div>
               <div>
                 <dt>Massimo ribasso (1A)</dt>
@@ -373,6 +432,10 @@ function GestioneDetail({ instrument }: { instrument: Instrument }) {
             <span className="xsmall muted">rendimento annuo certificato {lastYieldYear(instrument)}</span>
           </div>
         </div>
+        <p className="small text-2 fd-gs-note" role="note">
+          Rendimento lordo annuo certificato della gestione. Il rendimento riconosciuto al cliente dipende dalle
+          condizioni di polizza (es. trattenuta o rendimento minimo).
+        </p>
         <p className="xsmall muted">
           La gestione separata non ha un valore quota giornaliero: il rendimento viene certificato una volta l’anno.
         </p>
@@ -491,8 +554,15 @@ const COMPARE_PERIODS: ChangePeriod[] = ['1G', ...PERIODS]
 const LOW_PRIORITY_PERIODS = new Set<ChangePeriod>(['3M', '6M'])
 const periodClass = (p: ChangePeriod) => (LOW_PRIORITY_PERIODS.has(p) ? 'fd-col-low' : undefined)
 
-function periodHeader(p: ChangePeriod): { short: string; long: string } {
-  if (p === '1G') return { short: '1g', long: 'Variazione ultimo giorno' }
+/**
+ * Intestazione della colonna di periodo. `wideLast`: per almeno una riga l'ultima variazione copre più di 4 giorni
+ * (dati settimanali o mensili): la colonna "1g" diventa "Ult. dato".
+ */
+function periodHeader(p: ChangePeriod, wideLast = false): { short: string; long: string } {
+  if (p === '1G')
+    return wideLast
+      ? { short: 'Ult. dato', long: 'Variazione rispetto al valore precedente (per i dati settimanali o mensili non è di un giorno)' }
+      : { short: '1g', long: 'Variazione ultimo giorno' }
   return { short: p, long: `Variazione ${PERIOD_LABEL[p].toLowerCase()}` }
 }
 
@@ -572,10 +642,22 @@ function SelectLink({ instrument, onSelect }: { instrument: Instrument; onSelect
   )
 }
 
-function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id: string): void }) {
+function CompareSection({
+  funds,
+  demoHidden,
+  onSelect,
+  onImport,
+}: {
+  funds: Instrument[]
+  /** true se l'utente ha nascosto i fondi dimostrativi. */
+  demoHidden: boolean
+  onSelect(id: string): void
+  onImport(): void
+}) {
   const [sort, onSort] = useSort()
   const rows = sortInstruments(funds, sort.key, sort.dir, compareValue)
   const hasDemo = funds.some((f) => f.source === 'demo')
+  const wideLast = hasWideLastChange(funds)
   return (
     <Card
       id="fd-compare"
@@ -584,68 +666,82 @@ function CompareSection({ funds, onSelect }: { funds: Instrument[]; onSelect(id:
       badge={hasDemo ? <DemoBadge /> : undefined}
       subtitle="Valore quota e variazioni per periodo. Seleziona un’intestazione per ordinare."
     >
-      <TableScroll className="fd-compare-wrap">
-        <table className="table fd-table fd-sticky-first">
-          <caption className="visually-hidden">Confronto dei fondi: valore quota e variazioni per periodo</caption>
-          <thead>
-            <tr>
-              <SortHeader label="Fondo" sortKey="name" sort={sort} onSort={onSort} className="fd-col-name" />
-              <SortHeader label="Valore quota" sortKey="value" sort={sort} onSort={onSort} numeric />
-              {COMPARE_PERIODS.map((p) => {
-                const h = periodHeader(p)
+      {funds.length === 0 ? (
+        <EmptyState
+          icon={FileUp}
+          title="Nessun fondo da mostrare"
+          text={`${demoHidden ? 'I fondi dimostrativi sono nascosti. ' : ''}Importa i valori quota ufficiali dei tuoi fondi per confrontarli qui.`}
+          action={
+            <button type="button" className="btn btn-primary fd-tap" onClick={onImport} aria-haspopup="dialog">
+              <FileUp size={16} aria-hidden="true" />
+              Importa valori
+            </button>
+          }
+        />
+      ) : (
+        <TableScroll className="fd-compare-wrap">
+          <table className="table fd-table fd-sticky-first">
+            <caption className="visually-hidden">Confronto dei fondi: valore quota e variazioni per periodo</caption>
+            <thead>
+              <tr>
+                <SortHeader label="Fondo" sortKey="name" sort={sort} onSort={onSort} className="fd-col-name" />
+                <SortHeader label="Valore quota" sortKey="value" sort={sort} onSort={onSort} numeric />
+                {COMPARE_PERIODS.map((p) => {
+                  const h = periodHeader(p, wideLast)
+                  return (
+                    <SortHeader
+                      key={p}
+                      label={h.short}
+                      title={h.long}
+                      sortKey={p}
+                      sort={sort}
+                      onSort={onSort}
+                      numeric
+                      className={periodClass(p)}
+                    />
+                  )
+                })}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((f) => {
+                const gs = isGestioneSeparata(f)
                 return (
-                  <SortHeader
-                    key={p}
-                    label={h.short}
-                    title={h.long}
-                    sortKey={p}
-                    sort={sort}
-                    onSort={onSort}
-                    numeric
-                    className={periodClass(p)}
-                  />
+                  <tr key={f.id}>
+                    <th scope="row" className="fd-col-name">
+                      <div className="fd-fund">
+                        <SeriesDot colorIndex={f.colorIndex} />
+                        <div className="fd-fund-text">
+                          <SelectLink instrument={f} onSelect={onSelect} />
+                          <span className="xsmall muted fd-fund-meta">
+                            <SourceTag source={f.source} />
+                            {f.category}
+                          </span>
+                        </div>
+                      </div>
+                    </th>
+                    <td className="num">
+                      <span className="fd-value">{formatLastValue(f)}</span>
+                      {gs && <span className="fd-caption">rendimento {lastYieldYear(f)}</span>}
+                    </td>
+                    {COMPARE_PERIODS.map((p) => (
+                      <td key={p} className={['num', periodClass(p)].filter(Boolean).join(' ')}>
+                        {gs ? (
+                          <NotApplicable title="Rendimento annuo certificato: nessuna variazione giornaliera o di periodo" />
+                        ) : p === '1G' ? (
+                          <LastChangeCell instrument={f} variant="text" />
+                        ) : (
+                          <ChangeCell info={instrumentChange(f, p)} variant="text" />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
                 )
               })}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((f) => {
-              const gs = isGestioneSeparata(f)
-              return (
-                <tr key={f.id}>
-                  <th scope="row" className="fd-col-name">
-                    <div className="fd-fund">
-                      <SeriesDot colorIndex={f.colorIndex} />
-                      <div className="fd-fund-text">
-                        <SelectLink instrument={f} onSelect={onSelect} />
-                        <span className="xsmall muted">
-                          {[f.category, f.source === 'import' ? 'valori importati' : undefined].filter(Boolean).join(' · ')}
-                        </span>
-                      </div>
-                    </div>
-                  </th>
-                  <td className="num">
-                    <span className="fd-value">{formatLastValue(f)}</span>
-                    {gs && <span className="fd-caption">rendimento {lastYieldYear(f)}</span>}
-                  </td>
-                  {COMPARE_PERIODS.map((p) => (
-                    <td key={p} className={['num', periodClass(p)].filter(Boolean).join(' ')}>
-                      {gs ? (
-                        <span className="muted" title="Rendimento annuo certificato: nessuna variazione giornaliera o di periodo">
-                          <span aria-hidden="true">—</span>
-                          <span className="visually-hidden">non applicabile</span>
-                        </span>
-                      ) : (
-                        <ChangeCell info={instrumentChange(f, p)} variant="text" />
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </TableScroll>
+            </tbody>
+          </table>
+        </TableScroll>
+      )}
     </Card>
   )
 }
@@ -664,14 +760,27 @@ function marketValue(i: Instrument, key: SortKey): number | string | undefined {
 function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect(id: string): void }) {
   const [sort, onSort] = useSort()
   const rows = sortInstruments(markets, sort.key, sort.dir, marketValue)
-  const hasDemo = markets.some((m) => m.source === 'demo')
+  const demo = markets.filter((m) => m.source === 'demo')
+  const demoAsOf = latestDate(demo)
+  const wideLast = hasWideLastChange(markets)
   return (
     <Card
       id="fd-markets"
       className="fd-card"
       title="Mercati"
-      badge={hasDemo ? <DemoBadge /> : undefined}
-      subtitle="Indici, tassi, spread e cambi. Tassi e spread: variazioni in punti base (pb); per lo spread un aumento è in rosso."
+      badge={demo.length > 0 ? <DemoBadge /> : undefined}
+      subtitle={
+        <>
+          {demo.length > 0 && (
+            <strong className="fd-markets-demo">
+              Valori simulati a scopo dimostrativo{demoAsOf ? `, fermi al ${formatDateShort(demoAsOf)}` : ''}: non sono
+              quotazioni reali.{' '}
+            </strong>
+          )}
+          Indici, tassi, spread e cambi. Tassi e spread: variazioni in punti base (pb). Per i tassi la variazione non è
+          colorata (un rialzo non è di per sé né positivo né negativo); per lo spread un aumento è in rosso.
+        </>
+      }
     >
       {markets.length === 0 ? (
         <p className="muted small">Nessun indice disponibile.</p>
@@ -688,7 +797,7 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
                   </th>
                   <SortHeader label="Valore" sortKey="value" sort={sort} onSort={onSort} numeric />
                   {MARKET_PERIODS.map((p) => {
-                    const h = periodHeader(p)
+                    const h = periodHeader(p, wideLast)
                     return <SortHeader key={p} label={h.short} title={h.long} sortKey={p} sort={sort} onSort={onSort} numeric />
                   })}
                   <th scope="col" className="fd-col-trend">
@@ -697,59 +806,63 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
                 </tr>
               </thead>
               <tbody>
-                {rows.map((m) => {
-                  const spark = tailValues(m.series, 22)
-                  return (
-                    <tr key={m.id}>
-                      <th scope="row" className="fd-row-head">
+                {rows.map((m) => (
+                  <tr key={m.id}>
+                    <th scope="row" className="fd-row-head">
+                      <span className="fd-row-name">
                         <SelectLink instrument={m} onSelect={onSelect} />
-                      </th>
-                      <td className="muted small fd-col-type">{INSTRUMENT_GROUP_LABEL[m.group]}</td>
-                      <td className="num">{formatLastValue(m)}</td>
-                      {MARKET_PERIODS.map((p) => (
-                        <td key={p} className="num">
+                        <SourceTag source={m.source} />
+                      </span>
+                    </th>
+                    <td className="muted small fd-col-type">{INSTRUMENT_GROUP_LABEL[m.group]}</td>
+                    <td className="num">{formatLastValue(m)}</td>
+                    {MARKET_PERIODS.map((p) => (
+                      <td key={p} className="num">
+                        {p === '1G' ? (
+                          <LastChangeCell instrument={m} variant="text" />
+                        ) : (
                           <ChangeCell info={instrumentChange(m, p)} variant="text" />
-                        </td>
-                      ))}
-                      <td className="fd-col-trend">
-                        <Sparkline values={spark} width={72} height={24} label={trend(spark)} invert={risingIsBad(m)} />
+                        )}
                       </td>
-                    </tr>
-                  )
-                })}
+                    ))}
+                    <td className="fd-col-trend">
+                      <MarketTrend instrument={m} width={72} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </TableScroll>
 
           <ul className="fd-mcards fd-only-narrow" aria-label="Mercati">
-            {rows.map((m) => {
-              const spark = tailValues(m.series, 22)
-              return (
-                <li key={m.id} className="fd-mcard">
-                  <div className="fd-mcard-head">
-                    <div className="fd-mcard-name">
-                      <SelectLink instrument={m} onSelect={onSelect} />
-                      <span className="xsmall muted">{INSTRUMENT_GROUP_LABEL[m.group]}</span>
+            {rows.map((m) => (
+              <li key={m.id} className="fd-mcard">
+                <div className="fd-mcard-head">
+                  <div className="fd-mcard-name">
+                    <SelectLink instrument={m} onSelect={onSelect} />
+                    <span className="xsmall muted fd-fund-meta">
+                      <SourceTag source={m.source} />
+                      {INSTRUMENT_GROUP_LABEL[m.group]}
+                    </span>
+                  </div>
+                  <MarketTrend instrument={m} width={64} />
+                </div>
+                <div className="fd-mcard-value">
+                  <span className="num strong">{formatLastValue(m)}</span>
+                  <LastChangeCell instrument={m} />
+                </div>
+                <dl className="fd-mcard-periods">
+                  {MARKET_PERIODS.slice(1).map((p) => (
+                    <div key={p}>
+                      <dt>{p}</dt>
+                      <dd>
+                        <ChangeCell info={instrumentChange(m, p)} variant="text" />
+                      </dd>
                     </div>
-                    <Sparkline values={spark} width={64} height={24} label={trend(spark)} invert={risingIsBad(m)} />
-                  </div>
-                  <div className="fd-mcard-value">
-                    <span className="num strong">{formatLastValue(m)}</span>
-                    <ChangeCell info={instrumentChange(m, '1G')} />
-                  </div>
-                  <dl className="fd-mcard-periods">
-                    {MARKET_PERIODS.slice(1).map((p) => (
-                      <div key={p}>
-                        <dt>{p}</dt>
-                        <dd>
-                          <ChangeCell info={instrumentChange(m, p)} variant="text" />
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-                </li>
-              )
-            })}
+                  ))}
+                </dl>
+              </li>
+            ))}
           </ul>
         </>
       )}
@@ -760,6 +873,13 @@ function MarketsSection({ markets, onSelect }: { markets: Instrument[]; onSelect
 function trend(values: number[]): string {
   if (values.length < 2) return 'Andamento 30 giorni'
   return `Andamento 30 giorni: ${values[values.length - 1] >= values[0] ? 'in crescita' : 'in calo'}`
+}
+
+/** Sparkline degli ultimi 30 giorni di calendario; "—" se ci sono meno di 3 valori (es. dati mensili). */
+function MarketTrend({ instrument, width }: { instrument: Instrument; width: number }) {
+  const values = trendValues(instrument.series)
+  if (!values) return <NotApplicable title="Meno di 3 valori negli ultimi 30 giorni" srText="andamento 30 giorni non disponibile" />
+  return <Sparkline values={values} width={width} height={24} label={trend(values)} invert={risingIsBad(instrument)} />
 }
 
 // ---------------------------------------------------------------- dati importati

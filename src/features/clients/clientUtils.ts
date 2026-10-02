@@ -1,7 +1,10 @@
 /** Funzioni pure della sezione Clienti: ricerca, ordinamento, stato degli adempimenti, polizze. */
 import type { Tone } from '../../domain/labels'
 import type { Client, DateKey, Deadline, Policy } from '../../domain/types'
+import { parseItalianNumber } from '../../lib/csv'
 import { addMonths, diffDays } from '../../lib/dates'
+import { formatNumber } from '../../lib/format'
+import { clientsToRecontact } from '../../store/selectors'
 
 // ---------------------------------------------------------------- testo e ricerca
 
@@ -96,16 +99,16 @@ export function nearestDeadlineByClient(deadlines: Deadline[]): Map<string, Dead
 }
 
 const DEADLINE_SHORT: Record<Deadline['kind'], { label: string; feminine: boolean }> = {
-  documento: { label: 'Doc.', feminine: false },
-  antiriciclaggio: { label: 'AV', feminine: true },
-  adeguatezza: { label: 'Quest. IDD', feminine: false },
+  documento: { label: 'Documento', feminine: false },
+  antiriciclaggio: { label: 'Adeguata verifica', feminine: true },
+  adeguatezza: { label: 'Questionario adeguatezza', feminine: false },
   scadenza_polizza: { label: 'Polizza', feminine: true },
   pratica: { label: 'Pratica', feminine: true },
   anniversario_polizza: { label: 'Anniversario', feminine: false },
   compleanno: { label: 'Compleanno', feminine: false },
 }
 
-/** Etichetta compatta per l'elenco: "Doc. scaduto", "AV tra 3 gg", "Polizza scade oggi". */
+/** Etichetta per l'elenco: "Documento scaduto", "Adeguata verifica tra 3 gg", "Polizza scade oggi". */
 export function deadlineShortLabel(d: Pick<Deadline, 'kind' | 'daysLeft'>): string {
   const { label, feminine } = DEADLINE_SHORT[d.kind]
   if (d.daysLeft < 0) return `${label} ${feminine ? 'scaduta' : 'scaduto'}`
@@ -176,24 +179,20 @@ export interface LastContactInfo {
   /** Giorni dall'ultimo contatto; undefined se mai contattato. */
   days?: number
   /**
-   * true se il cliente va ricontattato: mai contattato o più giorni della soglia impostata.
-   * Vale solo per i clienti con polizze (i prospect no), come `clientsToRecontact` e il widget della home.
+   * true se il cliente va ricontattato (mai contattato o oltre la soglia impostata; i prospect senza polizze no).
+   * Usa la stessa regola di `clientsToRecontact`, che dà i conteggi dell'elenco e del widget della home.
    */
   stale: boolean
   /** "oggi", "ieri", "12 gg fa", "Mai contattato". */
   label: string
 }
 
-export function lastContactInfo(
-  client: Pick<Client, 'lastContact' | 'policies'>,
-  today: DateKey,
-  afterDays: number,
-): LastContactInfo {
-  const tracked = client.policies.length > 0
-  if (!client.lastContact) return { stale: tracked, label: 'Mai contattato' }
+export function lastContactInfo(client: Client, today: DateKey, afterDays: number): LastContactInfo {
+  const stale = clientsToRecontact([client], today, afterDays).length > 0
+  if (!client.lastContact) return { stale, label: 'Mai contattato' }
   const days = Math.max(0, diffDays(client.lastContact, today))
   const label = days === 0 ? 'oggi' : days === 1 ? 'ieri' : `${days} gg fa`
-  return { days, stale: tracked && days > afterDays, label }
+  return { days, stale, label }
 }
 
 // ---------------------------------------------------------------- polizze
@@ -214,24 +213,78 @@ export function isFourDigits(value: string): boolean {
   return /^\d{4}$/.test(value)
 }
 
+export type PremiumType = NonNullable<Policy['premiumType']>
+
+/** Tipo di premio della polizza: se non indicato (o non riconosciuto, es. dati importati) è un premio annuo. */
+export const premiumTypeOf = (p: Pick<Policy, 'premiumType'>): PremiumType =>
+  p.premiumType === 'unico' || p.premiumType === 'ricorrente' ? p.premiumType : 'annuo'
+
+/** Etichetta del campo importo nel form, secondo il tipo di premio. */
+export const PREMIUM_AMOUNT_LABEL: Record<PremiumType, string> = {
+  annuo: 'Premio annuo',
+  unico: 'Premio unico',
+  ricorrente: 'Versamento',
+}
+
 export interface PolicyTotals {
+  /** Somma dei premi annui (i premi unici e i versamenti non sono annuali e restano a parte). */
   annualPremium: number
+  singlePremium: number
+  recurringPayments: number
   monthlyPac: number
   withPac: number
 }
 
 export function policyTotals(policies: Policy[]): PolicyTotals {
-  let annualPremium = 0
+  const byType: Record<PremiumType, number> = { annuo: 0, unico: 0, ricorrente: 0 }
   let monthlyPac = 0
   let withPac = 0
   for (const p of policies) {
-    annualPremium += p.annualPremium ?? 0
+    byType[premiumTypeOf(p)] += p.annualPremium ?? 0
     if (p.pac) {
       monthlyPac += p.pac.amount
       withPac += 1
     }
   }
-  return { annualPremium, monthlyPac, withPac }
+  return {
+    annualPremium: byType.annuo,
+    singlePremium: byType.unico,
+    recurringPayments: byType.ricorrente,
+    monthlyPac,
+    withPac,
+  }
+}
+
+// ---------------------------------------------------------------- importi nel form
+
+/** Importo massimo accettato nel form (oltre è quasi certamente un errore di battitura). */
+const MAX_AMOUNT = 1_000_000_000
+
+export interface AmountCheck {
+  /** Importo in euro arrotondato al centesimo; undefined se il campo è vuoto o non valido. */
+  value?: number
+  error?: string
+}
+
+/**
+ * Legge un importo scritto all'italiana o all'inglese ("3.000" → 3000, "1.200,50" → 1200.5,
+ * "1200.50" → 1200.5, "€ 250" → 250) e lo valida. Campo vuoto = nessun importo (non è un errore).
+ */
+export function checkAmount(input: string, opts: { positive?: boolean } = {}): AmountCheck {
+  if (!input.trim()) return {}
+  const parsed = parseItalianNumber(input)
+  if (parsed === undefined || !Number.isFinite(parsed)) return { error: 'Importo non valido: scrivi ad es. 1.200,50.' }
+  const value = Math.round(parsed * 100) / 100
+  if (value < 0) return { error: "L'importo non può essere negativo." }
+  if (opts.positive && value === 0) return { error: 'Inserisci un importo maggiore di zero.' }
+  if (value > MAX_AMOUNT) return { error: 'Importo troppo alto: controlla le cifre.' }
+  return { value }
+}
+
+/** Importo salvato → testo per il campo del form, in formato italiano: 3000 → "3.000", 1200.5 → "1.200,50". */
+export function formatAmountInput(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return ''
+  return formatNumber(value, Number.isInteger(value) ? 0 : 2)
 }
 
 // ---------------------------------------------------------------- etichette e validazioni del form

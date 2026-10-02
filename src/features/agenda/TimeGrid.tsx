@@ -6,6 +6,7 @@ import { formatDateLong, WEEKDAY_SHORT } from '../../lib/format'
 import { clientFullName, isAllDay } from '../../store/selectors'
 import {
   appointmentPhase,
+  dayAriaLabel,
   hourRange,
   layoutOverlaps,
   mapsHref,
@@ -14,8 +15,14 @@ import {
   telHref,
   videoHref,
 } from './agendaUtils'
-import { appointmentAriaLabel, LocationIcon, locationText, StatusPill, typeStyle } from './AppointmentBits'
-import { dayAriaLabel } from './MiniCalendar'
+import {
+  appointmentAriaLabel,
+  appointmentTooltip,
+  LocationIcon,
+  locationText,
+  StatusPill,
+  typeStyle,
+} from './AppointmentBits'
 import './agenda.css'
 
 interface TimeGridProps {
@@ -57,7 +64,7 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
         <div className="ag-tg-head">
           <div className="ag-tg-corner" aria-hidden="true" />
           {days.map((day) => {
-            const count = timed.concat(allDay).filter((a) => a.date === day && a.status !== 'annullato').length
+            const types = appointments.filter((a) => a.date === day && a.status !== 'annullato').map((a) => a.type)
             return (
               <div
                 key={day}
@@ -67,7 +74,7 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
                   type="button"
                   className="ag-tg-daybtn"
                   onClick={() => onOpenDay?.(day)}
-                  aria-label={`${dayAriaLabel(day, count, now.date)}: apri il giorno`}
+                  aria-label={`${dayAriaLabel(day, types, now.date)}. Apri il giorno`}
                   aria-current={day === now.date ? 'date' : undefined}
                 >
                   <span className="ag-tg-wd" aria-hidden="true">
@@ -102,7 +109,7 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
                       a.clientId ? clients.get(a.clientId) : undefined,
                       appointmentPhase(a, now),
                     )}
-                    title={`Tutto il giorno · ${a.title}`}
+                    title={appointmentTooltip(a, a.clientId ? clients.get(a.clientId) : undefined)}
                   >
                     <span className="truncate">{a.title}</span>
                   </button>
@@ -242,7 +249,7 @@ function WeekEvent({ appointment: a, client, now, style, height, onEdit }: Event
       style={style}
       onClick={() => onEdit(a)}
       aria-label={appointmentAriaLabel(a, client, phase)}
-      title={`${a.start}–${a.end} ${a.title}`}
+      title={appointmentTooltip(a, client)}
     >
       <span className="ag-ev-line">
         <span className="ag-ev-time num">{a.start}</span>
@@ -281,6 +288,7 @@ function DayEvent({ appointment: a, client, now, style, height, onEdit }: EventP
             className="ag-ev-title ag-ev-open"
             onClick={() => onEdit(a)}
             aria-label={appointmentAriaLabel(a, client, phase)}
+            title={appointmentTooltip(a, client)}
           >
             {a.title}
           </button>

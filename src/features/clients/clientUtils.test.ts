@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Client, Deadline } from '../../domain/types'
+import { clientsToRecontact } from '../../store/selectors'
 import {
+  checkAmount,
   complianceLabel,
   complianceState,
   deadlineShortLabel,
   deadlineTone,
+  formatAmountInput,
   iddDueDate,
   isFourDigits,
   isPlausiblePhone,
@@ -16,6 +19,7 @@ import {
   parseTags,
   policyRefDigits,
   policyTotals,
+  premiumTypeOf,
   sensitiveDataHint,
   sortClients,
 } from './clientUtils'
@@ -103,12 +107,13 @@ describe('scadenze per cliente', () => {
     expect(map.size).toBe(1)
   })
 
-  it('etichette brevi concordate', () => {
-    expect(deadlineShortLabel({ kind: 'documento', daysLeft: -4 })).toBe('Doc. scaduto')
-    expect(deadlineShortLabel({ kind: 'antiriciclaggio', daysLeft: 3 })).toBe('AV tra 3 gg')
-    expect(deadlineShortLabel({ kind: 'antiriciclaggio', daysLeft: -1 })).toBe('AV scaduta')
+  it('etichette per esteso e concordate', () => {
+    expect(deadlineShortLabel({ kind: 'documento', daysLeft: -4 })).toBe('Documento scaduto')
+    expect(deadlineShortLabel({ kind: 'antiriciclaggio', daysLeft: 25 })).toBe('Adeguata verifica tra 25 gg')
+    expect(deadlineShortLabel({ kind: 'antiriciclaggio', daysLeft: -1 })).toBe('Adeguata verifica scaduta')
     expect(deadlineShortLabel({ kind: 'scadenza_polizza', daysLeft: 0 })).toBe('Polizza scade oggi')
-    expect(deadlineShortLabel({ kind: 'adeguatezza', daysLeft: 1 })).toBe('Quest. IDD domani')
+    expect(deadlineShortLabel({ kind: 'adeguatezza', daysLeft: 1 })).toBe('Questionario adeguatezza domani')
+    expect(deadlineShortLabel({ kind: 'adeguatezza', daysLeft: -3 })).toBe('Questionario adeguatezza scaduto')
   })
 
   it('toni', () => {
@@ -142,18 +147,39 @@ describe('adempimenti', () => {
 
 describe('ultimo contatto', () => {
   const policies = [{ id: 'p1', kind: 'risparmio' as const, ref: '••••1234', startDate: '2020-01-15' }]
+  const withPolicy = (lastContact?: string) => client({ id: 'c', lastName: 'Rossi', lastContact, policies })
+  const prospect = (lastContact?: string) => client({ id: 'p', lastName: 'Bianchi', lastContact })
 
   it('etichette e soglia', () => {
-    expect(lastContactInfo({ policies }, TODAY, 180)).toEqual({ stale: true, label: 'Mai contattato' })
-    expect(lastContactInfo({ lastContact: TODAY, policies }, TODAY, 180).label).toBe('oggi')
-    expect(lastContactInfo({ lastContact: '2026-10-01', policies }, TODAY, 180).label).toBe('ieri')
-    expect(lastContactInfo({ lastContact: '2026-09-20', policies }, TODAY, 180)).toEqual({ days: 12, stale: false, label: '12 gg fa' })
-    expect(lastContactInfo({ lastContact: '2025-08-28', policies }, TODAY, 180).stale).toBe(true)
+    expect(lastContactInfo(withPolicy(), TODAY, 180)).toEqual({ stale: true, label: 'Mai contattato' })
+    expect(lastContactInfo(withPolicy(TODAY), TODAY, 180).label).toBe('oggi')
+    expect(lastContactInfo(withPolicy('2026-10-01'), TODAY, 180).label).toBe('ieri')
+    expect(lastContactInfo(withPolicy('2026-09-20'), TODAY, 180)).toEqual({ days: 12, stale: false, label: '12 gg fa' })
+    expect(lastContactInfo(withPolicy('2026-04-05'), TODAY, 180).stale).toBe(false) // 180 gg: ancora entro la soglia
+    expect(lastContactInfo(withPolicy('2026-04-04'), TODAY, 180).stale).toBe(true) // 181 gg
+    expect(lastContactInfo(withPolicy('2025-08-28'), TODAY, 180).stale).toBe(true)
   })
 
   it('i prospect (senza polizze) non vanno segnalati da ricontattare, come nel widget della home', () => {
-    expect(lastContactInfo({ policies: [] }, TODAY, 180)).toEqual({ stale: false, label: 'Mai contattato' })
-    expect(lastContactInfo({ lastContact: '2025-08-28', policies: [] }, TODAY, 180)).toMatchObject({ stale: false, label: '400 gg fa' })
+    expect(lastContactInfo(prospect(), TODAY, 180)).toEqual({ stale: false, label: 'Mai contattato' })
+    expect(lastContactInfo(prospect('2025-08-28'), TODAY, 180)).toMatchObject({ stale: false, label: '400 gg fa' })
+  })
+
+  it("le righe segnalate coincidono con il conteggio dell'elenco (clientsToRecontact)", () => {
+    const all = [
+      withPolicy(),
+      withPolicy(TODAY),
+      withPolicy('2026-04-05'),
+      withPolicy('2026-04-04'),
+      withPolicy('2027-01-01'), // data futura (errore di battitura)
+      prospect(),
+      prospect('2025-01-01'),
+    ].map((c, i) => ({ ...c, id: `c${i}` }))
+    for (const afterDays of [0, 30, 180]) {
+      const flagged = all.filter((c) => lastContactInfo(c, TODAY, afterDays).stale).map((c) => c.id)
+      const listed = clientsToRecontact(all, TODAY, afterDays).map((x) => x.client.id)
+      expect(flagged.sort()).toEqual(listed.sort())
+    }
   })
 })
 
@@ -167,14 +193,73 @@ describe('polizze', () => {
     expect(isFourDigits('48a1')).toBe(false)
   })
 
-  it('totali di premi e PAC', () => {
+  it('totali di premi e PAC: i premi unici e i versamenti non sono premi annui', () => {
     expect(
       policyTotals([
         { id: '1', kind: 'pip', ref: '', startDate: TODAY, annualPremium: 2400, pac: { amount: 200, dayOfMonth: 5 } },
-        { id: '2', kind: 'tcm', ref: '', startDate: TODAY, annualPremium: 300 },
+        { id: '2', kind: 'tcm', ref: '', startDate: TODAY, annualPremium: 300, premiumType: 'annuo' },
         { id: '3', kind: 'unit_linked', ref: '', startDate: TODAY, pac: { amount: 150, dayOfMonth: 1 } },
+        { id: '4', kind: 'multiramo', ref: '', startDate: TODAY, annualPremium: 50000, premiumType: 'unico' },
+        { id: '5', kind: 'altro', ref: '', startDate: TODAY, annualPremium: 1200, premiumType: 'ricorrente' },
       ]),
-    ).toEqual({ annualPremium: 2700, monthlyPac: 350, withPac: 2 })
+    ).toEqual({ annualPremium: 2700, singlePremium: 50000, recurringPayments: 1200, monthlyPac: 350, withPac: 2 })
+  })
+
+  it('tipo di premio: annuo se assente o non riconosciuto', () => {
+    expect(premiumTypeOf({})).toBe('annuo')
+    expect(premiumTypeOf({ premiumType: 'unico' })).toBe('unico')
+    expect(premiumTypeOf({ premiumType: 'mensile' as never })).toBe('annuo')
+  })
+})
+
+describe('importi del form', () => {
+  it('legge gli importi scritti all\'italiana', () => {
+    expect(checkAmount('3.000')).toEqual({ value: 3000 })
+    expect(checkAmount('1.200,50')).toEqual({ value: 1200.5 })
+    expect(checkAmount('1200,5')).toEqual({ value: 1200.5 })
+    expect(checkAmount('150')).toEqual({ value: 150 })
+    expect(checkAmount('€ 2.400')).toEqual({ value: 2400 })
+    expect(checkAmount(' 1 200 ')).toEqual({ value: 1200 })
+    expect(checkAmount('1.000.000')).toEqual({ value: 1_000_000 })
+  })
+
+  it('accetta anche il punto decimale', () => {
+    expect(checkAmount('1200.50')).toEqual({ value: 1200.5 })
+    expect(checkAmount('99.9')).toEqual({ value: 99.9 })
+    expect(checkAmount('1,200.50')).toEqual({ value: 1200.5 })
+  })
+
+  it('arrotonda al centesimo', () => {
+    expect(checkAmount('10,456')).toEqual({ value: 10.46 })
+    expect(checkAmount('0,1')).toEqual({ value: 0.1 })
+  })
+
+  it('campo vuoto: nessun importo e nessun errore', () => {
+    expect(checkAmount('')).toEqual({})
+    expect(checkAmount('   ')).toEqual({})
+  })
+
+  it('errori: testo, formato ambiguo, negativi, zero dove serve un importo, valori assurdi', () => {
+    expect(checkAmount('tremila').error).toMatch(/non valido/)
+    expect(checkAmount('1.23,5').error).toMatch(/non valido/)
+    expect(checkAmount('12a').error).toMatch(/non valido/)
+    expect(checkAmount('-50').error).toMatch(/negativo/)
+    expect(checkAmount('−50').error).toMatch(/negativo/)
+    expect(checkAmount('0')).toEqual({ value: 0 })
+    expect(checkAmount('0', { positive: true }).error).toMatch(/maggiore di zero/)
+    expect(checkAmount('0,00', { positive: true }).error).toMatch(/maggiore di zero/)
+    expect(checkAmount('2.000.000.000').error).toMatch(/troppo alto/)
+  })
+
+  it('importo salvato mostrato in formato italiano, e riletto uguale', () => {
+    expect(formatAmountInput(undefined)).toBe('')
+    expect(formatAmountInput(3000)).toBe('3.000')
+    expect(formatAmountInput(1200.5)).toBe('1.200,50')
+    expect(formatAmountInput(150)).toBe('150')
+    expect(formatAmountInput(0)).toBe('0')
+    for (const n of [0, 7.5, 150, 3000, 1200.5, 1234567.89]) {
+      expect(checkAmount(formatAmountInput(n)).value).toBe(n)
+    }
   })
 })
 

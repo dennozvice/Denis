@@ -327,6 +327,26 @@
   font-weight: 600;
 }
 
+/* Sulla riga selezionata (sfondo --primary-bg) l'arancio scende sotto 4,5:1: lo si appoggia su una pastiglia chiara */
+.cl-row[aria-current='true'] .cl-last-contact[data-stale] {
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+}
+
+/* Le scadenze hanno etichette per esteso ("Questionario adeguatezza tra 25 gg"): vanno a capo invece di comprimere il nome */
+.cl-row-side .pill {
+  max-width: 22ch;
+  height: auto;
+  border-radius: var(--r-control);
+  min-height: 22px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: right;
+}
+
 /* ---------- Scheda cliente ---------- */
 .cl-detail {
   gap: 0;
@@ -403,6 +423,33 @@
 
 .btn.cl-contact-btn svg {
   flex: none;
+}
+
+.cl-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.cl-consent svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.cl-consent strong,
+.cl-comp-extra strong {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.cl-consent strong[data-unset],
+.cl-comp-extra strong[data-unset] {
+  font-weight: 500;
+  color: var(--text-3);
 }
 
 .cl-actions {
@@ -556,6 +603,16 @@
   color: var(--text-2);
 }
 
+.cl-comp-extra {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* Rischio antiriciclaggio alto: adeguata verifica rafforzata */
+.cl-comp-extra strong[data-alert] {
+  color: var(--negative);
+}
+
 .cl-comp-side {
   display: flex;
   align-items: center;
@@ -604,6 +661,13 @@
 
 .cl-pol-kind {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cl-pol-product {
+  font-weight: 500;
+  color: var(--text-2);
 }
 
 .cl-pol-ref {
@@ -890,6 +954,22 @@
   color: var(--negative);
 }
 
+.cl-required-note {
+  margin-top: calc(var(--sp-2) * -1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  font-size: var(--fs-md);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
 .cl-error,
 .field > .cl-error {
   font-size: var(--fs-xs);
@@ -967,6 +1047,11 @@
 
 .cl-policy-grid .cl-span-2 {
   grid-column: span 2;
+}
+
+/* Tipo di premio e PAC iniziano una nuova riga: i campi collegati restano affiancati */
+.cl-policy-grid .cl-grid-newline {
+  grid-column-start: 1;
 }
 
 .cl-ref-input {
@@ -1234,6 +1319,11 @@
     gap: 4px var(--sp-3);
   }
 
+  .cl-row-side .pill {
+    max-width: 100%;
+    text-align: left;
+  }
+
   .cl-detail > * {
     padding-left: var(--sp-4);
     padding-right: var(--sp-4);
@@ -1311,7 +1401,11 @@
   }
 
   .cl-policy-grid .cl-span-2 {
-    grid-column: span 2;
+    grid-column: auto;
+  }
+
+  .cl-check {
+    min-height: 44px;
   }
 }
 

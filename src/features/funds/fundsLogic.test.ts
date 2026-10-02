@@ -1,21 +1,34 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { niceTicks, sampleDates, seriesColor, timeTicks } from '../../components/charts/LineChart'
 import type { Instrument, PricePoint } from '../../domain/types'
-import { addDays } from '../../lib/dates'
+import { addDays, isWeekend } from '../../lib/dates'
+import { annualizedVolatility } from '../../lib/finance'
 import {
+  annualizedVolatilityByFrequency,
   buildImports,
   effectiveSelection,
   groupImportRows,
+  hasWideLastChange,
   instrumentChange,
+  isDemoFund,
+  lastChangeRef,
   latestDate,
+  loadShowDemoFunds,
   looksOffScale,
   matchKey,
   mergeSeries,
+  rebaseAtCommonStart,
   removeImports,
+  replacesDemo,
   restoreImports,
   risingIsBad,
+  samplingFrequency,
+  saveShowDemoFunds,
+  SHOW_DEMO_FUNDS_KEY,
   slugify,
   stepDecimals,
+  trendValues,
+  withoutDemoMeta,
 } from './fundsLogic'
 
 const fund = (id: string, extra: Partial<Instrument> = {}): Instrument => ({
@@ -32,6 +45,25 @@ const fund = (id: string, extra: Partial<Instrument> = {}): Instrument => ({
 
 const series = (start: string, values: number[]): PricePoint[] =>
   values.map((value, i) => ({ date: addDays(start, i), value }))
+
+/** Serie con un punto ogni `step` giorni di calendario. */
+const every = (start: string, step: number, values: number[]): PricePoint[] =>
+  values.map((value, i) => ({ date: addDays(start, i * step), value }))
+
+/** Serie giornaliera sui soli giorni lavorativi (come i valori quota). */
+function businessDays(start: string, values: number[]): PricePoint[] {
+  const out: PricePoint[] = []
+  let date = start
+  for (const value of values) {
+    while (isWeekend(date)) date = addDays(date, 1)
+    out.push({ date, value })
+    date = addDays(date, 1)
+  }
+  return out
+}
+
+/** Valori che salgono e scendono a turno (rendimenti noti, volatilità non nulla). */
+const zigzag = (n: number) => Array.from({ length: n }, (_, i) => 100 * (i % 2 === 0 ? 1 : 1.01))
 
 describe('effectiveSelection', () => {
   const chartable = [fund('f-a'), fund('f-bil-prud'), fund('f-az-glob'), fund('f-b')]
@@ -61,11 +93,20 @@ describe('instrumentChange', () => {
     expect(instrumentChange(f, '1G')).toMatchObject({ kind: 'pct', value: expect.closeTo(5, 6) })
   })
 
-  it('tassi: punti base, spread: punti base con colore invertito', () => {
+  it('tassi: punti base senza colore; spread: punti base con colore invertito', () => {
     const rate = fund('r', { group: 'tasso', unit: 'pct', decimals: 2, series: series('2026-09-28', [3.4, 3.45]) })
-    expect(instrumentChange(rate, '1G')).toMatchObject({ kind: 'abs', suffix: ' pb', invert: false, value: expect.closeTo(5, 6) })
+    expect(instrumentChange(rate, '1G')).toMatchObject({
+      kind: 'abs',
+      suffix: ' pb',
+      invert: false,
+      neutral: true,
+      value: expect.closeTo(5, 6),
+    })
     const spread = fund('s', { group: 'spread', unit: 'bp', decimals: 0, series: series('2026-09-28', [100, 95]) })
     expect(instrumentChange(spread, '1G')).toMatchObject({ kind: 'abs', invert: true, value: -5 })
+    expect(instrumentChange(spread, '1G')?.neutral).toBeFalsy()
+    const f = fund('f', { series: series('2026-09-28', [10, 10.5]) })
+    expect(instrumentChange(f, '1G')?.neutral).toBeFalsy()
   })
 
   it('gestione separata: differenza in punti percentuali rispetto all’anno prima, niente variazione giornaliera', () => {
@@ -89,6 +130,177 @@ describe('instrumentChange', () => {
     expect(risingIsBad({ unit: 'bp' })).toBe(true)
     expect(risingIsBad({ unit: 'pct' })).toBe(false)
     expect(risingIsBad({ unit: 'EUR' })).toBe(false)
+  })
+})
+
+describe('frequenza dei dati', () => {
+  it('riconosce dati giornalieri (weekend compresi), settimanali e mensili', () => {
+    expect(samplingFrequency(businessDays('2026-06-01', zigzag(80)))).toBe('giornaliera')
+    expect(samplingFrequency(every('2025-01-03', 7, zigzag(60)))).toBe('settimanale')
+    expect(samplingFrequency(every('2023-01-31', 30, zigzag(36)))).toBe('mensile')
+    expect(samplingFrequency([])).toBe('giornaliera')
+    expect(samplingFrequency(series('2026-09-28', [1]))).toBe('giornaliera')
+  })
+
+  it('guarda solo gli ultimi ~30 punti: storico mensile seguito da valori settimanali recenti', () => {
+    const old = every('2022-01-31', 30, zigzag(24))
+    const recent = every(addDays(old[old.length - 1].date, 7), 7, zigzag(35))
+    expect(samplingFrequency([...old, ...recent])).toBe('settimanale')
+  })
+
+  it('volatilità annualizzata con il fattore della frequenza (252, 52, 12)', () => {
+    const daily = businessDays('2025-10-01', zigzag(260))
+    const d = annualizedVolatilityByFrequency(daily)
+    expect(d?.frequency).toBe('giornaliera')
+    expect(d?.value).toBeCloseTo(annualizedVolatility(daily) ?? NaN, 8)
+
+    // stessi rendimenti settimanali: la volatilità annua è sqrt(52/252) di quella calcolata come se fossero giornalieri
+    const weekly = every('2025-10-03', 7, zigzag(53))
+    const w = annualizedVolatilityByFrequency(weekly)
+    expect(w?.frequency).toBe('settimanale')
+    expect(w?.value).toBeCloseTo((annualizedVolatility(weekly) ?? NaN) * Math.sqrt(52 / 252), 8)
+
+    const monthly = every('2025-09-30', 30, zigzag(13))
+    const m = annualizedVolatilityByFrequency(monthly)
+    expect(m?.frequency).toBe('mensile')
+    expect(m?.value).toBeCloseTo((annualizedVolatility(monthly) ?? NaN) * Math.sqrt(12 / 252), 8)
+  })
+
+  it('volatilità: undefined con meno di 3 punti o valori non positivi', () => {
+    expect(annualizedVolatilityByFrequency(series('2026-09-28', [1, 2]))).toBeUndefined()
+    expect(annualizedVolatilityByFrequency(series('2026-09-28', [1, 0, 2]))).toBeUndefined()
+  })
+
+  it('ultima variazione: segnala quando il valore precedente è di più di 4 giorni prima', () => {
+    expect(lastChangeRef(series('2026-09-28', [1]))).toBeUndefined()
+    // venerdì → lunedì: 3 giorni, ancora "1g"
+    expect(lastChangeRef([{ date: '2026-09-25', value: 1 }, { date: '2026-09-28', value: 2 }])).toEqual({
+      previous: '2026-09-25',
+      last: '2026-09-28',
+      gapDays: 3,
+      wide: false,
+    })
+    expect(lastChangeRef(every('2026-09-03', 7, [1, 2, 3]))).toMatchObject({ previous: '2026-09-10', gapDays: 7, wide: true })
+    expect(lastChangeRef(every('2026-09-23', 5, [1, 2]))?.wide).toBe(true)
+  })
+
+  it('hasWideLastChange ignora la gestione separata (rendimenti annuali)', () => {
+    const gs = fund('gs', { group: 'gestione_separata', unit: 'pct', series: every('2023-12-31', 365, [3, 3.1]) })
+    const daily = fund('d', { series: series('2026-09-28', [1, 2]) })
+    expect(hasWideLastChange([gs, daily])).toBe(false)
+    expect(hasWideLastChange([daily, fund('w', { series: every('2026-09-03', 7, [1, 2]) })])).toBe(true)
+  })
+
+  it('trend 30 giorni: solo i punti degli ultimi 30 giorni di calendario, almeno 3', () => {
+    const daily = businessDays('2026-06-01', zigzag(90))
+    const lastDate = daily[daily.length - 1].date
+    const values = trendValues(daily)
+    const expected = daily.filter((p) => p.date >= addDays(lastDate, -30)).map((p) => p.value)
+    expect(values).toEqual(expected)
+    expect(values!.length).toBeGreaterThanOrEqual(20)
+    expect(values!.length).toBeLessThanOrEqual(23)
+
+    expect(trendValues(every('2026-01-02', 7, zigzag(40)))).toHaveLength(5)
+    expect(trendValues(every('2024-01-31', 30, zigzag(30)))).toBeUndefined()
+    expect(trendValues(series('2026-09-28', [1, 2]))).toBeUndefined()
+    expect(trendValues([])).toBeUndefined()
+  })
+})
+
+describe('rebaseAtCommonStart', () => {
+  it('ribasa tutte le serie a 0% alla stessa data: la più recente tra gli inizi', () => {
+    const long = series('2026-09-01', [100, 110, 120, 130, 140])
+    const short = [
+      { date: '2026-09-03', value: 50 },
+      { date: '2026-09-05', value: 55 },
+    ]
+    const { start, series: out } = rebaseAtCommonStart([long, short])
+    expect(start).toBe('2026-09-03')
+    expect(out[0][0]).toEqual({ date: '2026-09-03', value: 0 })
+    expect(out[0].map((p) => p.date)).toEqual(['2026-09-03', '2026-09-04', '2026-09-05'])
+    expect(out[0][2].value).toBeCloseTo((140 / 120 - 1) * 100, 10)
+    expect(out[1]).toEqual([
+      { date: '2026-09-03', value: 0 },
+      { date: '2026-09-05', value: expect.closeTo(10, 10) },
+    ])
+  })
+
+  it('senza un punto alla data comune usa l’ultimo valore precedente, riportato a quella data', () => {
+    const weekly = [
+      { date: '2026-09-01', value: 10 },
+      { date: '2026-09-08', value: 11 },
+    ]
+    const daily = series('2026-09-03', [20, 21, 22, 23, 24, 25])
+    const { start, series: out } = rebaseAtCommonStart([weekly, daily])
+    expect(start).toBe('2026-09-03')
+    expect(out[0]).toEqual([
+      { date: '2026-09-03', value: 0 },
+      { date: '2026-09-08', value: expect.closeTo(10, 10) },
+    ])
+    expect(out[1][0]).toEqual({ date: '2026-09-03', value: 0 })
+  })
+
+  it('serie vuote restano vuote; nessuna serie → nessuna data', () => {
+    expect(rebaseAtCommonStart([])).toEqual({ series: [] })
+    expect(rebaseAtCommonStart([[], []])).toEqual({ series: [[], []] })
+    const { start, series: out } = rebaseAtCommonStart([[], series('2026-09-01', [1, 2])])
+    expect(start).toBe('2026-09-01')
+    expect(out[0]).toEqual([])
+    expect(out[1].map((p) => p.value)).toEqual([0, 100])
+  })
+})
+
+describe('fondi dimostrativi', () => {
+  const g = globalThis as { window?: unknown }
+  afterEach(() => {
+    delete g.window
+  })
+
+  it('isDemoFund vale per fondi e gestione separata dimostrativi, non per indici o import', () => {
+    expect(isDemoFund(fund('f'))).toBe(true)
+    expect(isDemoFund(fund('gs', { group: 'gestione_separata' }))).toBe(true)
+    expect(isDemoFund(fund('i', { group: 'indice' }))).toBe(false)
+    expect(isDemoFund(fund('f', { source: 'import' }))).toBe(false)
+  })
+
+  it('withoutDemoMeta toglie SRI e descrizione solo alle serie importate', () => {
+    const demo = fund('f', { sri: 3, description: 'Inventata', category: 'Bilanciato' })
+    expect(withoutDemoMeta(demo)).toBe(demo)
+    const imported = withoutDemoMeta({ ...demo, source: 'import' })
+    expect(imported).not.toHaveProperty('sri')
+    expect(imported).not.toHaveProperty('description')
+    expect(imported.category).toBe('Bilanciato')
+    const plain = fund('imp-x', { source: 'import' })
+    expect(withoutDemoMeta(plain)).toBe(plain)
+  })
+
+  it('preferenza "Mostra fondi dimostrativi": attiva di default, salvata, tollerante agli errori', () => {
+    expect(loadShowDemoFunds()).toBe(true) // nessun window/localStorage
+    const store = new Map<string, string>()
+    g.window = {
+      localStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+      },
+    }
+    expect(loadShowDemoFunds()).toBe(true)
+    saveShowDemoFunds(false)
+    expect(store.get(SHOW_DEMO_FUNDS_KEY)).toBe('false')
+    expect(loadShowDemoFunds()).toBe(false)
+    saveShowDemoFunds(true)
+    expect(loadShowDemoFunds()).toBe(true)
+    g.window = {
+      localStorage: {
+        getItem: () => {
+          throw new Error('bloccato')
+        },
+        setItem: () => {
+          throw new Error('bloccato')
+        },
+      },
+    }
+    expect(loadShowDemoFunds()).toBe(true)
+    expect(() => saveShowDemoFunds(false)).not.toThrow()
   })
 })
 
@@ -160,16 +372,45 @@ describe('importazione', () => {
     expect(prud).toMatchObject({
       name: 'Bilanciato Prudente',
       colorIndex: 2,
-      sri: 3,
       category: 'Bilanciato',
       benchmarkId: 'idx',
       source: 'import',
     })
+    // rischio e descrizione del fondo dimostrativo erano inventati: non passano ai valori reali
+    expect(prud?.sri).toBeUndefined()
+    expect(prud?.description).toBeUndefined()
     expect(prud?.series.map((p) => p.value)).toEqual([11.82, 11.9])
     const beta = list.find((i) => i.id === 'imp-fondo-beta')
     expect(beta).toMatchObject({ name: 'Fondo Beta', group: 'fondo', unit: 'EUR', decimals: 3, source: 'import' })
     expect(beta?.colorIndex).toBeGreaterThanOrEqual(1)
     expect(beta?.colorIndex).toBeLessThanOrEqual(8)
+  })
+
+  it('buildImports rinomina il fondo dimostrativo sostituito (nome vuoto = nome attuale)', () => {
+    const groups = groupImportRows(
+      [
+        { key: 'f-bil-prud', date: '2026-09-30', value: 11.82 },
+        { key: 'Fondo Beta', date: '2026-09-30', value: 5.5 },
+      ],
+      instruments,
+    )
+    expect(groups.map(replacesDemo)).toEqual([true, false])
+    const renamed = buildImports(groups, [], { 'f-bil-prud': '  Linea Bilanciata Reale  ' })
+    expect(renamed.find((i) => i.id === 'f-bil-prud')?.name).toBe('Linea Bilanciata Reale')
+    expect(renamed.find((i) => i.id === 'imp-fondo-beta')?.name).toBe('Fondo Beta')
+    const blank = buildImports(groups, [], { 'f-bil-prud': '   ' })
+    expect(blank.find((i) => i.id === 'f-bil-prud')?.name).toBe('Bilanciato Prudente')
+  })
+
+  it('buildImports non conserva SRI e descrizione copiati da import precedenti', () => {
+    const legacy: Instrument[] = [
+      { ...instruments[0], description: 'Inventata', source: 'import', series: [{ date: '2026-09-29', value: 11.7 }] },
+    ]
+    const groups = groupImportRows([{ key: 'f-bil-prud', date: '2026-09-30', value: 11.8 }], instruments)
+    const [item] = buildImports(groups, legacy)
+    expect(item.sri).toBeUndefined()
+    expect(item.description).toBeUndefined()
+    expect(item.series).toHaveLength(2)
   })
 
   it('buildImports unisce ai valori già importati senza duplicare lo strumento', () => {

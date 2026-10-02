@@ -257,6 +257,25 @@
   container: cs-cases / inline-size;
 }
 
+/* Intestazione con il numero di pratiche: riceve il focus se la riga attiva sparisce dall'elenco */
+.cs-results-title {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.cs-results-title:focus,
+.card.cs-empty:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.card.cs-empty:focus {
+  border-radius: var(--r-card);
+}
+
 .cs-table-view {
   display: none;
   padding: var(--sp-2) var(--sp-5);
@@ -470,6 +489,12 @@
 
 .select.cs-status-select:hover {
   border-color: var(--border-input);
+}
+
+/* Valore scelto con le frecce, non ancora confermato (Invio o uscendo dal campo) */
+.select.cs-status-select[data-pending] {
+  border-color: var(--primary);
+  border-style: dashed;
 }
 
 /* Schede (mobile / tablet) */

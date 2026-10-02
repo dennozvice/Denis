@@ -10,11 +10,11 @@ import { formatNumber } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
 import { useAppData } from '../../store/StoreContext'
-import { clientNameById, indexById } from '../../store/selectors'
+import { caseDueDate, clientNameById, indexById } from '../../store/selectors'
 import { formatDeadlineDate } from '../deadlines/deadlineUtils'
 import { CaseTypeIcon, ReclamoDuePill, caseDaysLabel, formatCaseAmount } from './CaseBits'
 import { CaseFormModal } from './CaseFormModal'
-import { caseAgeDays, caseAgeLabel, caseDueDate, caseDueTone, sortOpenCases } from './caseUtils'
+import { caseAgeDays, caseAgeLabel, caseDueTone, sortOpenCases } from './caseUtils'
 import './cases.css'
 
 /** Righe mostrate nel widget. */

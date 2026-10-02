@@ -2,15 +2,10 @@
 import { Building2, MapPin, Phone, Video } from 'lucide-react'
 import { Pill } from '../../components/ui/Pill'
 import type { Tone } from '../../domain/labels'
-import {
-  APPOINTMENT_OUTCOME_LABEL,
-  APPOINTMENT_TYPE_COLOR,
-  APPOINTMENT_TYPE_LABEL,
-  LOCATION_LABEL,
-} from '../../domain/labels'
+import { APPOINTMENT_OUTCOME_LABEL, APPOINTMENT_TYPE_COLOR, LOCATION_LABEL } from '../../domain/labels'
 import type { Appointment, AppointmentOutcome, Client, LocationMode } from '../../domain/types'
-import { clientFullName, isAllDay } from '../../store/selectors'
-import { videoHref, type Phase } from './agendaUtils'
+import { isAllDay } from '../../store/selectors'
+import { appointmentHeadline, videoHref, type Phase } from './agendaUtils'
 
 export function LocationIcon({ mode, size = 14 }: { mode: LocationMode; size?: number }) {
   switch (mode) {
@@ -83,10 +78,14 @@ export function typeStyle(a: Pick<Appointment, 'type'>): React.CSSProperties {
   } as React.CSSProperties
 }
 
-/** Descrizione completa per lettori di schermo: "09:30–10:30, Revisione portafoglio, Mario Rossi, In ufficio, Da confermare". */
+/** Suggerimento al passaggio del mouse: "09:30–10:30 · Firma – Mario Rossi (Firma contratto)". */
+export function appointmentTooltip(a: Appointment, client: Client | undefined): string {
+  return `${timeRangeText(a)} · ${appointmentHeadline(a, client)}`
+}
+
+/** Descrizione completa per lettori di schermo: "09:30–10:30, Firma – Mario Rossi (Firma contratto), In ufficio, da confermare". */
 export function appointmentAriaLabel(a: Appointment, client: Client | undefined, phase: Phase): string {
-  const parts = [timeRangeText(a), a.title, APPOINTMENT_TYPE_LABEL[a.type]]
-  if (client) parts.push(clientFullName(client))
+  const parts = [timeRangeText(a), appointmentHeadline(a, client)]
   if (hasLocation(a)) parts.push(locationText(a))
   if (a.status === 'annullato') parts.push('annullato')
   else if (phase === 'in_corso') parts.push('in corso')

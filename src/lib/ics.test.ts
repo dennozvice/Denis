@@ -13,6 +13,7 @@ import {
   matchClient,
   parseDuration,
   parseIcs,
+  parseRrule,
   unescapeText,
   unfoldLines,
   type IcsEvent,
@@ -626,7 +627,7 @@ describe('appointmentsToIcs', () => {
       clientId: 'c01',
     }),
   ]
-  const ics = appointmentsToIcs(appointments, CLIENTS, { now: NOW })
+  const ics = appointmentsToIcs(appointments, CLIENTS, { now: NOW, includeNotes: true })
   const lines = ics.split('\r\n')
 
   it('struttura VCALENDAR valida con VTIMEZONE Europe/Rome', () => {
@@ -656,8 +657,9 @@ describe('appointmentsToIcs', () => {
     expect(unfolded).toContain('LOCATION:Via dei Tigli 12\\, Milano')
     expect(unfolded).toContain('DESCRIPTION:Portare report\\; rendimenti\\, proposta\\nSeconda riga con \\\\ barra')
     expect(unfolded).toContain('STATUS:TENTATIVE')
-    // telefono senza dettaglio: si usa il numero del cliente
-    expect(unfolded).toContain('LOCATION:+39 000 000 0101')
+    // telefono senza dettaglio: solo l'etichetta, mai il numero dalla scheda del cliente
+    expect(unfolded).toContain('LOCATION:Telefono')
+    expect(ics).not.toContain('0101')
   })
 
   it('andata e ritorno: export → import restituisce gli stessi appuntamenti', () => {
@@ -733,5 +735,285 @@ describe('appointmentsToIcs – tutto il giorno e titolo', () => {
       title: 'Firma contratto Rossi Mario',
       clientId: 'c01',
     })
+  })
+})
+
+describe('appointmentsToIcs – privacy', () => {
+  const NOW = new Date(Date.UTC(2026, 9, 2, 8, 0, 0))
+  const appointments: Appointment[] = [
+    appt({
+      id: 'p1',
+      title: 'Revisione portafoglio',
+      type: 'revisione_portafoglio',
+      date: '2026-10-05',
+      start: '09:30',
+      end: '10:30',
+      clientId: 'c01',
+      location: 'domicilio',
+      locationDetail: 'Via dei Tigli 12, Milano',
+      notes: 'Patrimonio 250.000 €, figlio disabile',
+    }),
+    appt({
+      id: 'p2',
+      title: 'Esito proposta',
+      type: 'call',
+      date: '2026-10-06',
+      start: '14:30',
+      end: '14:50',
+      location: 'telefono',
+      clientId: 'c01',
+    }),
+  ]
+  const unfoldedWith = (options: Parameters<typeof appointmentsToIcs>[2]) =>
+    unfoldLines(appointmentsToIcs(appointments, CLIENTS, { now: NOW, ...options }))
+
+  it('di default: nomi dei clienti e luoghi sì, note no, telefono del cliente mai', () => {
+    const unfolded = unfoldedWith({})
+    expect(unfolded).toContain('SUMMARY:Revisione portafoglio – Mario Rossi')
+    expect(unfolded).toContain('LOCATION:Via dei Tigli 12\\, Milano')
+    expect(unfolded.some((l) => l.startsWith('DESCRIPTION'))).toBe(false)
+    expect(unfolded).toContain('LOCATION:Telefono')
+    expect(unfolded.join('\n')).not.toContain('0101')
+  })
+
+  it('senza nomi dei clienti: il titolo resta quello dell\'appuntamento', () => {
+    const unfolded = unfoldedWith({ includeClientNames: false })
+    expect(unfolded).toContain('SUMMARY:Revisione portafoglio')
+    expect(unfolded).toContain('SUMMARY:Esito proposta')
+    expect(unfolded.join('\n')).not.toMatch(/Rossi|Mario/)
+  })
+
+  it('senza dettagli del luogo: solo l\'etichetta generica', () => {
+    const unfolded = unfoldedWith({ includeLocationDetails: false })
+    expect(unfolded).toContain('LOCATION:Dal cliente')
+    expect(unfolded.join('\n')).not.toContain('Tigli')
+  })
+
+  it('con le note: DESCRIPTION', () => {
+    expect(unfoldedWith({ includeNotes: true })).toContain('DESCRIPTION:Patrimonio 250.000 €\\, figlio disabile')
+  })
+})
+
+// ---------------------------------------------------------------- ricorrenze
+
+describe('parseRrule', () => {
+  it('regole semplici', () => {
+    expect(parseRrule('FREQ=WEEKLY;BYDAY=MO,WE;INTERVAL=2;WKST=SU')).toEqual({
+      freq: 'WEEKLY',
+      interval: 2,
+      weekStart: 6,
+      weekdays: [0, 2],
+    })
+    expect(parseRrule('FREQ=DAILY;COUNT=10')).toEqual({ freq: 'DAILY', interval: 1, weekStart: 0, count: 10 })
+    expect(parseRrule('FREQ=MONTHLY;BYDAY=-1FR;UNTIL=20271231T225959Z')).toMatchObject({
+      freq: 'MONTHLY',
+      nthWeekday: { n: -1, weekday: 4 },
+      until: '20271231T225959Z',
+    })
+    expect(parseRrule('FREQ=MONTHLY;BYDAY=TU;BYSETPOS=2')).toMatchObject({ nthWeekday: { n: 2, weekday: 1 } })
+    expect(parseRrule('FREQ=MONTHLY;BYMONTHDAY=-1')).toMatchObject({ monthDay: -1 })
+    expect(parseRrule('FREQ=YEARLY;BYMONTH=11;BYDAY=4TH')).toMatchObject({ month: 11, nthWeekday: { n: 4, weekday: 3 } })
+  })
+
+  it.each([
+    'FREQ=HOURLY',
+    'FREQ=WEEKLY;BYHOUR=9,15',
+    'FREQ=MONTHLY;BYMONTHDAY=1,15',
+    'FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1',
+    'FREQ=WEEKLY;BYDAY=1MO',
+    'FREQ=YEARLY;BYDAY=20MO',
+    'FREQ=DAILY;INTERVAL=0',
+    'FREQ=DAILY;UNTIL=domani',
+    'BYDAY=MO',
+  ])('%s → non gestita', (rule) => {
+    expect(parseRrule(rule)).toBeNull()
+  })
+})
+
+describe('parseIcs – serie ricorrenti già iniziate (today)', () => {
+  const wrap = (...body: string[]) => crlf(['BEGIN:VCALENDAR', 'VERSION:2.0', ...body, 'END:VCALENDAR'])
+  const series = (uid: string, start: string, rrule: string, ...extra: string[]) => [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTART;TZID=Europe/Rome:${start}`,
+    `DTEND;TZID=Europe/Rome:${start.slice(0, 9)}${String(Number(start.slice(9, 11)) + 1).padStart(2, '0')}${start.slice(11)}`,
+    `RRULE:${rrule}`,
+    `SUMMARY:Serie ${uid}`,
+    ...extra,
+    'END:VEVENT',
+  ]
+  // oggi: venerdì 2 ottobre 2026
+  const TODAY = '2026-10-02'
+  const one = (...body: string[]) => {
+    const result = parseIcs(wrap(...body), { today: TODAY })
+    return { ...result, event: result.events[0] }
+  }
+
+  it('settimanale: la prossima occorrenza da oggi, stesso orario, con avviso', () => {
+    // lunedì 7 settembre 2026 alle 9, ogni lunedì → lunedì 5 ottobre
+    const { event, warnings } = one(...series('w', '20260907T090000', 'FREQ=WEEKLY;BYDAY=MO'))
+    expect(event).toMatchObject({ date: '2026-10-05', start: '09:00', end: '10:00', recurring: true })
+    expect(event.occurrence).toBe('2026-10-05')
+    expect(warnings).toEqual([
+      "1 serie ricorrente iniziata in passato: viene importata solo la prossima occorrenza, non l'intera serie.",
+    ])
+  })
+
+  it("un'occorrenza oggi conta (anche se l'orario è passato)", () => {
+    expect(one(...series('d', '20260101T080000', 'FREQ=DAILY')).event.date).toBe(TODAY)
+  })
+
+  it('settimanale con più giorni, INTERVAL e WKST', () => {
+    // ogni 2 settimane lun/gio dal 7 settembre: settimane del 7/9, 21/9, 5/10 → giovedì 24/9 passato, lunedì 5/10
+    expect(one(...series('w2', '20260907T090000', 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,TH;WKST=SU')).event.date).toBe(
+      '2026-10-05',
+    )
+    // ogni lun-ven: venerdì 2 ottobre (oggi)
+    expect(one(...series('wd', '20250106T083000', 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')).event.date).toBe(TODAY)
+  })
+
+  it('giornaliera con INTERVAL', () => {
+    // ogni 3 giorni dal 1° settembre: 1, 4, …, 28 set, 1 ott, 4 ott
+    expect(one(...series('d3', '20260901T100000', 'FREQ=DAILY;INTERVAL=3')).event.date).toBe('2026-10-04')
+  })
+
+  it('mensile: stesso giorno, ultimo venerdì, giorni che non esistono saltati', () => {
+    expect(one(...series('m', '20260115T110000', 'FREQ=MONTHLY')).event.date).toBe('2026-10-15')
+    expect(one(...series('mf', '20260130T110000', 'FREQ=MONTHLY;BYDAY=-1FR')).event.date).toBe('2026-10-30')
+    expect(one(...series('m2', '20260106T110000', 'FREQ=MONTHLY;BYDAY=TU;BYSETPOS=1')).event.date).toBe('2026-10-06')
+    // il 31: ottobre ha 31 giorni
+    expect(one(...series('m31', '20260131T110000', 'FREQ=MONTHLY')).event.date).toBe('2026-10-31')
+    // il 31 ogni 2 mesi da luglio: settembre non ha il 31 → novembre non ha il 31 → gennaio
+    expect(one(...series('m31b', '20260731T110000', 'FREQ=MONTHLY;INTERVAL=2')).event.date).toBe('2027-01-31')
+  })
+
+  it('annuale: anniversario e 29 febbraio solo negli anni bisestili', () => {
+    expect(one(...series('y', '20200315T100000', 'FREQ=YEARLY')).event.date).toBe('2027-03-15')
+    expect(one(...series('leap', '20240229T100000', 'FREQ=YEARLY')).event.date).toBe('2028-02-29')
+  })
+
+  it('COUNT, UNTIL e serie finite: resta la prima occorrenza (passata), senza spostarla', () => {
+    // 4 lunedì dal 7 settembre: l'ultimo è il 28 settembre
+    const ended = one(...series('c', '20260907T090000', 'FREQ=WEEKLY;COUNT=4'))
+    expect(ended.event).toMatchObject({ date: '2026-09-07', recurring: true })
+    expect(ended.event.occurrence).toBeUndefined()
+    expect(ended.warnings).toEqual(['1 evento ricorrente: viene importata solo la prima occorrenza.'])
+    // 5 lunedì: il 5 ottobre è il quinto
+    expect(one(...series('c5', '20260907T090000', 'FREQ=WEEKLY;COUNT=5')).event.date).toBe('2026-10-05')
+    // UNTIL in UTC: lunedì 5 ottobre alle 9 di Roma = 07:00Z
+    expect(one(...series('u1', '20260907T090000', 'FREQ=WEEKLY;UNTIL=20261005T070000Z')).event.date).toBe(
+      '2026-10-05',
+    )
+    expect(one(...series('u2', '20260907T090000', 'FREQ=WEEKLY;UNTIL=20261005T065959Z')).event.date).toBe(
+      '2026-09-07',
+    )
+    expect(one(...series('u3', '20260907T090000', 'FREQ=WEEKLY;UNTIL=20261005')).event.date).toBe('2026-10-05')
+  })
+
+  it('EXDATE (anche su più righe) salta le occorrenze annullate', () => {
+    const { event } = one(
+      ...series(
+        'x',
+        '20260907T090000',
+        'FREQ=WEEKLY',
+        'EXDATE;TZID=Europe/Rome:20261005T090000',
+        'EXDATE;TZID=Europe/Rome:20261012T090000,20261019T090000',
+      ),
+    )
+    expect(event.date).toBe('2026-10-26')
+  })
+
+  it("un'occorrenza spostata (RECURRENCE-ID) prende il posto di quella prevista", () => {
+    const { events, warnings } = parseIcs(
+      wrap(
+        ...series('mv', '20260907T090000', 'FREQ=WEEKLY'),
+        'BEGIN:VEVENT',
+        'UID:mv',
+        'RECURRENCE-ID;TZID=Europe/Rome:20261005T090000',
+        'DTSTART;TZID=Europe/Rome:20261006T150000',
+        'DTEND;TZID=Europe/Rome:20261006T153000',
+        'SUMMARY:Serie mv (spostata)',
+        'END:VEVENT',
+      ),
+      { today: TODAY },
+    )
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ date: '2026-10-06', start: '15:00', end: '15:30', summary: 'Serie mv (spostata)' })
+    // identità dell'occorrenza: la data prevista, non quella effettiva
+    expect(events[0].occurrence).toBe('2026-10-05')
+    expect(warnings.some((w) => w.includes('singola occorrenza'))).toBe(false)
+  })
+
+  it("un'occorrenza annullata a parte (STATUS:CANCELLED) viene saltata", () => {
+    const { events } = parseIcs(
+      wrap(
+        ...series('cc', '20260907T090000', 'FREQ=WEEKLY'),
+        'BEGIN:VEVENT',
+        'UID:cc',
+        'RECURRENCE-ID;TZID=Europe/Rome:20261005T090000',
+        'DTSTART;TZID=Europe/Rome:20261005T090000',
+        'STATUS:CANCELLED',
+        'END:VEVENT',
+      ),
+      { today: TODAY },
+    )
+    expect(events[0].date).toBe('2026-10-12')
+  })
+
+  it("le serie in UTC seguono l'ora di Roma (cambio dell'ora legale)", () => {
+    // ogni lunedì alle 08:00Z dal 7 settembre (10:00 di Roma in estate); oggi 30 ottobre → lunedì 2 novembre, 09:00
+    const { events } = parseIcs(
+      wrap(
+        'BEGIN:VEVENT',
+        'UID:utc',
+        'DTSTART:20260907T080000Z',
+        'DTEND:20260907T090000Z',
+        'RRULE:FREQ=WEEKLY',
+        'END:VEVENT',
+      ),
+      { today: '2026-10-30' },
+    )
+    expect(events[0]).toMatchObject({ date: '2026-11-02', start: '09:00', end: '10:00' })
+  })
+
+  it('eventi "tutto il giorno" ricorrenti', () => {
+    const { events } = parseIcs(
+      wrap(
+        'BEGIN:VEVENT',
+        'UID:bday',
+        'DTSTART;VALUE=DATE:19800310',
+        'DTEND;VALUE=DATE:19800311',
+        'RRULE:FREQ=YEARLY',
+        'SUMMARY:Compleanno',
+        'END:VEVENT',
+      ),
+      { today: TODAY },
+    )
+    expect(events[0]).toMatchObject({ date: '2027-03-10', start: '00:00', end: '23:59', allDay: true })
+  })
+
+  it('regola non gestita: resta la prima occorrenza, segnalata', () => {
+    const { event, warnings } = one(...series('h', '20260907T090000', 'FREQ=MONTHLY;BYMONTHDAY=1,15'))
+    expect(event).toMatchObject({ date: '2026-09-07', recurrenceUnsupported: true })
+    expect(warnings).toEqual([
+      '1 serie ricorrente con una ripetizione non gestita: si può importare solo la prima occorrenza, già passata.',
+    ])
+  })
+
+  it('serie che inizia da oggi in poi: invariata', () => {
+    const { event, warnings } = one(...series('f', '20261005T090000', 'FREQ=WEEKLY'))
+    expect(event.date).toBe('2026-10-05')
+    expect(event.occurrence).toBeUndefined()
+    expect(warnings).toEqual(['1 evento ricorrente: viene importata solo la prima occorrenza.'])
+  })
+
+  it("l'identificativo distingue le occorrenze: un import successivo aggiunge, non sposta", () => {
+    const body = series('id', '20260907T090000', 'FREQ=WEEKLY')
+    const now = icsEventsToAppointments(parseIcs(wrap(...body), { today: TODAY }).events, [])[0]
+    const later = icsEventsToAppointments(parseIcs(wrap(...body), { today: '2026-10-09' }).events, [])[0]
+    const first = icsEventsToAppointments(parseIcs(wrap(...body)).events, [])[0]
+    expect(now.externalId).toBe('id#2026-10-05')
+    expect(later.externalId).toBe('id#2026-10-12')
+    expect(first.externalId).toBe('id')
   })
 })

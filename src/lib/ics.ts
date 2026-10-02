@@ -1,18 +1,32 @@
 /**
  * Import ed export di calendari iCalendar (.ics, RFC 5545): Outlook, Google Calendar, Apple Calendario.
  *
- * Import: `parseIcs(text)` → eventi "piatti" (data, orario di inizio/fine nel fuso Europe/Rome) + avvisi
- * in italiano; `icsEventsToAppointments(events, clients)` li trasforma in appuntamenti dell'app
+ * Import: `parseIcs(text, { today })` → eventi "piatti" (data, orario di inizio/fine nel fuso Europe/Rome) +
+ * avvisi in italiano; `icsEventsToAppointments(events, clients)` li trasforma in appuntamenti dell'app
  * (tipo, luogo e cliente indovinati dal testo).
- * Export: `appointmentsToIcs(appointments, clients)` produce un VCALENDAR valido con VTIMEZONE Europe/Rome.
+ * Export: `appointmentsToIcs(appointments, clients, options)` produce un VCALENDAR valido con VTIMEZONE
+ * Europe/Rome; nomi dei clienti, dettagli del luogo e note si includono solo se richiesto.
  *
  * Semplificazioni volute (l'agenda dell'app è "un giorno, un orario"):
- * - eventi ricorrenti: si importa solo la prima occorrenza (con avviso);
+ * - eventi ricorrenti: si importa una sola occorrenza (con avviso): la prima oppure, se la serie è già
+ *   iniziata e la regola è semplice (vedi `parseRrule`), la prossima da oggi in poi;
  * - eventi su più giorni: si tiene solo il primo giorno (con avviso);
  * - eventi "tutto il giorno": 00:00–23:59 nell'app, di nuovo VALUE=DATE nell'export.
  */
 import type { Appointment, AppointmentType, Client, DateKey, LocationMode, TimeKey } from '../domain/types'
-import { dayNumber, fromDayNumber, instantToRome, isDateKey, minutesToTime, timeToMinutes, toKey } from './dates'
+import {
+  addDays,
+  dayNumber,
+  daysInMonth,
+  fromDayNumber,
+  instantToRome,
+  isDateKey,
+  minutesToTime,
+  parseKey,
+  timeToMinutes,
+  toKey,
+  weekdayIndex,
+} from './dates'
 
 export interface IcsEvent {
   uid?: string
@@ -24,6 +38,14 @@ export interface IcsEvent {
   end: TimeKey
   allDay: boolean
   recurring: boolean
+  /**
+   * Serie ricorrente iniziata prima di oggi: data (prevista dalla regola, prima di eventuali spostamenti)
+   * dell'occorrenza importata al posto della prima. Distingue le occorrenze della stessa serie tra un
+   * import e l'altro (vedi `eventExternalId`).
+   */
+  occurrence?: DateKey
+  /** Serie ricorrente iniziata prima di oggi con una regola non gestita: resta la prima occorrenza, già passata. */
+  recurrenceUnsupported?: boolean
   /** CATEGORIES (es. "Revisione portafoglio" nei file esportati da questa app). */
   categories?: string[]
 }
@@ -31,6 +53,14 @@ export interface IcsEvent {
 export interface IcsParseResult {
   events: IcsEvent[]
   warnings: string[]
+}
+
+export interface IcsParseOptions {
+  /**
+   * Oggi (Europe/Rome). Se indicato, le serie ricorrenti iniziate prima di oggi vengono importate con la
+   * prossima occorrenza da oggi in poi invece che con la prima (già passata).
+   */
+  today?: DateKey
 }
 
 /** Appuntamento pronto per l'import (manca solo l'id, assegnato al momento dell'import). */
@@ -352,9 +382,291 @@ function parseDateValue(prop: ContentLine, ctx: ParseContext): ParsedDate | null
   return { wall: local, allDay: false }
 }
 
+// ================================================================ ricorrenze
+
+const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+const RRULE_PARTS = new Set([
+  'FREQ',
+  'INTERVAL',
+  'COUNT',
+  'UNTIL',
+  'WKST',
+  'BYDAY',
+  'BYMONTHDAY',
+  'BYMONTH',
+  'BYSETPOS',
+])
+/** Limite di sicurezza ai periodi esaminati per una serie. */
+const MAX_PERIODS = 20_000
+
+/** Regola di ripetizione (RRULE) in una delle forme semplici che l'import sa espandere. */
+export interface RecurrenceRule {
+  freq: 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY'
+  interval: number
+  count?: number
+  /** Valore di UNTIL: data (inclusa) o data-ora. */
+  until?: string
+  /** Primo giorno della settimana (WKST, lunedì = 0). */
+  weekStart: number
+  /** DAILY/WEEKLY: giorni della settimana ammessi (lunedì = 0). */
+  weekdays?: number[]
+  /** MONTHLY/YEARLY: n-esimo giorno della settimana del mese (n < 0 = dalla fine: -1 = ultimo). */
+  nthWeekday?: { n: number; weekday: number }
+  /** MONTHLY/YEARLY: giorno del mese (negativo = dalla fine: -1 = ultimo giorno). */
+  monthDay?: number
+  /** YEARLY: mese (1-12). */
+  month?: number
+}
+
+/**
+ * Legge una RRULE. Gestisce FREQ=DAILY/WEEKLY/MONTHLY/YEARLY con INTERVAL, COUNT, UNTIL e WKST, più:
+ * BYDAY (giorni della settimana) per DAILY/WEEKLY; un solo BYMONTHDAY oppure un solo "n-esimo giorno"
+ * (BYDAY=2TU, BYDAY=-1FR o BYDAY=TU;BYSETPOS=2) per MONTHLY/YEARLY; un solo BYMONTH per YEARLY.
+ * Tutto il resto (BYHOUR, BYWEEKNO, liste di BYMONTHDAY…) restituisce null: regola non gestita.
+ */
+export function parseRrule(value: string): RecurrenceRule | null {
+  const parts = new Map<string, string>()
+  for (const part of value.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq > 0) parts.set(part.slice(0, eq).trim().toUpperCase(), part.slice(eq + 1).trim().toUpperCase())
+  }
+  const freq = parts.get('FREQ')
+  if (freq !== 'DAILY' && freq !== 'WEEKLY' && freq !== 'MONTHLY' && freq !== 'YEARLY') return null
+  for (const key of parts.keys()) if (!RRULE_PARTS.has(key)) return null
+
+  /** Intero singolo tra min e max (zero escluso); undefined se assente, null se non valido o se è una lista. */
+  const single = (key: string, min: number, max: number): number | null | undefined => {
+    const v = parts.get(key)
+    if (v === undefined) return undefined
+    const n = /^[+-]?\d{1,5}$/.test(v) ? Number(v) : NaN
+    return n >= min && n <= max && n !== 0 ? n : null
+  }
+  const interval = single('INTERVAL', 1, 9999)
+  const count = single('COUNT', 1, 99999)
+  const monthDay = single('BYMONTHDAY', -31, 31)
+  const month = single('BYMONTH', 1, 12)
+  const setPos = single('BYSETPOS', -5, 5)
+  const weekStart = WEEKDAY_CODES.indexOf(parts.get('WKST') ?? 'MO')
+  const until = parts.get('UNTIL')
+  if (interval === null || count === null || monthDay === null || month === null || setPos === null) return null
+  if (weekStart < 0 || (until !== undefined && !/^\d{8}(T\d{6}Z?)?$/.test(until))) return null
+
+  let byDay: { n: number; weekday: number }[] | undefined
+  if (parts.has('BYDAY')) {
+    byDay = []
+    for (const item of parts.get('BYDAY')!.split(',')) {
+      const m = /^([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)$/.exec(item.trim())
+      if (!m) return null
+      byDay.push({ n: m[1] ? Number(m[1]) : 0, weekday: WEEKDAY_CODES.indexOf(m[2]) })
+    }
+  }
+
+  const rule: RecurrenceRule = { freq, interval: interval ?? 1, weekStart }
+  if (count !== undefined) rule.count = count
+  if (until !== undefined) rule.until = until
+
+  if (freq === 'DAILY' || freq === 'WEEKLY') {
+    if (monthDay !== undefined || month !== undefined || setPos !== undefined) return null
+    if (byDay) {
+      if (byDay.some((d) => d.n !== 0)) return null
+      rule.weekdays = [...new Set(byDay.map((d) => d.weekday))].sort((a, b) => a - b)
+    }
+    return rule
+  }
+
+  // MONTHLY / YEARLY
+  if (month !== undefined) {
+    if (freq === 'MONTHLY') return null
+    rule.month = month
+  }
+  if (byDay) {
+    if (byDay.length !== 1 || monthDay !== undefined || (byDay[0].n !== 0 && setPos !== undefined)) return null
+    const n = byDay[0].n || setPos
+    if (n === undefined || n < -5 || n > 5 || (freq === 'YEARLY' && month === undefined)) return null
+    rule.nthWeekday = { n, weekday: byDay[0].weekday }
+    return rule
+  }
+  if (setPos !== undefined) return null
+  if (monthDay !== undefined) rule.monthDay = monthDay
+  return rule
+}
+
+/** Giorno del mese dell'n-esimo `weekday` (n < 0 = dalla fine); null se quel mese non ce l'ha (es. il 5° lunedì). */
+function nthWeekdayOfMonth(year: number, month: number, n: number, weekday: number): number | null {
+  const days = daysInMonth(year, month)
+  if (n > 0) {
+    const day = 1 + ((weekday - weekdayIndex(toKey(year, month, 1)) + 7) % 7) + (n - 1) * 7
+    return day <= days ? day : null
+  }
+  const day = days - ((weekdayIndex(toKey(year, month, days)) - weekday + 7) % 7) + (n + 1) * 7
+  return day >= 1 ? day : null
+}
+
+/** Date generate dalla regola nel periodo `p` (0 = quello di `start`), in ordine, nel calendario di DTSTART. */
+function periodDates(rule: RecurrenceRule, start: DateKey, p: number): DateKey[] {
+  const { year, month, day } = parseKey(start)
+  switch (rule.freq) {
+    case 'DAILY': {
+      const d = addDays(start, p * rule.interval)
+      return !rule.weekdays || rule.weekdays.includes(weekdayIndex(d)) ? [d] : []
+    }
+    case 'WEEKLY': {
+      const weekBegin = addDays(start, p * rule.interval * 7 - ((weekdayIndex(start) - rule.weekStart + 7) % 7))
+      return (rule.weekdays ?? [weekdayIndex(start)])
+        .map((wd) => (wd - rule.weekStart + 7) % 7)
+        .sort((a, b) => a - b)
+        .map((offset) => addDays(weekBegin, offset))
+    }
+    case 'MONTHLY':
+    case 'YEARLY': {
+      const total =
+        rule.freq === 'MONTHLY'
+          ? year * 12 + month - 1 + p * rule.interval
+          : (year + p * rule.interval) * 12 + (rule.month ?? month) - 1
+      const y = Math.floor(total / 12)
+      const m = (total % 12) + 1
+      const days = daysInMonth(y, m)
+      const wanted = rule.monthDay ?? day
+      const d = rule.nthWeekday
+        ? nthWeekdayOfMonth(y, m, rule.nthWeekday.n, rule.nthWeekday.weekday)
+        : wanted > 0
+          ? wanted
+          : days + wanted + 1
+      // i giorni che non esistono (31 aprile, 29 febbraio negli anni non bisestili) si saltano
+      return d !== null && d >= 1 && d <= days ? [toKey(y, m, d)] : []
+    }
+  }
+}
+
+/** Primo periodo che può contenere `target` (per saltare gli anni già passati di una serie senza COUNT). */
+function periodNear(rule: RecurrenceRule, start: DateKey, target: DateKey): number {
+  const s = parseKey(start)
+  const t = parseKey(target)
+  const days = dayNumber(target) - dayNumber(start)
+  const p =
+    rule.freq === 'DAILY'
+      ? Math.floor(days / rule.interval)
+      : rule.freq === 'WEEKLY'
+        ? Math.floor(days / (7 * rule.interval)) - 1
+        : rule.freq === 'MONTHLY'
+          ? Math.floor((t.year * 12 + t.month - (s.year * 12 + s.month)) / rule.interval) - 1
+          : Math.floor((t.year - s.year) / rule.interval) - 1
+  return Math.max(0, p)
+}
+
+/** Sposta di `days` giorni la data di una proprietà data/ora (orario, "Z" e parametri restano invariati). */
+function shiftDateValue(line: ContentLine, days: number): ContentLine {
+  const m = /^(\d{4})(\d{2})(\d{2})(.*)$/.exec(line.value.split(',')[0].trim())
+  if (!m) return line
+  const date = addDays(toKey(Number(m[1]), Number(m[2]), Number(m[3])), days)
+  return { ...line, value: `${date.replace(/-/g, '')}${m[4]}` }
+}
+
+interface Occurrence {
+  props: Map<string, ContentLine>
+  start: ParsedDate
+  /** Data prevista dalla regola (per un'occorrenza spostata: quella del suo RECURRENCE-ID). */
+  occurrence: DateKey
+  fromOverride: boolean
+}
+
+/**
+ * Prossima occorrenza, da `today` in poi, di una serie iniziata prima di oggi: date generate dalla RRULE
+ * (rispettando COUNT e UNTIL) meno EXDATE e occorrenze modificate a parte, più le modifiche
+ * (RECURRENCE-ID) non annullate. 'ended' = la serie è finita; 'unsupported' = RRULE complessa o RDATE.
+ */
+function nextOccurrence(
+  raw: RawEvent,
+  overrides: RawEvent[],
+  today: DateKey,
+  ctx: ParseContext,
+): Occurrence | 'ended' | 'unsupported' {
+  const dtstart = raw.props.get('DTSTART')
+  const rrule = raw.props.get('RRULE')
+  const rule = rrule && !raw.props.has('RDATE') ? parseRrule(rrule.value) : null
+  // le date della regola si calcolano nel calendario di DTSTART (il suo fuso, o UTC se finisce con Z)
+  const m = dtstart ? /^(\d{4})(\d{2})(\d{2})/.exec(dtstart.value.trim()) : null
+  const localStart = m ? toKey(Number(m[1]), Number(m[2]), Number(m[3])) : ''
+  if (!dtstart || !rule || !isDateKey(localStart)) return 'unsupported'
+
+  let untilDate: DateKey | undefined
+  let untilWall: WallMinutes | undefined
+  if (rule.until) {
+    // UNTIL: data inclusa, oppure data-ora in UTC (Z) o nel fuso di DTSTART
+    const dateOnly = /^\d{8}$/.test(rule.until)
+    const params: Record<string, string> =
+      dateOnly || rule.until.endsWith('Z') || !dtstart.params.TZID ? {} : { TZID: dtstart.params.TZID }
+    const parsed = parseDateValue({ name: 'UNTIL', params, value: rule.until }, ctx)
+    if (!parsed) return 'unsupported'
+    if (dateOnly) untilDate = wallDate(parsed.wall)
+    else untilWall = parsed.wall
+  }
+
+  // occorrenze escluse (EXDATE) o modificate a parte (RECURRENCE-ID): per orario esatto, o per giorno se è una data
+  const excludedWalls = new Set<WallMinutes>()
+  const excludedDays = new Set<DateKey>()
+  const exclude = (line: ContentLine) => {
+    for (const value of line.value.split(',')) {
+      const parsed = parseDateValue({ ...line, value }, ctx)
+      if (parsed?.allDay) excludedDays.add(wallDate(parsed.wall))
+      else if (parsed) excludedWalls.add(parsed.wall)
+    }
+  }
+  const isExcluded = (wall: WallMinutes) => excludedWalls.has(wall) || excludedDays.has(wallDate(wall))
+  for (const line of raw.exdates) exclude(line)
+
+  // le occorrenze spostate (non annullate) da oggi in poi sono candidate anch'esse
+  let moved: Occurrence | undefined
+  for (const o of overrides) {
+    const rid = o.props.get('RECURRENCE-ID')!
+    exclude(rid)
+    const startLine = o.props.get('DTSTART')
+    const start = startLine ? parseDateValue(startLine, ctx) : null
+    if (!start || wallDate(start.wall) < today || o.props.get('STATUS')?.value.trim().toUpperCase() === 'CANCELLED')
+      continue
+    if (moved && moved.start.wall <= start.wall) continue
+    const props = new Map(raw.props)
+    props.delete('DTEND')
+    props.delete('DURATION')
+    for (const [name, line] of o.props) props.set(name, line)
+    const original = parseDateValue(rid, ctx)
+    moved = { props, start, occurrence: wallDate((original ?? start).wall), fromOverride: true }
+  }
+
+  const earliestLocal = addDays(today, -1) // la data nel fuso di origine può precedere di un giorno quella di Roma
+  const first = rule.count ? 0 : periodNear(rule, localStart, addDays(today, -2))
+  let n = 1 // DTSTART è sempre la prima occorrenza e conta per COUNT
+  for (let p = first; p < first + MAX_PERIODS; p++) {
+    for (const d of periodDates(rule, localStart, p)) {
+      if (d <= localStart) continue
+      n++
+      if ((rule.count && n > rule.count) || (untilDate && d > untilDate)) return moved ?? 'ended'
+      if (d < earliestLocal && untilWall === undefined) continue
+      const shift = dayNumber(d) - dayNumber(localStart)
+      const startLine = shiftDateValue(dtstart, shift)
+      const start = parseDateValue(startLine, ctx)
+      if (!start) continue
+      if (untilWall !== undefined && start.wall > untilWall) return moved ?? 'ended'
+      if (wallDate(start.wall) < today || isExcluded(start.wall)) continue
+      if (moved && moved.start.wall <= start.wall) return moved
+      const props = new Map(raw.props)
+      props.set('DTSTART', startLine)
+      const dtend = raw.props.get('DTEND')
+      if (dtend) props.set('DTEND', shiftDateValue(dtend, shift))
+      return { props, start, occurrence: wallDate(start.wall), fromOverride: false }
+    }
+  }
+  return moved ?? 'ended'
+}
+
 // ================================================================ parser
 
-type RawEvent = Map<string, ContentLine>
+interface RawEvent {
+  /** Proprietà del VEVENT (per nome, la prima se ripetuta). */
+  props: Map<string, ContentLine>
+  /** EXDATE può comparire più volte: tutte le righe. */
+  exdates: ContentLine[]
+}
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
@@ -362,7 +674,8 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
  * Legge un file iCalendar. Non lancia eccezioni: ciò che non si riesce a interpretare
  * viene saltato e segnalato in `warnings`.
  */
-export function parseIcs(text: string): IcsParseResult {
+export function parseIcs(text: string, options: IcsParseOptions = {}): IcsParseResult {
+  const { today } = options
   const lines = unfoldLines(text)
   const ctx: ParseContext = { timezones: new Map(), unknownZones: new Set() }
   const rawEvents: RawEvent[] = []
@@ -377,7 +690,7 @@ export function parseIcs(text: string): IcsParseResult {
     if (prop.name === 'BEGIN') {
       const component = prop.value.trim().toUpperCase()
       stack.push(component)
-      if (component === 'VEVENT') currentEvent = new Map()
+      if (component === 'VEVENT') currentEvent = { props: new Map(), exdates: [] }
       if (component === 'VTIMEZONE') currentTz = { info: {} }
       continue
     }
@@ -398,7 +711,8 @@ export function parseIcs(text: string): IcsParseResult {
     }
     const top = stack[stack.length - 1]
     if (top === 'VEVENT' && currentEvent) {
-      if (!currentEvent.has(prop.name)) currentEvent.set(prop.name, prop)
+      if (prop.name === 'EXDATE') currentEvent.exdates.push(prop)
+      else if (!currentEvent.props.has(prop.name)) currentEvent.props.set(prop.name, prop)
     } else if (top === 'VTIMEZONE' && currentTz && prop.name === 'TZID') {
       currentTz.id = prop.value.trim()
     } else if ((top === 'STANDARD' || top === 'DAYLIGHT') && currentTz && prop.name === 'TZOFFSETTO') {
@@ -407,32 +721,42 @@ export function parseIcs(text: string): IcsParseResult {
     }
   }
 
+  // Modifiche a singole occorrenze, per UID della serie.
+  const overridesByUid = new Map<string, RawEvent[]>()
+  for (const raw of rawEvents) {
+    const uid = raw.props.get('UID')?.value.trim()
+    if (uid && raw.props.has('RECURRENCE-ID')) overridesByUid.set(uid, [...(overridesByUid.get(uid) ?? []), raw])
+  }
+
   const events: IcsEvent[] = []
   const seenUids = new Set<string>()
   let missingStart = 0
-  let recurring = 0
+  let firstOnly = 0
+  let rolled = 0
+  let unsupportedPast = 0
   let multiDay = 0
   let cancelled = 0
   let overrides = 0
+  let overridesUsed = 0
   let duplicates = 0
 
   for (const raw of rawEvents) {
-    const dtstart = raw.get('DTSTART')
-    const startParsed = dtstart ? parseDateValue(dtstart, ctx) : null
+    const dtstart = raw.props.get('DTSTART')
+    let startParsed = dtstart ? parseDateValue(dtstart, ctx) : null
     if (!startParsed) {
       missingStart++
       continue
     }
-    if (raw.get('STATUS')?.value.trim().toUpperCase() === 'CANCELLED') {
+    if (raw.props.get('STATUS')?.value.trim().toUpperCase() === 'CANCELLED') {
       cancelled++
       continue
     }
-    // Modifica di una singola occorrenza di un evento ricorrente: si tiene solo l'evento principale.
-    if (raw.has('RECURRENCE-ID')) {
+    // Modifica di una singola occorrenza: conta solo per la prossima occorrenza della sua serie (sotto).
+    if (raw.props.has('RECURRENCE-ID')) {
       overrides++
       continue
     }
-    const uid = raw.get('UID')?.value.trim() || undefined
+    const uid = raw.props.get('UID')?.value.trim() || undefined
     if (uid) {
       if (seenUids.has(uid)) {
         duplicates++
@@ -441,8 +765,25 @@ export function parseIcs(text: string): IcsParseResult {
       seenUids.add(uid)
     }
 
-    const isRecurring = raw.has('RRULE') || raw.has('RDATE')
-    if (isRecurring) recurring++
+    let props = raw.props
+    let occurrence: DateKey | undefined
+    let unsupported = false
+    const isRecurring = props.has('RRULE') || props.has('RDATE')
+    if (isRecurring && today && wallDate(startParsed.wall) < today) {
+      // serie già iniziata: si importa la prossima occorrenza al posto della prima, ormai passata
+      const seriesOverrides = (uid && overridesByUid.get(uid)) || []
+      const next = nextOccurrence(raw, seriesOverrides, today, ctx)
+      if (next === 'unsupported') unsupported = true
+      else overridesUsed += seriesOverrides.length
+      if (typeof next === 'object') {
+        props = next.props
+        startParsed = next.start
+        occurrence = next.occurrence
+      }
+    }
+    if (occurrence) rolled++
+    else if (unsupported) unsupportedPast++
+    else if (isRecurring) firstOnly++
 
     const startDate = wallDate(startParsed.wall)
     const startMin = wallMinutes(startParsed.wall)
@@ -450,9 +791,9 @@ export function parseIcs(text: string): IcsParseResult {
     let end: TimeKey
     let spansDays = false
 
-    const dtend = raw.get('DTEND')
+    const dtend = props.get('DTEND')
     const endParsed = dtend ? parseDateValue(dtend, ctx) : null
-    const durationProp = raw.get('DURATION')
+    const durationProp = props.get('DURATION')
     const duration = durationProp ? parseDuration(durationProp.value) : null
 
     if (startParsed.allDay) {
@@ -487,7 +828,7 @@ export function parseIcs(text: string): IcsParseResult {
     if (spansDays) multiDay++
 
     const text = (name: string) => {
-      const v = raw.get(name)?.value
+      const v = props.get(name)?.value
       if (v === undefined) return undefined
       const t = unescapeText(v).trim()
       return t || undefined
@@ -504,7 +845,9 @@ export function parseIcs(text: string): IcsParseResult {
       allDay: startParsed.allDay,
       recurring: isRecurring,
     }
-    const categories = raw.get('CATEGORIES')?.value
+    if (occurrence) event.occurrence = occurrence
+    if (unsupported) event.recurrenceUnsupported = true
+    const categories = props.get('CATEGORIES')?.value
     if (categories) {
       const list = splitEscaped(categories)
         .map((c) => unescapeText(c).trim())
@@ -515,9 +858,19 @@ export function parseIcs(text: string): IcsParseResult {
   }
 
   const warnings: string[] = []
-  if (recurring) {
+  if (rolled) {
     warnings.push(
-      `${count(recurring, 'evento ricorrente', 'eventi ricorrenti')}: viene importata solo la prima occorrenza.`,
+      `${count(rolled, 'serie ricorrente iniziata', 'serie ricorrenti iniziate')} in passato: viene importata solo la prossima occorrenza, non l'intera serie.`,
+    )
+  }
+  if (firstOnly) {
+    warnings.push(
+      `${count(firstOnly, 'evento ricorrente', 'eventi ricorrenti')}: viene importata solo la prima occorrenza.`,
+    )
+  }
+  if (unsupportedPast) {
+    warnings.push(
+      `${count(unsupportedPast, 'serie ricorrente', 'serie ricorrenti')} con una ripetizione non gestita: si può importare solo la prima occorrenza, già passata.`,
     )
   }
   if (multiDay) {
@@ -533,9 +886,10 @@ export function parseIcs(text: string): IcsParseResult {
   if (cancelled) {
     warnings.push(`${count(cancelled, 'evento annullato è stato ignorato', 'eventi annullati sono stati ignorati')}.`)
   }
-  if (overrides) {
+  const ignoredOverrides = overrides - overridesUsed
+  if (ignoredOverrides > 0) {
     warnings.push(
-      `${count(overrides, 'modifica a una singola occorrenza è stata ignorata', 'modifiche a singole occorrenze sono state ignorate')}.`,
+      `${count(ignoredOverrides, 'modifica a una singola occorrenza è stata ignorata', 'modifiche a singole occorrenze sono state ignorate')}.`,
     )
   }
   if (duplicates) {
@@ -641,9 +995,14 @@ export function hashString(value: string): string {
   return (h >>> 0).toString(16).padStart(8, '0')
 }
 
-/** Identificativo esterno usato per riconoscere lo stesso evento a un nuovo import. */
-export function eventExternalId(event: Pick<IcsEvent, 'uid' | 'summary' | 'date' | 'start'>): string {
-  return event.uid ?? `ics-${hashString(`${event.summary}|${event.date}|${event.start}`)}`
+/**
+ * Identificativo esterno usato per riconoscere lo stesso evento a un nuovo import. Per la prossima
+ * occorrenza di una serie già iniziata è "UID#data": ogni occorrenza diventa un appuntamento a sé, così
+ * un import successivo aggiunge la nuova occorrenza invece di spostare (e cancellare dal passato) quella vecchia.
+ */
+export function eventExternalId(event: Pick<IcsEvent, 'uid' | 'summary' | 'date' | 'start' | 'occurrence'>): string {
+  if (event.uid) return event.occurrence ? `${event.uid}#${event.occurrence}` : event.uid
+  return `ics-${hashString(`${event.summary}|${event.date}|${event.start}`)}`
 }
 
 /** Converte gli eventi letti dal file in appuntamenti (stato "confermato", origine "ics"). */
@@ -774,16 +1133,27 @@ export interface IcsExportOptions {
   /** Istante usato per DTSTAMP (default: adesso). */
   now?: Date
   calendarName?: string
+  /** Aggiunge "– Nome Cognome" del cliente al titolo (default: sì). */
+  includeClientNames?: boolean
+  /** Indirizzo, numero o link scritti nel luogo; senza, solo "Dal cliente", "Telefono"… (default: sì). */
+  includeLocationDetails?: boolean
+  /** Note dell'appuntamento in DESCRIPTION (default: no: possono contenere dati personali o patrimoniali). */
+  includeNotes?: boolean
 }
 
-/** Calendario iCalendar (righe CRLF, piegate a 75 ottetti) con gli appuntamenti indicati. */
+/**
+ * Calendario iCalendar (righe CRLF, piegate a 75 ottetti) con gli appuntamenti indicati.
+ * Il file è pensato per calendari in cloud (Outlook, Google): dei clienti si esporta al massimo il nome,
+ * mai il numero di telefono o altri dati della scheda.
+ */
 export function appointmentsToIcs(
   appointments: Appointment[],
   clients: Client[],
   options: IcsExportOptions = {},
 ): string {
+  const { includeClientNames = true, includeLocationDetails = true, includeNotes = false } = options
   const stamp = icsUtcStamp(options.now ?? new Date())
-  const byId = new Map(clients.map((c) => [c.id, c]))
+  const byId = new Map(includeClientNames ? clients.map((c) => [c.id, c]) : [])
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -817,11 +1187,9 @@ export function appointmentsToIcs(
     lines.push(`SUMMARY:${escapeText(exportSummary(a.title, client))}`)
     // per gli eventi "tutto il giorno" (ferie, festività) il luogo generico predefinito non si esporta
     const location =
-      a.locationDetail?.trim() ||
-      (a.location === 'telefono' && client?.phone) ||
-      (allDay ? undefined : LOCATION_TEXT[a.location])
+      (includeLocationDetails && a.locationDetail?.trim()) || (allDay ? undefined : LOCATION_TEXT[a.location])
     if (location) lines.push(`LOCATION:${escapeText(location)}`)
-    if (a.notes?.trim()) lines.push(`DESCRIPTION:${escapeText(a.notes.trim())}`)
+    if (includeNotes && a.notes?.trim()) lines.push(`DESCRIPTION:${escapeText(a.notes.trim())}`)
     lines.push(`CATEGORIES:${escapeText(TYPE_TEXT[a.type])}`, `STATUS:${status}`, 'END:VEVENT')
   }
   lines.push('END:VCALENDAR')

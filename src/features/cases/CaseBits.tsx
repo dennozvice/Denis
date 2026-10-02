@@ -1,14 +1,14 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowLeftRight, Banknote, Forward, HandCoins, Hourglass, Landmark, MessageSquareWarning, PiggyBank, Umbrella, Users } from 'lucide-react'
+import { useId, useRef, useState } from 'react'
 import { Pill } from '../../components/ui/Pill'
-import { useToast } from '../../components/ui/Toast'
-import { CASE_STATUS_LABEL, CASE_STATUS_TONE, CASE_TYPE_LABEL } from '../../domain/labels'
+import { CASE_STATUS_LABEL, CASE_STATUS_TONE } from '../../domain/labels'
 import type { Case, CaseStatus, CaseType, DateKey } from '../../domain/types'
 import { diffDays } from '../../lib/dates'
 import { formatCurrency, formatNumber, formatRelativeDaysChip } from '../../lib/format'
-import { useActions } from '../../store/StoreContext'
+import { caseDueDate } from '../../store/selectors'
 import { formatDeadlineDate, toneVars } from '../deadlines/deadlineUtils'
-import { CASE_TYPE_TONE, caseDueDate, caseDueTone } from './caseUtils'
+import { CASE_TYPE_TONE, caseDueHint, caseDueTone } from './caseUtils'
 import './cases.css'
 
 export const CASE_TYPE_ICON: Record<CaseType, LucideIcon> = {
@@ -64,7 +64,7 @@ export function ReclamoDuePill({ caseItem, today }: { caseItem: Case; today: Dat
         ? `Risposta entro oggi`
         : `Risposta entro ${date} (${formatNumber(days)} gg)`
   return (
-    <Pill tone={days <= 7 ? 'negative' : 'warning'} title="Termine di risposta al reclamo: 45 giorni dalla ricezione">
+    <Pill tone={days <= 7 ? 'negative' : 'warning'} title={caseDueHint('reclamo')}>
       <Hourglass size={12} aria-hidden="true" />
       {text}
     </Pill>
@@ -93,30 +93,67 @@ export function CaseDue({ caseItem, today }: { caseItem: Case; today: DateKey })
   )
 }
 
-/** Cambio rapido dello stato, con "Annulla" nel messaggio di conferma. */
-export function CaseStatusSelect({ caseItem }: { caseItem: Case }) {
-  const actions = useActions()
-  const toast = useToast()
-  const change = (next: CaseStatus) => {
-    const prev = caseItem.status
-    if (next === prev) return
-    actions.updateCase(caseItem.id, { status: next })
-    toast({
-      message: `${CASE_TYPE_LABEL[caseItem.type]}: stato «${CASE_STATUS_LABEL[next]}»`,
-      actionLabel: 'Annulla',
-      onAction: () => actions.updateCase(caseItem.id, { status: prev }),
-    })
+/**
+ * Cambio rapido dello stato dall'elenco.
+ * Con la tastiera le frecce scorrono gli stati senza applicarli (il valore resta "in sospeso"):
+ * si conferma con Invio o uscendo dal campo, Esc annulla. Con mouse o tocco la scelta dal menu
+ * si applica subito. Così scorrendo fino a "Chiusa" la pratica non sparisce dall'elenco per sbaglio.
+ */
+export function CaseStatusSelect({ caseItem, onCommit }: { caseItem: Case; onCommit(next: CaseStatus): void }) {
+  const uid = useId()
+  const [pending, setPending] = useState<CaseStatus | null>(null)
+  // true se l'ultima interazione con il campo è stata da tastiera (le frecce cambiano il valore senza aprire il menu)
+  const fromKeyboard = useRef(false)
+  const value = pending ?? caseItem.status
+
+  const commit = (next: CaseStatus) => {
+    setPending(null)
+    if (next !== caseItem.status) onCommit(next)
   }
+
   return (
-    <label className="cs-status" style={toneVars(CASE_STATUS_TONE[caseItem.status])}>
-      <span className="visually-hidden">Stato della pratica {caseItem.title}</span>
-      <select className="select cs-status-select" value={caseItem.status} onChange={(e) => change(e.target.value as CaseStatus)}>
+    <span className="cs-status" style={toneVars(CASE_STATUS_TONE[value])}>
+      <label htmlFor={`${uid}-status`} className="visually-hidden">
+        Stato della pratica {caseItem.title}
+      </label>
+      <select
+        id={`${uid}-status`}
+        className="select cs-status-select"
+        value={value}
+        data-pending={pending !== null ? '' : undefined}
+        aria-describedby={`${uid}-hint`}
+        onPointerDown={() => {
+          fromKeyboard.current = false
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && pending !== null) {
+            e.preventDefault()
+            commit(pending)
+          } else if (e.key === 'Escape' && pending !== null) {
+            e.preventDefault()
+            setPending(null)
+          } else if (e.key !== 'Tab') {
+            fromKeyboard.current = true
+          }
+        }}
+        onChange={(e) => {
+          const next = e.target.value as CaseStatus
+          if (fromKeyboard.current) setPending(next === caseItem.status ? null : next)
+          else commit(next)
+        }}
+        onBlur={() => {
+          if (pending !== null) commit(pending)
+        }}
+      >
         {CASE_STATUSES.map((s) => (
           <option key={s} value={s}>
             {CASE_STATUS_LABEL[s]}
           </option>
         ))}
       </select>
-    </label>
+      <span id={`${uid}-hint`} className="visually-hidden">
+        Con la tastiera conferma con Invio, Esc annulla
+      </span>
+    </span>
   )
 }

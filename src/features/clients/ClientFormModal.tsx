@@ -2,8 +2,14 @@ import { Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
-import { CLIENT_SEGMENT_LABEL, POLICY_KIND_LABEL } from '../../domain/labels'
-import type { Client, ClientSegment, Policy, PolicyKind } from '../../domain/types'
+import {
+  AML_RISK_LABEL,
+  CLIENT_SEGMENT_LABEL,
+  POLICY_KIND_LABEL,
+  PREMIUM_TYPE_LABEL,
+  RISK_PROFILE_LABEL,
+} from '../../domain/labels'
+import type { Client, ClientSegment, Policy, PolicyKind, RiskProfile } from '../../domain/types'
 import { isDateKey } from '../../lib/dates'
 import { formatDateShort } from '../../lib/format'
 import { createId } from '../../lib/id'
@@ -12,6 +18,9 @@ import { useNow } from '../../store/NowContext'
 import { useActions, useAppData, type NewClient } from '../../store/StoreContext'
 import { clientFullName } from '../../store/selectors'
 import {
+  PREMIUM_AMOUNT_LABEL,
+  checkAmount,
+  formatAmountInput,
   iddDueDate,
   isFourDigits,
   isPlausiblePhone,
@@ -19,7 +28,9 @@ import {
   maskPolicyRef,
   parseTags,
   policyRefDigits,
+  premiumTypeOf,
   sensitiveDataHint,
+  type PremiumType,
 } from './clientUtils'
 import './clients.css'
 
@@ -36,8 +47,17 @@ export interface ClientFormModalProps {
 
 const FORM_ID = 'cl-client-form'
 
+type AmlRisk = NonNullable<Client['amlRisk']>
+
 const SEGMENT_OPTIONS = Object.entries(CLIENT_SEGMENT_LABEL) as [ClientSegment, string][]
+const RISK_PROFILE_OPTIONS = Object.entries(RISK_PROFILE_LABEL) as [RiskProfile, string][]
+const AML_RISK_OPTIONS = Object.entries(AML_RISK_LABEL) as [AmlRisk, string][]
 const POLICY_KIND_OPTIONS = Object.entries(POLICY_KIND_LABEL) as [PolicyKind, string][]
+const PREMIUM_TYPE_OPTIONS = Object.entries(PREMIUM_TYPE_LABEL) as [PremiumType, string][]
+
+/** Valore salvato → opzione della select ('' se assente o non riconosciuto). */
+const optionOf = <T extends string>(labels: Record<T, string>, value: T | undefined): T | '' =>
+  value !== undefined && Object.hasOwn(labels, value) ? value : ''
 
 /** Form crea/modifica cliente: anagrafica, contatti, adempimenti, polizze, etichette e note. */
 export function ClientFormModal({ open, onClose, client, onSaved, onDeleted }: ClientFormModalProps) {
@@ -91,9 +111,12 @@ interface PolicyRow {
   /** ID della polizza (esistente o nuovo). */
   id: string
   kind: PolicyKind
+  productName: string
   digits: string
   startDate: string
   maturityDate: string
+  premiumType: PremiumType
+  /** Importo del premio (annuo, unico o versamento, secondo premiumType), come digitato. */
   annualPremium: string
   pacAmount: string
   pacDay: string
@@ -107,9 +130,13 @@ interface FormState {
   segment: ClientSegment | ''
   phone: string
   email: string
+  /** undefined = consenso non ancora registrato (clienti esistenti): resta tale finché non si tocca la casella. */
+  marketingConsent: boolean | undefined
   docExpiry: string
   amlReviewDue: string
+  amlRisk: AmlRisk | ''
   iddQuestionnaireDate: string
+  riskProfile: RiskProfile | ''
   lastContact: string
   policies: PolicyRow[]
   tags: string
@@ -135,17 +162,17 @@ interface Errors {
 
 const NO_ERRORS: Errors = { fields: {}, policies: {} }
 
-const amountToString = (n: number | undefined) => (n === undefined ? '' : String(n))
-
 function toPolicyRow(p: Policy): PolicyRow {
   return {
     id: p.id,
     kind: p.kind,
+    productName: p.productName ?? '',
     digits: policyRefDigits(p.ref),
     startDate: p.startDate,
     maturityDate: p.maturityDate ?? '',
-    annualPremium: amountToString(p.annualPremium),
-    pacAmount: amountToString(p.pac?.amount),
+    premiumType: premiumTypeOf(p),
+    annualPremium: formatAmountInput(p.annualPremium),
+    pacAmount: formatAmountInput(p.pac?.amount),
     pacDay: p.pac ? String(p.pac.dayOfMonth) : '',
   }
 }
@@ -154,9 +181,11 @@ function emptyPolicyRow(): PolicyRow {
   return {
     id: createId('p'),
     kind: 'risparmio',
+    productName: '',
     digits: '',
     startDate: '',
     maturityDate: '',
+    premiumType: 'annuo',
     annualPremium: '',
     pacAmount: '',
     pacDay: '',
@@ -172,23 +201,18 @@ function initialState(client: Client | undefined): FormState {
     segment: client?.segment ?? '',
     phone: client?.phone ?? '',
     email: client?.email ?? '',
+    // Nuovo cliente: il consenso è facoltativo e va espresso, quindi parte da "no".
+    marketingConsent: client ? client.marketingConsent : false,
     docExpiry: client?.docExpiry ?? '',
     amlReviewDue: client?.amlReviewDue ?? '',
+    amlRisk: optionOf(AML_RISK_LABEL, client?.amlRisk),
     iddQuestionnaireDate: client?.iddQuestionnaireDate ?? '',
+    riskProfile: optionOf(RISK_PROFILE_LABEL, client?.riskProfile),
     lastContact: client?.lastContact ?? '',
     policies: client?.policies.map(toPolicyRow) ?? [],
     tags: (client?.tags ?? []).join(', '),
     notes: client?.notes ?? '',
   }
-}
-
-/** "1.234,50" / "1234.5" / "1 234" → 1234.5; stringa vuota → undefined; NaN se non valido. */
-function parseAmount(value: string): number | undefined {
-  const trimmed = value.trim().replace(/\s|€/g, '')
-  if (!trimmed) return undefined
-  const normalized = trimmed.includes(',') ? trimmed.replace(/\./g, '').replace(',', '.') : trimmed
-  if (!/^\d+(\.\d+)?$/.test(normalized)) return Number.NaN
-  return Number(normalized)
 }
 
 const optionalDate = (value: string) => (value && isDateKey(value) ? value : undefined)
@@ -226,16 +250,16 @@ function validate(f: FormState, today: string): Errors {
       if (!isDateKey(p.maturityDate)) e.maturityDate = 'Data non valida.'
       else if (isDateKey(p.startDate) && p.maturityDate <= p.startDate) e.maturityDate = 'Deve essere dopo la decorrenza.'
     }
-    const premium = parseAmount(p.annualPremium)
-    if (premium !== undefined && (Number.isNaN(premium) || premium < 0)) e.annualPremium = 'Importo non valido.'
-    const pac = parseAmount(p.pacAmount)
+    const premium = checkAmount(p.annualPremium)
+    if (premium.error) e.annualPremium = premium.error
+    const pac = checkAmount(p.pacAmount, { positive: true })
     const hasDay = p.pacDay.trim() !== ''
-    if (pac !== undefined && (Number.isNaN(pac) || pac <= 0)) e.pacAmount = 'Importo non valido.'
-    else if (pac === undefined && hasDay) e.pacAmount = "Indica l'importo mensile."
+    if (pac.error) e.pacAmount = pac.error
+    else if (pac.value === undefined && hasDay) e.pacAmount = "Indica l'importo mensile."
     if (hasDay) {
       const day = Number(p.pacDay)
       if (!Number.isInteger(day) || day < 1 || day > 31) e.pacDay = 'Giorno da 1 a 31.'
-    } else if (pac !== undefined && !Number.isNaN(pac)) e.pacDay = 'Indica il giorno di addebito.'
+    } else if (pac.value !== undefined) e.pacDay = 'Indica il giorno di addebito.'
     if (Object.keys(e).length > 0) policies[p.id] = e
   }
   return { fields, policies }
@@ -244,14 +268,16 @@ function validate(f: FormState, today: string): Errors {
 const hasErrors = (e: Errors) => Object.keys(e.fields).length > 0 || Object.keys(e.policies).length > 0
 
 function toPolicy(row: PolicyRow): Policy {
-  const premium = parseAmount(row.annualPremium)
-  const pac = parseAmount(row.pacAmount)
+  const premium = checkAmount(row.annualPremium).value
+  const pac = checkAmount(row.pacAmount, { positive: true }).value
   return {
     id: row.id,
     kind: row.kind,
     ref: maskPolicyRef(row.digits),
+    productName: row.productName.trim() || undefined,
     startDate: row.startDate,
     maturityDate: optionalDate(row.maturityDate),
+    premiumType: row.premiumType,
     annualPremium: premium,
     pac: pac !== undefined && row.pacDay ? { amount: pac, dayOfMonth: Number(row.pacDay) } : undefined,
   }
@@ -330,9 +356,12 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
       email: form.email.trim() || undefined,
       city: form.city.trim() || undefined,
       segment: form.segment || undefined,
+      marketingConsent: form.marketingConsent,
       docExpiry: optionalDate(form.docExpiry),
       amlReviewDue: optionalDate(form.amlReviewDue),
+      amlRisk: form.amlRisk || undefined,
       iddQuestionnaireDate: optionalDate(form.iddQuestionnaireDate),
+      riskProfile: form.riskProfile || undefined,
       lastContact: optionalDate(form.lastContact),
       policies: form.policies.map(toPolicy),
       tags: tags.length > 0 ? tags : undefined,
@@ -411,6 +440,28 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
     )
   }
 
+  const selectField = <K extends 'riskProfile' | 'amlRisk'>(
+    key: K,
+    label: string,
+    options: [Exclude<FormState[K], ''>, string][],
+  ) => (
+    <Field id={fid(key)} label={label}>
+      <select
+        id={fid(key)}
+        className="select"
+        value={form[key]}
+        onChange={(e) => set(key, e.target.value as FormState[K])}
+      >
+        <option value="">Non registrato</option>
+        {options.map(([value, optionLabel]) => (
+          <option key={value} value={value}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </Field>
+  )
+
   const iddDue = isDateKey(form.iddQuestionnaireDate)
     ? iddDueDate({ iddQuestionnaireDate: form.iddQuestionnaireDate }, settings.iddValidityMonths)
     : undefined
@@ -420,6 +471,9 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
       {iddDue && <> · valido fino al {formatDateShort(iddDue)}</>}
     </>
   )
+  const consentHint =
+    'Spunta solo se il cliente ha firmato il consenso privacy per finalità commerciali.' +
+    (form.marketingConsent === undefined ? ' Finora non registrato.' : '')
   const notesWarning = sensitiveDataHint(form.notes)
   const tagsWarning = sensitiveDataHint(form.tags)
 
@@ -430,6 +484,9 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
         <span>
           Registra solo i dati utili al lavoro: niente dati sanitari, codici fiscali o numeri di polizza completi.
         </span>
+      </p>
+      <p className="cl-required-note">
+        <span className="cl-required">*</span> campo obbligatorio
       </p>
 
       <fieldset className="cl-fieldset">
@@ -462,6 +519,21 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
         <div className="form-grid">
           {textField('phone', 'Telefono', { type: 'tel', placeholder: 'Es. +39 333 123 4567', maxLength: 30 })}
           {textField('email', 'Email', { type: 'email', placeholder: 'nome@dominio.it', maxLength: 120 })}
+          <div className="field span-2">
+            <label className="cl-check">
+              <input
+                type="checkbox"
+                className="checkbox"
+                checked={form.marketingConsent === true}
+                onChange={(e) => set('marketingConsent', e.target.checked)}
+                aria-describedby={`${fid('consent')}-hint`}
+              />
+              <span>Consenso comunicazioni commerciali</span>
+            </label>
+            <span id={`${fid('consent')}-hint`} className="field-hint">
+              {consentHint}
+            </span>
+          </div>
         </div>
       </fieldset>
 
@@ -469,9 +541,11 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
         <legend>Adempimenti</legend>
         <div className="form-grid">
           {dateField('docExpiry', "Scadenza documento d'identità")}
-          {dateField('amlReviewDue', 'Prossima adeguata verifica (antiriciclaggio)')}
-          {dateField('iddQuestionnaireDate', 'Data ultimo questionario di adeguatezza', iddHint, { max: today })}
           {dateField('lastContact', 'Ultimo contatto', 'Incontro o telefonata significativa', { max: today })}
+          {dateField('amlReviewDue', 'Prossima adeguata verifica (antiriciclaggio)')}
+          {selectField('amlRisk', 'Rischio antiriciclaggio', AML_RISK_OPTIONS)}
+          {dateField('iddQuestionnaireDate', 'Data ultimo questionario di adeguatezza', iddHint, { max: today })}
+          {selectField('riskProfile', 'Profilo di rischio (questionario)', RISK_PROFILE_OPTIONS)}
         </div>
       </fieldset>
 
@@ -616,23 +690,24 @@ function PolicyRowFields({
   const describedBy = (key: PolicyField, hint = false) =>
     errors[key] ? `${fid(key)}-err` : hint ? `${fid(key)}-hint` : undefined
   const invalid = (key: PolicyField) => (errors[key] ? true : undefined)
-  const numberField = (
-    key: 'annualPremium' | 'pacAmount' | 'pacDay',
-    label: string,
-    props: { min: number; max?: number; step: string | number; inputMode: 'decimal' | 'numeric'; placeholder?: string },
-  ) => (
-    <Field id={fid(key)} label={label} error={errors[key]}>
+  /** Importo in euro: testo libero ("3.000", "1.200,50"), riscritto in formato italiano all'uscita dal campo. */
+  const amountField = (key: 'annualPremium' | 'pacAmount', label: string, placeholder: string, className?: string) => (
+    <Field id={fid(key)} label={label} error={errors[key]} className={className}>
       <input
         id={fid(key)}
-        type="number"
+        type="text"
         className="input num"
         value={row[key]}
         onChange={(e) => onChange(row.id, key, e.target.value)}
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        inputMode={props.inputMode}
-        placeholder={props.placeholder}
+        onBlur={() => {
+          const { value, error } = checkAmount(row[key])
+          const formatted = formatAmountInput(value)
+          if (!error && value !== undefined && formatted !== row[key]) onChange(row.id, key, formatted)
+        }}
+        inputMode="decimal"
+        autoComplete="off"
+        maxLength={20}
+        placeholder={placeholder}
         aria-invalid={invalid(key)}
         aria-describedby={describedBy(key)}
       />
@@ -656,7 +731,7 @@ function PolicyRowFields({
         </button>
       </div>
       <div className="cl-policy-grid" role="group" aria-labelledby={`${base}-title`}>
-        <Field id={fid('kind')} label="Tipo" className="cl-span-2">
+        <Field id={fid('kind')} label="Tipo">
           <select
             id={fid('kind')}
             className="select"
@@ -669,6 +744,17 @@ function PolicyRowFields({
               </option>
             ))}
           </select>
+        </Field>
+        <Field id={fid('productName')} label="Nome prodotto" className="cl-span-2" hint="Facoltativo.">
+          <input
+            id={fid('productName')}
+            className="input"
+            value={row.productName}
+            onChange={(e) => onChange(row.id, 'productName', e.target.value)}
+            maxLength={80}
+            autoComplete="off"
+            aria-describedby={`${fid('productName')}-hint`}
+          />
         </Field>
         <Field id={fid('digits')} label="Ultime 4 cifre" required error={errors.digits} hint="Mai il numero completo.">
           <span className="cl-ref-input">
@@ -712,9 +798,38 @@ function PolicyRowFields({
             aria-describedby={describedBy('maturityDate', true)}
           />
         </Field>
-        {numberField('annualPremium', 'Premio annuo €', { min: 0, step: 'any', inputMode: 'decimal' })}
-        {numberField('pacAmount', 'PAC €/mese', { min: 0, step: 'any', inputMode: 'decimal', placeholder: 'Facoltativo' })}
-        {numberField('pacDay', 'Giorno addebito PAC', { min: 1, max: 31, step: 1, inputMode: 'numeric', placeholder: '1–31' })}
+        <Field id={fid('premiumType')} label="Tipo di premio" className="cl-grid-newline">
+          <select
+            id={fid('premiumType')}
+            className="select"
+            value={row.premiumType}
+            onChange={(e) => onChange(row.id, 'premiumType', e.target.value as PremiumType)}
+          >
+            {PREMIUM_TYPE_OPTIONS.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {amountField('annualPremium', `${PREMIUM_AMOUNT_LABEL[row.premiumType]} €`, 'Es. 1.200,00')}
+        {amountField('pacAmount', 'PAC €/mese', 'Facoltativo', 'cl-grid-newline')}
+        <Field id={fid('pacDay')} label="Giorno addebito PAC" error={errors.pacDay}>
+          <input
+            id={fid('pacDay')}
+            type="number"
+            className="input num"
+            value={row.pacDay}
+            onChange={(e) => onChange(row.id, 'pacDay', e.target.value)}
+            min={1}
+            max={31}
+            step={1}
+            inputMode="numeric"
+            placeholder="1–31"
+            aria-invalid={invalid('pacDay')}
+            aria-describedby={describedBy('pacDay')}
+          />
+        </Field>
       </div>
     </li>
   )

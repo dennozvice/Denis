@@ -311,6 +311,38 @@
   color: var(--primary-text);
 }
 
+/* Filtro per tipo attivo: descrizione e pulsante per toglierlo */
+.cs-filter-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--primary-bg);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.cs-filter-note strong {
+  color: var(--primary-text);
+}
+
+.cs-filter-note-icon {
+  flex: none;
+  color: var(--primary-text);
+}
+
+.cs-filter-note p {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.btn.cs-filter-clear {
+  flex: none;
+  margin-left: auto;
+}
+
 .cs-schedule-summary {
   font-size: var(--fs-sm);
   color: var(--text-2);
@@ -337,7 +369,8 @@
     height: 44px;
   }
 
-  .chip.cs-chip {
+  .chip.cs-chip,
+  .btn.cs-filter-clear {
     min-height: 44px;
   }
 

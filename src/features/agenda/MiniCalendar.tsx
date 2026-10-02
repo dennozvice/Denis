@@ -3,7 +3,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { APPOINTMENT_TYPE_COLOR } from '../../domain/labels'
 import type { AppointmentType, DateKey } from '../../domain/types'
 import { addDays, addMonths, isSameMonth, monthMatrix, parseKey, startOfMonth, weekdayIndex } from '../../lib/dates'
-import { capitalize, formatDateLong, formatMonthYear, plural, WEEKDAY_MIN } from '../../lib/format'
+import { capitalize, formatMonthYear, WEEKDAY_MIN } from '../../lib/format'
+import { dayAriaLabel } from './agendaUtils'
 import './agenda.css'
 
 export interface MiniCalendarProps {
@@ -23,14 +24,6 @@ export interface MiniCalendarProps {
 }
 
 export const WEEKDAY_LONG = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica']
-
-/** Testo per lettori di schermo: "venerdì 2 ottobre 2026, 4 appuntamenti, oggi". */
-export function dayAriaLabel(day: DateKey, count: number, today: DateKey): string {
-  let label = formatDateLong(day)
-  if (count > 0) label += `, ${plural(count, 'appuntamento', 'appuntamenti')}`
-  if (day === today) label += ', oggi'
-  return label
-}
 
 /** Pallini massimi per giorno: oltre, un conteggio "+N" (le caselle sono strette). */
 const MAX_DOTS = 2
@@ -207,7 +200,7 @@ export function MiniCalendar({
                     className={cls}
                     data-day={day}
                     tabIndex={day === tabbable ? 0 : -1}
-                    aria-label={dayAriaLabel(day, types?.length ?? 0, today)}
+                    aria-label={dayAriaLabel(day, types ?? [], today)}
                     aria-current={isToday ? 'date' : undefined}
                     onClick={() => select(day)}
                     onKeyDown={(e) => onKeyDown(e, day)}

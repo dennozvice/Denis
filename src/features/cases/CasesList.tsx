@@ -1,10 +1,10 @@
 import { FolderOpen, Pencil, Plus, Search, SearchX, Trash2, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Segmented } from '../../components/ui/Segmented'
 import { useToast } from '../../components/ui/Toast'
 import { CASE_TYPE_LABEL } from '../../domain/labels'
-import type { Case, CaseType, DateKey } from '../../domain/types'
+import type { Case, CaseStatus, CaseType, DateKey } from '../../domain/types'
 import { formatDateShort, formatNumber } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
@@ -14,10 +14,13 @@ import { CaseDue, CaseStatusSelect, CaseTypeIcon, formatCaseAmount } from './Cas
 import {
   caseAgeDays,
   caseAgeShort,
+  casesCountLabel,
   isCaseOpen,
   matchesCaseSearch,
   matchesStatusFilter,
+  neighbourCaseId,
   sortCasesForList,
+  statusChangeMessage,
   type CaseStatusFilter,
 } from './caseUtils'
 import './cases.css'
@@ -29,6 +32,9 @@ const STATUS_OPTIONS: { value: CaseStatusFilter; label: string }[] = [
 ]
 const TYPE_OPTIONS = Object.entries(CASE_TYPE_LABEL) as [CaseType, string][]
 
+/** Il focus è andato perso (l'elemento attivo è stato tolto dalla pagina)? */
+const focusLost = () => !document.activeElement || document.activeElement === document.body
+
 /** Scheda "Pratiche": ricerca, filtri e elenco (tabella su schermi larghi, schede su mobile). */
 export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): void }) {
   const { cases, clients } = useAppData()
@@ -39,6 +45,9 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<CaseStatusFilter>('aperte')
   const [type, setType] = useState<CaseType | ''>('')
+  const listRef = useRef<HTMLDivElement>(null)
+  /** Intestazione dell'elenco (o riquadro "nessuna pratica"): ripiego per il focus. */
+  const resultsRef = useRef<HTMLElement>(null)
 
   const clientIndex = useMemo(() => indexById(clients), [clients])
   const filtered = useMemo(
@@ -55,15 +64,59 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
   )
 
   const filtersActive = query.trim() !== '' || status !== 'aperte' || type !== ''
+
+  /**
+   * Dopo il prossimo aggiornamento, se il focus è andato perso (riga sparita, pulsante nascosto),
+   * lo porta su un controllo della pratica `id` (nella vista visibile: tabella o schede) oppure sull'intestazione.
+   */
+  const restoreFocus = (id: string | undefined, selector = '.cs-status-select') => {
+    window.requestAnimationFrame(() => {
+      if (!focusLost()) return
+      const candidates = id ? listRef.current?.querySelectorAll<HTMLElement>(`[data-case-id="${id}"] ${selector}`) : undefined
+      const target = candidates ? [...candidates].find((el) => el.getClientRects().length > 0) : undefined
+      ;(target ?? resultsRef.current)?.focus()
+    })
+  }
+
   const resetFilters = () => {
     setQuery('')
     setStatus('aperte')
     setType('')
+    restoreFocus(undefined)
+  }
+
+  const showAll = () => {
+    setStatus('tutte')
+    restoreFocus(undefined)
   }
 
   const remove = (c: Case) => {
     actions.deleteCase(c.id)
-    toast({ message: 'Pratica eliminata', actionLabel: 'Annulla', onAction: () => actions.restoreCase(c) })
+    toast({
+      message: 'Pratica eliminata',
+      actionLabel: 'Annulla',
+      onAction: () => {
+        actions.restoreCase(c)
+        restoreFocus(c.id, '.cs-case-title')
+      },
+    })
+    restoreFocus(neighbourCaseId(filtered, c.id), '.cs-case-title')
+  }
+
+  /** Cambio di stato dall'elenco: se la pratica esce dal filtro il focus passa alla riga successiva. */
+  const changeStatus = (c: Case, next: CaseStatus) => {
+    const prev = c.status
+    const leaves = !matchesStatusFilter({ status: next }, status)
+    actions.updateCase(c.id, { status: next })
+    toast({
+      message: statusChangeMessage(c.title, next, status),
+      actionLabel: 'Annulla',
+      onAction: () => {
+        actions.updateCase(c.id, { status: prev })
+        restoreFocus(c.id)
+      },
+    })
+    if (leaves) restoreFocus(neighbourCaseId(filtered, c.id))
   }
 
   const rowProps = (c: Case) => ({
@@ -72,6 +125,7 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
     clientName: clientNameById(clientIndex, c.clientId),
     onEdit,
     onDelete: remove,
+    onStatusChange: changeStatus,
   })
 
   return (
@@ -117,12 +171,12 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
       </p>
 
       {filtered.length === 0 ? (
-        <div className="card">
+        <div className="card cs-empty" ref={(el) => void (resultsRef.current = el)} tabIndex={-1}>
           {cases.length === 0 ? (
             <EmptyState
               icon={FolderOpen}
               title="Nessuna pratica"
-              text="Registra riscatti, sinistri, liquidazioni, variazioni di beneficiario, switch e reclami per seguirne lo stato."
+              text="Registra riscatti, sinistri, liquidazioni, variazioni di beneficiario, switch, anticipazioni, trasferimenti e reclami per seguirne lo stato."
               action={
                 <button type="button" className="btn btn-primary" onClick={onNew}>
                   <Plus size={16} aria-hidden="true" />
@@ -147,7 +201,7 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
               title="Nessuna pratica aperta"
               text="Tutte le pratiche sono chiuse."
               action={
-                <button type="button" className="btn" onClick={() => setStatus('tutte')}>
+                <button type="button" className="btn" onClick={showAll}>
                   Mostra tutte
                 </button>
               }
@@ -157,7 +211,10 @@ export function CasesList({ onEdit, onNew }: { onEdit(c: Case): void; onNew(): v
           )}
         </div>
       ) : (
-        <div className="cs-cases">
+        <div className="cs-cases" ref={listRef}>
+          <h2 className="cs-results-title" ref={(el) => void (resultsRef.current = el)} tabIndex={-1}>
+            {casesCountLabel(filtered.length, status)}
+          </h2>
           <div className="cs-cases-inner">
             <div className="cs-table-view">
               <table className="table cs-table">
@@ -202,6 +259,7 @@ interface RowProps {
   clientName: string
   onEdit(c: Case): void
   onDelete(c: Case): void
+  onStatusChange(c: Case, next: CaseStatus): void
 }
 
 function ClientLink({ clientId, clientName }: { clientId?: string; clientName: string }) {
@@ -246,10 +304,10 @@ function RowActions({ caseItem, onEdit, onDelete }: Pick<RowProps, 'caseItem' | 
   )
 }
 
-function CaseTableRow({ caseItem: c, today, clientName, onEdit, onDelete }: RowProps) {
+function CaseTableRow({ caseItem: c, today, clientName, onEdit, onDelete, onStatusChange }: RowProps) {
   const open = isCaseOpen(c)
   return (
-    <tr data-closed={open ? undefined : 'true'}>
+    <tr data-case-id={c.id} data-closed={open ? undefined : 'true'}>
       <td className="cs-td-case">
         <div className="cs-case-cell">
           <CaseTypeIcon type={c.type} />
@@ -272,7 +330,7 @@ function CaseTableRow({ caseItem: c, today, clientName, onEdit, onDelete }: RowP
         <CaseDue caseItem={c} today={today} />
       </td>
       <td className="cs-td-status">
-        <CaseStatusSelect caseItem={c} />
+        <CaseStatusSelect caseItem={c} onCommit={(next) => onStatusChange(c, next)} />
       </td>
       <td className="num cs-td-amount">
         {c.amount !== undefined ? (
@@ -291,10 +349,10 @@ function CaseTableRow({ caseItem: c, today, clientName, onEdit, onDelete }: RowP
   )
 }
 
-function CaseCardItem({ caseItem: c, today, clientName, onEdit, onDelete }: RowProps) {
+function CaseCardItem({ caseItem: c, today, clientName, onEdit, onDelete, onStatusChange }: RowProps) {
   const open = isCaseOpen(c)
   return (
-    <li className="cs-card" data-closed={open ? undefined : 'true'}>
+    <li className="cs-card" data-case-id={c.id} data-closed={open ? undefined : 'true'}>
       <div className="cs-card-head">
         <CaseTypeIcon type={c.type} />
         <span className="cs-case-type grow">{CASE_TYPE_LABEL[c.type]}</span>
@@ -325,7 +383,7 @@ function CaseCardItem({ caseItem: c, today, clientName, onEdit, onDelete }: RowP
         </div>
       </dl>
       <div className="cs-card-foot">
-        <CaseStatusSelect caseItem={c} />
+        <CaseStatusSelect caseItem={c} onCommit={(next) => onStatusChange(c, next)} />
         <RowActions caseItem={c} onEdit={onEdit} onDelete={onDelete} />
       </div>
     </li>

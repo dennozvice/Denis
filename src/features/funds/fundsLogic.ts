@@ -1,7 +1,8 @@
 /** Logica pura della sezione Fondi e mercati (selezione, variazioni, importazione): testabile senza React. */
 import type { DateKey, Instrument, PerformancePeriod, PricePoint } from '../../domain/types'
 import type { PriceRow } from '../../lib/csv'
-import { dailyChange, lastPoint, periodChangeAbs, periodChangePct } from '../../lib/finance'
+import { addDays, diffDays } from '../../lib/dates'
+import { dailyChange, lastPoint, periodChangeAbs, periodChangePct, pointOnOrBefore } from '../../lib/finance'
 
 // ---------------------------------------------------------------- selezione del grafico in home
 
@@ -53,6 +54,8 @@ export interface ChangeInfo {
   suffix: string
   /** true se un aumento è negativo (spread). */
   invert: boolean
+  /** true se la variazione non è né buona né cattiva (tassi): solo freccia e segno, nessun colore. */
+  neutral?: boolean
 }
 
 export const isGestioneSeparata = (i: Pick<Instrument, 'group'>) => i.group === 'gestione_separata'
@@ -62,7 +65,8 @@ export const risingIsBad = (i: Pick<Instrument, 'unit'>) => i.unit === 'bp'
 
 /**
  * Variazione di uno strumento nel periodo, nell'unità giusta:
- * fondi, indici e cambi in %; tassi in punti base (× 100); spread in punti base con colore invertito.
+ * fondi, indici e cambi in %; tassi in punti base (× 100) senza colore (un rialzo dei tassi
+ * non è di per sé né positivo né negativo); spread in punti base con colore invertito.
  * Per la gestione separata conta solo la differenza rispetto al rendimento dell'anno precedente (in punti percentuali).
  */
 export function instrumentChange(instrument: Instrument, period: ChangePeriod): ChangeInfo | undefined {
@@ -83,7 +87,8 @@ export function instrumentChange(instrument: Instrument, period: ChangePeriod): 
   } else {
     pct = periodChangePct(series, period)
   }
-  if (unit === 'pct') return abs === undefined ? undefined : { value: abs * 100, kind: 'abs', decimals: 0, suffix: ' pb', invert: false }
+  if (unit === 'pct')
+    return abs === undefined ? undefined : { value: abs * 100, kind: 'abs', decimals: 0, suffix: ' pb', invert: false, neutral: true }
   if (unit === 'bp') return abs === undefined ? undefined : { value: abs, kind: 'abs', decimals: 0, suffix: ' pb', invert: risingIsBad(instrument) }
   return pct === undefined ? undefined : { value: pct, kind: 'pct', decimals: 2, suffix: '', invert: false }
 }
@@ -115,6 +120,159 @@ export function latestDate(instruments: Instrument[]): DateKey | undefined {
     if (d && (!latest || d > latest)) latest = d
   }
   return latest
+}
+
+// ---------------------------------------------------------------- frequenza dei dati e statistiche
+
+/** Frequenza dei valori di una serie: i CSV importati possono essere settimanali o mensili. */
+export type SamplingFrequency = 'giornaliera' | 'settimanale' | 'mensile'
+
+/** Periodi in un anno, per annualizzare la volatilità. */
+export const PERIODS_PER_YEAR: Record<SamplingFrequency, number> = { giornaliera: 252, settimanale: 52, mensile: 12 }
+
+/** "dati settimanali": per le etichette delle statistiche. */
+export const FREQUENCY_DATA_LABEL: Record<SamplingFrequency, string> = {
+  giornaliera: 'dati giornalieri',
+  settimanale: 'dati settimanali',
+  mensile: 'dati mensili',
+}
+
+/** Punti considerati per riconoscere la frequenza: gli ultimi ~30 (i più rappresentativi dei dati attuali). */
+const FREQUENCY_WINDOW = 30
+
+/**
+ * Frequenza della serie dalla mediana dei giorni di calendario tra gli ultimi ~30 punti:
+ * fino a 3 giorni è giornaliera (il weekend dà 3), fino a 10 settimanale, oltre mensile.
+ * Con meno di due punti si assume giornaliera.
+ */
+export function samplingFrequency(series: PricePoint[]): SamplingFrequency {
+  const tail = series.slice(-(FREQUENCY_WINDOW + 1))
+  if (tail.length < 2) return 'giornaliera'
+  const gaps: number[] = []
+  for (let i = 1; i < tail.length; i++) gaps.push(diffDays(tail[i - 1].date, tail[i].date))
+  gaps.sort((a, b) => a - b)
+  const mid = gaps.length >> 1
+  const median = gaps.length % 2 === 1 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2
+  if (median <= 3) return 'giornaliera'
+  if (median <= 10) return 'settimanale'
+  return 'mensile'
+}
+
+/**
+ * Volatilità annualizzata (%) dei rendimenti logaritmici, con il fattore adatto alla frequenza dei dati
+ * (252 giornaliera, 52 settimanale, 12 mensile). undefined con meno di 3 punti o valori non positivi.
+ */
+export function annualizedVolatilityByFrequency(
+  series: PricePoint[],
+): { value: number; frequency: SamplingFrequency } | undefined {
+  if (series.length < 3 || series.some((p) => !(p.value > 0))) return undefined
+  const frequency = samplingFrequency(series)
+  const rets: number[] = []
+  for (let i = 1; i < series.length; i++) rets.push(Math.log(series[i].value / series[i - 1].value))
+  const mean = rets.reduce((s, r) => s + r, 0) / rets.length
+  const variance = rets.reduce((s, r) => s + (r - mean) ** 2, 0) / (rets.length - 1)
+  return { value: Math.sqrt(variance * PERIODS_PER_YEAR[frequency]) * 100, frequency }
+}
+
+/** Oltre questo distacco (giorni di calendario) l'ultima variazione non è "di un giorno": se ne indica la data di confronto. */
+export const LAST_CHANGE_MAX_GAP_DAYS = 4
+
+export interface LastChangeRef {
+  /** Data del valore precedente, con cui si confronta l'ultimo. */
+  previous: DateKey
+  last: DateKey
+  gapDays: number
+  /** true se tra i due valori ci sono più di 4 giorni (dati settimanali, mensili o un buco nella serie). */
+  wide: boolean
+}
+
+/** Date dei due valori confrontati dalla variazione "1g" (ultimo e precedente). */
+export function lastChangeRef(series: PricePoint[]): LastChangeRef | undefined {
+  if (series.length < 2) return undefined
+  const previous = series[series.length - 2].date
+  const last = series[series.length - 1].date
+  const gapDays = diffDays(previous, last)
+  return { previous, last, gapDays, wide: gapDays > LAST_CHANGE_MAX_GAP_DAYS }
+}
+
+/** true se per almeno uno strumento (esclusa la gestione separata) l'ultima variazione copre più di 4 giorni. */
+export function hasWideLastChange(instruments: Instrument[]): boolean {
+  return instruments.some((i) => !isGestioneSeparata(i) && lastChangeRef(i.series)?.wide === true)
+}
+
+/** Giorni di calendario della sparkline "Trend 30g". */
+export const TREND_DAYS = 30
+
+/**
+ * Valori degli ultimi 30 giorni di calendario (fino all'ultimo dato) per la sparkline.
+ * undefined se sono meno di 3 punti (es. dati mensili): una tendenza su 1-2 punti non dice nulla.
+ */
+export function trendValues(series: PricePoint[], days = TREND_DAYS): number[] | undefined {
+  const last = lastPoint(series)
+  if (!last) return undefined
+  const from = addDays(last.date, -days)
+  let start = series.length - 1
+  while (start > 0 && series[start - 1].date >= from) start--
+  const values = series.slice(start).map((p) => p.value)
+  return values.length >= 3 ? values : undefined
+}
+
+/**
+ * Ribasa più serie a 0% alla STESSA data: la più recente tra le date di inizio delle serie
+ * (una serie con storia più corta sposta l'inizio per tutte). Il valore di base di ogni serie è
+ * l'ultimo disponibile a quella data, riportato alla data comune: tutte le linee partono dallo stesso punto.
+ */
+export function rebaseAtCommonStart(slices: PricePoint[][]): { start?: DateKey; series: PricePoint[][] } {
+  let start: DateKey | undefined
+  for (const s of slices) if (s.length > 0 && (!start || s[0].date > start)) start = s[0].date
+  if (!start) return { series: slices.map(() => []) }
+  const common = start
+  const series = slices.map((s) => {
+    const base = pointOnOrBefore(s, common)
+    if (!base || base.value === 0) return []
+    const rest = s.filter((p) => p.date > common).map((p) => ({ date: p.date, value: (p.value / base.value - 1) * 100 }))
+    return [{ date: common, value: 0 }, ...rest]
+  })
+  return { start, series }
+}
+
+// ---------------------------------------------------------------- fondi dimostrativi
+
+export const SHOW_DEMO_FUNDS_KEY = 'advisor-desk:ui:show-demo-funds'
+
+/** Preferenza "Mostra fondi dimostrativi": attiva salvo scelta contraria salvata. */
+export function loadShowDemoFunds(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_DEMO_FUNDS_KEY) !== 'false'
+  } catch {
+    return true
+  }
+}
+
+export function saveShowDemoFunds(show: boolean): void {
+  try {
+    window.localStorage.setItem(SHOW_DEMO_FUNDS_KEY, show ? 'true' : 'false')
+  } catch {
+    /* archiviazione non disponibile: la scelta vale solo per questa sessione */
+  }
+}
+
+export const isFundGroup = (i: Pick<Instrument, 'group'>) => i.group === 'fondo' || i.group === 'gestione_separata'
+
+/** true per i fondi (e la gestione separata) con valori dimostrativi. */
+export const isDemoFund = (i: Pick<Instrument, 'group' | 'source'>) => isFundGroup(i) && i.source === 'demo'
+
+/**
+ * Strumento importato sopra uno dimostrativo: rischio (SRI) e descrizione erano inventati e non si mostrano.
+ * Le serie importate non hanno una fonte per questi dati: se ci sono, vengono dallo strumento dimostrativo
+ * (copiati da import precedenti o ereditati quando la serie importata si sovrappone a quella demo).
+ */
+export function withoutDemoMeta(instrument: Instrument): Instrument {
+  if (instrument.source !== 'import' || (instrument.sri === undefined && instrument.description === undefined)) return instrument
+  const clean = { ...instrument }
+  delete clean.sri
+  delete clean.description
+  return clean
 }
 
 // ---------------------------------------------------------------- importazione CSV
@@ -205,38 +363,42 @@ export function mergeSeries(existing: PricePoint[], incoming: PricePoint[]): Pri
     .map(([date, value]) => ({ date, value }))
 }
 
+/** true se l'importazione sostituisce i valori di uno strumento dimostrativo (non ancora importato). */
+export const replacesDemo = (g: ImportGroup) => g.match.existing?.source === 'demo'
+
 /**
  * Nuovo elenco delle serie importate dopo un'importazione:
- * - strumenti esistenti → si copiano i metadati e i punti si uniscono alla serie già importata (se c'è);
+ * - strumenti esistenti → si copiano nome, categoria, unità e colore e i punti si uniscono alla serie già
+ *   importata (se c'è). Rischio (SRI) e descrizione NON si copiano: per un fondo dimostrativo sono inventati;
  * - chiavi sconosciute → nuovo fondo "imp-<nome>" in EUR con 3 decimali e colore a rotazione.
+ * `names` (ID → nome) rinomina gli strumenti, es. il fondo dimostrativo sostituito con i valori del fondo reale.
  */
-export function buildImports(groups: ImportGroup[], imports: Instrument[]): Instrument[] {
+export function buildImports(groups: ImportGroup[], imports: Instrument[], names: Record<string, string> = {}): Instrument[] {
   const next = imports.map((i) => i)
   let newCount = imports.filter((i) => i.id.startsWith('imp-')).length
   for (const g of groups) {
     const idx = next.findIndex((i) => i.id === g.match.id)
     const prevImported = idx >= 0 ? next[idx] : undefined
     const meta = g.match.existing ?? prevImported
+    const rename = names[g.match.id]?.trim()
     let instrument: Instrument
     if (meta) {
       instrument = {
         id: g.match.id,
-        name: meta.name,
+        name: rename || meta.name,
         group: meta.group,
         category: meta.category,
-        sri: meta.sri,
         unit: meta.unit,
         decimals: meta.decimals,
         colorIndex: meta.colorIndex,
         benchmarkId: meta.benchmarkId,
-        description: meta.description,
         series: mergeSeries(prevImported?.series ?? [], g.points),
         source: 'import',
       }
     } else {
       instrument = {
         id: g.match.id,
-        name: g.match.key.trim(),
+        name: rename || g.match.key.trim(),
         group: 'fondo',
         unit: 'EUR',
         decimals: 3,

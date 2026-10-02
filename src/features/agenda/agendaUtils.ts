@@ -1,4 +1,5 @@
 /** Funzioni pure condivise da widget e pagina Agenda (orari, sovrapposizioni, link, etichette). */
+import { APPOINTMENT_TYPE_LABEL } from '../../domain/labels'
 import type {
   Appointment,
   AppointmentOutcome,
@@ -27,8 +28,9 @@ import {
   formatMonthShort,
   formatMonthYear,
   formatWeekdayDayMonth,
+  plural,
 } from '../../lib/format'
-import { isAllDay } from '../../store/selectors'
+import { clientFullName, isAllDay } from '../../store/selectors'
 import type { NewTask } from '../../store/StoreContext'
 
 export type AgendaView = 'giorno' | 'settimana' | 'mese'
@@ -276,6 +278,34 @@ export function relativeDayLabel(day: DateKey, today: DateKey): string {
   if (day === addDays(today, 1)) return `Domani · ${withYear}`
   if (day === addDays(today, -1)) return `Ieri · ${withYear}`
   return capitalize(withYear)
+}
+
+// ---------------------------------------------------------------- testi accessibili
+
+/**
+ * Titolo, cliente e tipo: "Firma – Mario Rossi (Firma contratto)". Nelle griglie il tipo è solo un colore,
+ * quindi va scritto; si omette solo se il titolo lo contiene già ("Revisione portafoglio – Mario Rossi").
+ */
+export function appointmentHeadline(a: Pick<Appointment, 'title' | 'type'>, client: Client | undefined): string {
+  const typeLabel = APPOINTMENT_TYPE_LABEL[a.type]
+  const withClient = client ? `${a.title} – ${clientFullName(client)}` : a.title
+  return a.title.toLowerCase().includes(typeLabel.toLowerCase()) ? withClient : `${withClient} (${typeLabel})`
+}
+
+/**
+ * Giorno per lettori di schermo, con i tipi di appuntamento (a schermo sono solo pallini o colori):
+ * "venerdì 2 ottobre 2026, oggi, 4 appuntamenti: Revisione portafoglio (2), Primo incontro, Telefonata".
+ */
+export function dayAriaLabel(day: DateKey, types: readonly AppointmentType[], today: DateKey): string {
+  let label = formatDateLong(day)
+  if (day === today) label += ', oggi'
+  if (types.length > 0) {
+    const counts = new Map<AppointmentType, number>()
+    for (const t of types) counts.set(t, (counts.get(t) ?? 0) + 1)
+    const list = [...counts].map(([t, n]) => `${APPOINTMENT_TYPE_LABEL[t]}${n > 1 ? ` (${n})` : ''}`)
+    label += `, ${plural(types.length, 'appuntamento', 'appuntamenti')}: ${list.join(', ')}`
+  }
+  return label
 }
 
 // ---------------------------------------------------------------- link
