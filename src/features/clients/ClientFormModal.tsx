@@ -1,5 +1,5 @@
 import { Plus, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode, type Ref } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { useToast } from '../../components/ui/Toast'
 import { CLIENT_SEGMENT_LABEL, POLICY_KIND_LABEL } from '../../domain/labels'
@@ -66,9 +66,9 @@ export function ClientFormModal({ open, onClose, client, onSaved, onDeleted }: C
       footer={
         <>
           {client && (
-            <button type="button" className="btn btn-danger cl-form-delete" onClick={remove}>
+            <button type="button" className="btn btn-danger cl-form-delete" onClick={remove} title="Elimina cliente">
               <Trash2 size={16} aria-hidden="true" />
-              Elimina
+              <span className="cl-form-delete-label">Elimina</span>
             </button>
           )}
           <button type="button" className="btn btn-ghost" onClick={onClose}>
@@ -361,37 +361,55 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
     onDone()
   }
 
-  // ---------------------------------------------------------------- helper di rendering
+  // ---------------------------------------------------------------- rendering
 
-  const fieldErrorId = (key: FieldKey) => (errors.fields[key] ? `${uid}-${key}-err` : undefined)
-  const fieldError = (key: FieldKey) =>
-    errors.fields[key] ? (
-      <span id={fieldErrorId(key)} className="cl-error">
-        {errors.fields[key]}
-      </span>
-    ) : null
-  const describedBy = (...ids: (string | undefined)[]) => ids.filter(Boolean).join(' ') || undefined
+  const fid = (key: string) => `${uid}-${key}`
+  const invalid = (key: FieldKey) => (errors.fields[key] ? true : undefined)
+  const describedBy = (key: string, opts: { error?: boolean; hint?: boolean; warning?: boolean }) =>
+    [opts.error && `${fid(key)}-err`, opts.hint && `${fid(key)}-hint`, opts.warning && `${fid(key)}-warn`]
+      .filter(Boolean)
+      .join(' ') || undefined
 
-  const dateInput = (key: FieldKey, label: ReactNode, hint?: ReactNode, opts: { max?: string } = {}) => (
-    <label className="field">
-      <span>{label}</span>
+  const dateField = (key: FieldKey, label: string, hint?: ReactNode, opts: { max?: string } = {}) => (
+    <Field id={fid(key)} label={label} error={errors.fields[key]} hint={hint}>
       <input
+        id={fid(key)}
         type="date"
         className="input"
         value={form[key]}
         max={opts.max}
         onChange={(e) => set(key, e.target.value)}
-        aria-invalid={errors.fields[key] ? true : undefined}
-        aria-describedby={describedBy(fieldErrorId(key), hint ? `${uid}-${key}-hint` : undefined)}
+        aria-invalid={invalid(key)}
+        aria-describedby={describedBy(key, { error: !!errors.fields[key], hint: !!hint && !errors.fields[key] })}
       />
-      {fieldError(key)}
-      {hint && (
-        <span id={`${uid}-${key}-hint`} className="field-hint">
-          {hint}
-        </span>
-      )}
-    </label>
+    </Field>
   )
+
+  const textField = (
+    key: FieldKey | 'city',
+    label: string,
+    props: { type?: string; placeholder?: string; maxLength: number; required?: boolean; inputRef?: Ref<HTMLInputElement> },
+  ) => {
+    const error = key === 'city' ? undefined : errors.fields[key]
+    return (
+      <Field id={fid(key)} label={label} required={props.required} error={error}>
+        <input
+          ref={props.inputRef}
+          id={fid(key)}
+          type={props.type ?? 'text'}
+          className="input"
+          value={form[key]}
+          onChange={(e) => set(key, e.target.value)}
+          placeholder={props.placeholder}
+          required={props.required}
+          maxLength={props.maxLength}
+          autoComplete="off"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy(key, { error: !!error })}
+        />
+      </Field>
+    )
+  }
 
   const iddDue = isDateKey(form.iddQuestionnaireDate)
     ? iddDueDate({ iddQuestionnaireDate: form.iddQuestionnaireDate }, settings.iddValidityMonths)
@@ -417,53 +435,17 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
       <fieldset className="cl-fieldset">
         <legend>Anagrafica</legend>
         <div className="form-grid">
-          <label className="field">
-            <span>Nome</span>
-            <input
-              ref={firstNameRef}
-              className="input"
-              value={form.firstName}
-              onChange={(e) => set('firstName', e.target.value)}
-              autoComplete="off"
-              maxLength={80}
-              aria-invalid={errors.fields.firstName ? true : undefined}
-              aria-describedby={fieldErrorId('firstName')}
-            />
-            {fieldError('firstName')}
-          </label>
-          <label className="field">
-            <span>
-              Cognome{' '}
-              <span className="cl-required" aria-hidden="true">
-                *
-              </span>
-            </span>
-            <input
-              className="input"
-              value={form.lastName}
-              onChange={(e) => set('lastName', e.target.value)}
-              required
-              autoComplete="off"
-              maxLength={80}
-              aria-invalid={errors.fields.lastName ? true : undefined}
-              aria-describedby={fieldErrorId('lastName')}
-            />
-            {fieldError('lastName')}
-          </label>
-          {dateInput('birthDate', 'Data di nascita', undefined, { max: today })}
-          <label className="field">
-            <span>Città</span>
-            <input
-              className="input"
-              value={form.city}
-              onChange={(e) => set('city', e.target.value)}
-              autoComplete="off"
-              maxLength={80}
-            />
-          </label>
-          <label className="field">
-            <span>Segmento</span>
-            <select className="select" value={form.segment} onChange={(e) => set('segment', e.target.value as ClientSegment | '')}>
+          {textField('firstName', 'Nome', { maxLength: 80, inputRef: firstNameRef })}
+          {textField('lastName', 'Cognome', { maxLength: 80, required: true })}
+          {dateField('birthDate', 'Data di nascita', undefined, { max: today })}
+          {textField('city', 'Città', { maxLength: 80 })}
+          <Field id={fid('segment')} label="Segmento">
+            <select
+              id={fid('segment')}
+              className="select"
+              value={form.segment}
+              onChange={(e) => set('segment', e.target.value as ClientSegment | '')}
+            >
               <option value="">Non indicato</option>
               {SEGMENT_OPTIONS.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -471,53 +453,25 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
         </div>
       </fieldset>
 
       <fieldset className="cl-fieldset">
         <legend>Contatti</legend>
         <div className="form-grid">
-          <label className="field">
-            <span>Telefono</span>
-            <input
-              type="tel"
-              className="input"
-              value={form.phone}
-              onChange={(e) => set('phone', e.target.value)}
-              placeholder="Es. +39 333 123 4567"
-              autoComplete="off"
-              maxLength={30}
-              aria-invalid={errors.fields.phone ? true : undefined}
-              aria-describedby={fieldErrorId('phone')}
-            />
-            {fieldError('phone')}
-          </label>
-          <label className="field">
-            <span>Email</span>
-            <input
-              type="email"
-              className="input"
-              value={form.email}
-              onChange={(e) => set('email', e.target.value)}
-              placeholder="nome@dominio.it"
-              autoComplete="off"
-              maxLength={120}
-              aria-invalid={errors.fields.email ? true : undefined}
-              aria-describedby={fieldErrorId('email')}
-            />
-            {fieldError('email')}
-          </label>
+          {textField('phone', 'Telefono', { type: 'tel', placeholder: 'Es. +39 333 123 4567', maxLength: 30 })}
+          {textField('email', 'Email', { type: 'email', placeholder: 'nome@dominio.it', maxLength: 120 })}
         </div>
       </fieldset>
 
       <fieldset className="cl-fieldset">
         <legend>Adempimenti</legend>
         <div className="form-grid">
-          {dateInput('docExpiry', "Scadenza documento d'identità")}
-          {dateInput('amlReviewDue', 'Prossima adeguata verifica (antiriciclaggio)')}
-          {dateInput('iddQuestionnaireDate', 'Data ultimo questionario di adeguatezza', iddHint, { max: today })}
-          {dateInput('lastContact', 'Ultimo contatto', 'Incontro o telefonata significativa', { max: today })}
+          {dateField('docExpiry', "Scadenza documento d'identità")}
+          {dateField('amlReviewDue', 'Prossima adeguata verifica (antiriciclaggio)')}
+          {dateField('iddQuestionnaireDate', 'Data ultimo questionario di adeguatezza', iddHint, { max: today })}
+          {dateField('lastContact', 'Ultimo contatto', 'Incontro o telefonata significativa', { max: today })}
         </div>
       </fieldset>
 
@@ -551,49 +505,93 @@ function ClientForm({ client, onSaved, onDone }: { client?: Client; onSaved?(cli
       <fieldset className="cl-fieldset">
         <legend>Etichette e note</legend>
         <div className="form-grid">
-          <label className="field span-2">
-            <span>Etichette</span>
+          <Field id={fid('tags')} label="Etichette" className="span-2" hint="Separate da virgola." warning={tagsWarning}>
             <input
+              id={fid('tags')}
               className="input"
               value={form.tags}
               onChange={(e) => set('tags', e.target.value)}
               placeholder="Es. prospect, cliente storico"
               autoComplete="off"
               maxLength={300}
-              aria-describedby={describedBy(`${uid}-tags-hint`, tagsWarning ? `${uid}-tags-warn` : undefined)}
+              aria-describedby={describedBy('tags', { hint: true, warning: !!tagsWarning })}
             />
-            <span id={`${uid}-tags-hint`} className="field-hint">
-              Separate da virgola.
-            </span>
-            {tagsWarning && <SensitiveWarning id={`${uid}-tags-warn`} text={tagsWarning} />}
-          </label>
-          <label className="field span-2">
-            <span>Note</span>
+          </Field>
+          <Field
+            id={fid('notes')}
+            label="Note"
+            className="span-2"
+            hint="Evita dati sanitari o informazioni sensibili."
+            warning={notesWarning}
+          >
             <textarea
+              id={fid('notes')}
               className="textarea"
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
               rows={4}
               maxLength={2000}
-              aria-describedby={describedBy(`${uid}-notes-hint`, notesWarning ? `${uid}-notes-warn` : undefined)}
+              aria-describedby={describedBy('notes', { hint: true, warning: !!notesWarning })}
             />
-            <span id={`${uid}-notes-hint`} className="field-hint">
-              Evita dati sanitari o informazioni sensibili.
-            </span>
-            {notesWarning && <SensitiveWarning id={`${uid}-notes-warn`} text={notesWarning} />}
-          </label>
+          </Field>
         </div>
       </fieldset>
     </form>
   )
 }
 
-function SensitiveWarning({ id, text }: { id: string; text: string }) {
+/**
+ * Campo con etichetta collegata (htmlFor), errore, suggerimento e avviso.
+ * Gli ID di errore/suggerimento/avviso sono `${id}-err`, `${id}-hint`, `${id}-warn`.
+ */
+function Field({
+  id,
+  label,
+  required,
+  error,
+  hint,
+  warning,
+  className,
+  children,
+}: {
+  id: string
+  label: string
+  required?: boolean
+  error?: string
+  hint?: ReactNode
+  warning?: string
+  className?: string
+  children: ReactNode
+}) {
   return (
-    <span id={id} className="cl-sensitive">
-      <TriangleAlert size={14} aria-hidden="true" />
-      {text}
-    </span>
+    <div className={`field${className ? ` ${className}` : ''}`}>
+      <label htmlFor={id} className="field-label">
+        {label}
+        {required && (
+          <span className="cl-required" aria-hidden="true">
+            {' '}
+            *
+          </span>
+        )}
+      </label>
+      {children}
+      {error && (
+        <span id={`${id}-err`} className="cl-error">
+          {error}
+        </span>
+      )}
+      {hint && !error && (
+        <span id={`${id}-hint`} className="field-hint">
+          {hint}
+        </span>
+      )}
+      {warning && (
+        <span id={`${id}-warn`} className="cl-sensitive">
+          <TriangleAlert size={14} aria-hidden="true" />
+          {warning}
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -614,14 +612,32 @@ function PolicyRowFields({
 }) {
   const n = index + 1
   const base = `${uid}-p${n}`
-  const errId = (key: PolicyField) => (errors[key] ? `${base}-${key}-err` : undefined)
-  const err = (key: PolicyField) =>
-    errors[key] ? (
-      <span id={errId(key)} className="cl-error">
-        {errors[key]}
-      </span>
-    ) : null
+  const fid = (key: string) => `${base}-${key}`
+  const describedBy = (key: PolicyField, hint = false) =>
+    errors[key] ? `${fid(key)}-err` : hint ? `${fid(key)}-hint` : undefined
   const invalid = (key: PolicyField) => (errors[key] ? true : undefined)
+  const numberField = (
+    key: 'annualPremium' | 'pacAmount' | 'pacDay',
+    label: string,
+    props: { min: number; max?: number; step: string | number; inputMode: 'decimal' | 'numeric'; placeholder?: string },
+  ) => (
+    <Field id={fid(key)} label={label} error={errors[key]}>
+      <input
+        id={fid(key)}
+        type="number"
+        className="input num"
+        value={row[key]}
+        onChange={(e) => onChange(row.id, key, e.target.value)}
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        inputMode={props.inputMode}
+        placeholder={props.placeholder}
+        aria-invalid={invalid(key)}
+        aria-describedby={describedBy(key)}
+      />
+    </Field>
+  )
 
   return (
     <li className="cl-policy-row" data-cl-policy={row.id}>
@@ -640,128 +656,65 @@ function PolicyRowFields({
         </button>
       </div>
       <div className="cl-policy-grid" role="group" aria-labelledby={`${base}-title`}>
-        <label className="field cl-span-2">
-          <span>Tipo</span>
-          <select className="select" value={row.kind} onChange={(e) => onChange(row.id, 'kind', e.target.value as PolicyKind)}>
+        <Field id={fid('kind')} label="Tipo" className="cl-span-2">
+          <select
+            id={fid('kind')}
+            className="select"
+            value={row.kind}
+            onChange={(e) => onChange(row.id, 'kind', e.target.value as PolicyKind)}
+          >
             {POLICY_KIND_OPTIONS.map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
             ))}
           </select>
-        </label>
-        <label className="field">
-          <span>
-            Ultime 4 cifre{' '}
-            <span className="cl-required" aria-hidden="true">
-              *
-            </span>
-          </span>
+        </Field>
+        <Field id={fid('digits')} label="Ultime 4 cifre" required error={errors.digits} hint="Mai il numero completo.">
           <span className="cl-ref-input">
             <span className="cl-ref-mask" aria-hidden="true">
               ••••
             </span>
             <input
+              id={fid('digits')}
               className="input num"
               value={row.digits}
               onChange={(e) => onChange(row.id, 'digits', e.target.value.replace(/\D/g, '').slice(0, 4))}
               inputMode="numeric"
               autoComplete="off"
               maxLength={4}
-              placeholder="1234"
               required
               aria-invalid={invalid('digits')}
-              aria-describedby={errId('digits') ?? `${base}-digits-hint`}
+              aria-describedby={describedBy('digits', true)}
             />
           </span>
-          {err('digits') ?? (
-            <span id={`${base}-digits-hint`} className="field-hint">
-              Mai il numero completo.
-            </span>
-          )}
-        </label>
-        <label className="field">
-          <span>
-            Decorrenza{' '}
-            <span className="cl-required" aria-hidden="true">
-              *
-            </span>
-          </span>
+        </Field>
+        <Field id={fid('startDate')} label="Decorrenza" required error={errors.startDate}>
           <input
+            id={fid('startDate')}
             type="date"
             className="input"
             value={row.startDate}
             onChange={(e) => onChange(row.id, 'startDate', e.target.value)}
             required
             aria-invalid={invalid('startDate')}
-            aria-describedby={errId('startDate')}
+            aria-describedby={describedBy('startDate')}
           />
-          {err('startDate')}
-        </label>
-        <label className="field">
-          <span>Scadenza</span>
+        </Field>
+        <Field id={fid('maturityDate')} label="Scadenza" error={errors.maturityDate} hint="Facoltativa.">
           <input
+            id={fid('maturityDate')}
             type="date"
             className="input"
             value={row.maturityDate}
             onChange={(e) => onChange(row.id, 'maturityDate', e.target.value)}
             aria-invalid={invalid('maturityDate')}
-            aria-describedby={errId('maturityDate') ?? `${base}-maturity-hint`}
+            aria-describedby={describedBy('maturityDate', true)}
           />
-          {err('maturityDate') ?? (
-            <span id={`${base}-maturity-hint`} className="field-hint">
-              Facoltativa (vita intera: vuota).
-            </span>
-          )}
-        </label>
-        <label className="field">
-          <span>Premio annuo €</span>
-          <input
-            type="number"
-            className="input num"
-            value={row.annualPremium}
-            onChange={(e) => onChange(row.id, 'annualPremium', e.target.value)}
-            min={0}
-            step="any"
-            inputMode="decimal"
-            aria-invalid={invalid('annualPremium')}
-            aria-describedby={errId('annualPremium')}
-          />
-          {err('annualPremium')}
-        </label>
-        <label className="field">
-          <span>PAC €/mese</span>
-          <input
-            type="number"
-            className="input num"
-            value={row.pacAmount}
-            onChange={(e) => onChange(row.id, 'pacAmount', e.target.value)}
-            min={0}
-            step="any"
-            inputMode="decimal"
-            placeholder="Facoltativo"
-            aria-invalid={invalid('pacAmount')}
-            aria-describedby={errId('pacAmount')}
-          />
-          {err('pacAmount')}
-        </label>
-        <label className="field">
-          <span>Giorno addebito PAC</span>
-          <input
-            type="number"
-            className="input num"
-            value={row.pacDay}
-            onChange={(e) => onChange(row.id, 'pacDay', e.target.value)}
-            min={1}
-            max={31}
-            step={1}
-            inputMode="numeric"
-            placeholder="1–31"
-            aria-invalid={invalid('pacDay')}
-            aria-describedby={errId('pacDay')}
-          />
-          {err('pacDay')}
-        </label>
+        </Field>
+        {numberField('annualPremium', 'Premio annuo €', { min: 0, step: 'any', inputMode: 'decimal' })}
+        {numberField('pacAmount', 'PAC €/mese', { min: 0, step: 'any', inputMode: 'decimal', placeholder: 'Facoltativo' })}
+        {numberField('pacDay', 'Giorno addebito PAC', { min: 1, max: 31, step: 1, inputMode: 'numeric', placeholder: '1–31' })}
       </div>
     </li>
   )

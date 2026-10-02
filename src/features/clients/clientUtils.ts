@@ -35,6 +35,11 @@ export function matchesClientSearch(client: Client, query: string): boolean {
   })
 }
 
+/** Le etichette "prospect" si evidenziano in blu, le altre restano neutre. */
+export function tagTone(tag: string): Tone {
+  return normalizeText(tag) === 'prospect' ? 'primary' : 'neutral'
+}
+
 // ---------------------------------------------------------------- ordinamento
 
 export type ClientSort = 'cognome' | 'contatto' | 'scadenza'
