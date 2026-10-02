@@ -12,7 +12,7 @@ import type {
   Goal,
   Task,
 } from '../domain/types'
-import { POLICY_KIND_LABEL, PRIORITY_RANK } from '../domain/labels'
+import { DEADLINE_TO_TASK_CATEGORY, POLICY_KIND_LABEL, PRIORITY_RANK } from '../domain/labels'
 import { addDays, addMonths, ageOn, diffDays, instantToRome, nextAnniversary, timeToMinutes, type RomeNow } from '../lib/dates'
 
 // ---------------------------------------------------------------- generali
@@ -265,6 +265,22 @@ export function computeDeadlines(data: AppData, today: DateKey, options: Deadlin
   }
 
   return out.sort((a, b) => (a.date === b.date ? a.title.localeCompare(b.title, 'it') : a.date < b.date ? -1 : 1))
+}
+
+/** Scadenze che per ogni cliente esistono una sola volta: basta cliente + categoria per riconoscerle. */
+const SINGLE_PER_CLIENT = new Set<Deadline['kind']>(['documento', 'antiriciclaggio', 'adeguatezza'])
+
+/**
+ * Attività APERTA già collegata a una scadenza, se esiste.
+ * Si confronta prima `task.deadlineId` (preciso); per le attività create a mano o prima di questo
+ * collegamento, ripiega su cliente + categoria solo per le scadenze uniche per cliente.
+ */
+export function findTaskForDeadline(tasks: Task[], deadline: Deadline): Task | undefined {
+  const open = tasks.filter(isOpen)
+  const exact = open.find((t) => t.deadlineId === deadline.id)
+  if (exact || !deadline.clientId || !SINGLE_PER_CLIENT.has(deadline.kind)) return exact
+  const category = DEADLINE_TO_TASK_CATEGORY[deadline.kind]
+  return open.find((t) => !t.deadlineId && t.clientId === deadline.clientId && t.category === category)
 }
 
 const COMPLIANCE_KINDS = new Set<Deadline['kind']>(['documento', 'antiriciclaggio', 'adeguatezza', 'scadenza_polizza', 'pratica'])

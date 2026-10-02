@@ -7,6 +7,7 @@ import {
   computeDeadlines,
   computeKpis,
   computeNotifications,
+  findTaskForDeadline,
   nextAppointment,
   todayTasks,
 } from './selectors'
@@ -53,6 +54,16 @@ describe('selettori', () => {
     expect(bday.daysLeft).toBe(0)
     expect(bday.title).toContain('67 anni')
     expect(list.every((d, i) => i === 0 || list[i - 1].date <= d.date)).toBe(true)
+  })
+
+  it('collega le attività alle scadenze', () => {
+    const list = computeDeadlines(data, TODAY, { horizonDays: 30 })
+    const doc = list.find((d) => d.id === 'doc-c02')!
+    expect(findTaskForDeadline(data.tasks, doc)?.id).toBe('t02') // stessa cliente e categoria
+    const bday = list.find((d) => d.kind === 'compleanno' && d.clientId === 'c07')!
+    expect(findTaskForDeadline(data.tasks, bday)).toBeUndefined() // ricorrenze: solo collegamento esplicito
+    const linked = [{ ...data.tasks[0], id: 'z', deadlineId: bday.id }]
+    expect(findTaskForDeadline(linked, bday)?.id).toBe('z')
   })
 
   it('clienti da ricontattare', () => {

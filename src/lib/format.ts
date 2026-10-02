@@ -123,6 +123,11 @@ export function formatRelativeDays(days: number): string {
   return `${-days} gg fa`
 }
 
+/** Come formatRelativeDays ma con l'iniziale maiuscola, per pill/chip: "Oggi", "Tra 5 gg", "3 gg fa". */
+export function formatRelativeDaysChip(days: number): string {
+  return capitalize(formatRelativeDays(days))
+}
+
 /** Saluto in base all'ora (minuti dalla mezzanotte). */
 export function greeting(minutes: number): string {
   if (minutes >= 18 * 60) return 'Buonasera'

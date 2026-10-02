@@ -324,6 +324,26 @@ ol {
   height: 32px;
 }
 
+/* Link "Vedi tutti" / "Apri agenda" nelle intestazioni e nei footer delle card: stile unico */
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--primary-text);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.card-link:hover {
+  text-decoration: underline;
+}
+
 /* ---------- Pill / chip / badge ---------- */
 .pill {
   display: inline-flex;
