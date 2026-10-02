@@ -25,6 +25,14 @@ describe('reducer', () => {
     expect(s.tasks.find((t) => t.id === 't01')).toBeDefined()
   })
 
+  it("dopo una modifica dell'utente la demo non viene più spostata in avanti", () => {
+    const s = appReducer(base(), { type: 'client/update', id: 'c01', patch: { docExpiry: '2027-01-01' } })
+    expect(s.demoGeneratedOn).toBeUndefined()
+    expect(s.isDemo).toBe(true)
+    const t = appReducer(base(), { type: 'settings/update', patch: { theme: 'scuro' } })
+    expect(t.demoGeneratedOn).toBe('2026-10-02')
+  })
+
   it('import calendario: aggiorna per UID e aggiunge i nuovi', () => {
     const ev = {
       id: 'i1',

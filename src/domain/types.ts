@@ -40,6 +40,8 @@ export interface Task {
   dueDate: DateKey
   dueTime?: TimeKey
   clientId?: string
+  /** Se l'attività è stata creata da una scadenza calcolata: l'ID della scadenza (Deadline.id). */
+  deadlineId?: string
   notes?: string
   status: TaskStatus
   createdAt: IsoInstant

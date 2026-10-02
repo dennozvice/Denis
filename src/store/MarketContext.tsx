@@ -5,7 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { demoMarketProvider } from '../data/market/demoMarket'
 import { mergeImported, type MarketDataProvider } from '../data/market/provider'
-import { loadMarketImports, saveMarketImports, type SaveResult } from '../data/persistence'
+import { IMPORTS_KEY, loadMarketImports, saveMarketImports, type SaveResult } from '../data/persistence'
 import type { DateKey, Instrument } from '../domain/types'
 import { lastPoint } from '../lib/finance'
 import { useNow } from './NowContext'
@@ -28,6 +28,11 @@ export interface MarketState {
   imports: Instrument[]
   /** Sostituisce l'elenco delle serie importate. */
   setImports(list: Instrument[]): SaveResult
+  /**
+   * Aggiorna le serie importate partendo dalla versione PIÙ RECENTE salvata nel browser
+   * (rilette al momento: evita di perdere import fatti in un'altra scheda).
+   */
+  updateImports(update: (current: Instrument[]) => Instrument[]): SaveResult
   reload(): void
 }
 
@@ -72,7 +77,22 @@ export function MarketProvider({
     if (result.ok) setImportsState(list)
     return result
   }, [])
+  const updateImports = useCallback((update: (current: Instrument[]) => Instrument[]) => {
+    const next = update(loadMarketImports())
+    const result = saveMarketImports(next)
+    if (result.ok) setImportsState(next)
+    return result
+  }, [])
   const reload = useCallback(() => setReloadKey((k) => k + 1), [])
+
+  // Import fatti in un'altra scheda: si riallinea questa.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === IMPORTS_KEY) setImportsState(loadMarketImports())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   const value = useMemo<MarketState>(() => {
     const instruments = mergeImported(base, imports)
@@ -94,9 +114,10 @@ export function MarketProvider({
       providerLabel: provider.label,
       imports,
       setImports,
+      updateImports,
       reload,
     }
-  }, [base, imports, status, error, provider.label, setImports, reload])
+  }, [base, imports, status, error, provider.label, setImports, updateImports, reload])
 
   return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>
 }

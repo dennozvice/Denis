@@ -45,6 +45,9 @@
   --grid: #eef2f7;
   --axis: #5b6b80;
 
+  /* Badge numerici (testo bianco): rosso scuro per contrasto AA in entrambi i temi */
+  --badge-bg: #c62828;
+
   /* Serie dei grafici: il colore è legato all'ID del fondo, non alla posizione */
   --series-1: #2a78d6;
   --series-2: #eb6834;

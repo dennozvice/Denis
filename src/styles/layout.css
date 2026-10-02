@@ -127,7 +127,7 @@
 }
 
 .nav-link .nav-badge[data-alert='true'] {
-  background: #ef4444;
+  background: var(--badge-bg);
 }
 
 .sidebar-foot {
@@ -152,7 +152,7 @@
   align-items: center;
   gap: var(--sp-4);
   min-height: var(--topbar-h);
-  padding: var(--sp-2) var(--sp-8);
+  padding: var(--sp-2) max(var(--sp-8), calc((100% - 1440px) / 2 + var(--sp-8)));
   background: color-mix(in srgb, var(--surface) 92%, transparent);
   backdrop-filter: saturate(1.4) blur(8px);
   border-bottom: 1px solid var(--border);
@@ -210,7 +210,7 @@
   height: 17px;
   padding: 0 4px;
   border-radius: var(--r-pill);
-  background: var(--negative);
+  background: var(--badge-bg);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -435,7 +435,7 @@
     height: 16px;
     padding: 0 4px;
     border-radius: var(--r-pill);
-    background: var(--negative);
+    background: var(--badge-bg);
     color: #fff;
     font-size: 10px;
     font-weight: 700;

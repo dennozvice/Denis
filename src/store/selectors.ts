@@ -99,6 +99,11 @@ export function todayTasks(tasks: Task[], today: DateKey): TodayTasks {
 
 // ---------------------------------------------------------------- appuntamenti
 
+/** Evento di un'intera giornata (es. importato da .ics con VALUE=DATE): 00:00–23:59. */
+export function isAllDay(a: Pick<Appointment, 'start' | 'end'>): boolean {
+  return a.start === '00:00' && a.end === '23:59'
+}
+
 export function compareAppointments(a: Appointment, b: Appointment): number {
   if (a.date !== b.date) return a.date < b.date ? -1 : 1
   return timeToMinutes(a.start) - timeToMinutes(b.start)
@@ -142,6 +147,7 @@ export function nextAppointment(appointments: Appointment[], now: RomeNow): Appo
     .filter(
       (a) =>
         a.status !== 'annullato' &&
+        !isAllDay(a) &&
         (a.date > now.date || (a.date === now.date && timeToMinutes(a.end) > now.minutes)),
     )
     .sort(compareAppointments)[0]
@@ -152,6 +158,7 @@ export function currentAppointment(appointments: Appointment[], now: RomeNow): A
   return appointments.find(
     (a) =>
       a.status !== 'annullato' &&
+      !isAllDay(a) &&
       a.date === now.date &&
       timeToMinutes(a.start) <= now.minutes &&
       timeToMinutes(a.end) > now.minutes,

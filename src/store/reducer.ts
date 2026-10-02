@@ -52,7 +52,38 @@ function unlinkClient<T extends { clientId?: string }>(list: T[], clientId: stri
   })
 }
 
+/**
+ * Azioni con cui l'utente modifica i record: da quel momento la demo non viene più
+ * "spostata" in avanti ogni giorno (altrimenti si sposterebbero anche le date inserite a mano).
+ */
+const USER_EDITS = new Set<Action['type']>([
+  'task/add',
+  'task/update',
+  'task/toggle',
+  'task/delete',
+  'appointment/add',
+  'appointment/update',
+  'appointment/delete',
+  'appointment/import',
+  'client/add',
+  'client/update',
+  'client/delete',
+  'case/add',
+  'case/update',
+  'case/delete',
+])
+
 export function appReducer(state: AppData, action: Action): AppData {
+  const next = reduce(state, action)
+  if (next !== state && next.demoGeneratedOn && USER_EDITS.has(action.type)) {
+    const frozen = { ...next }
+    delete frozen.demoGeneratedOn
+    return frozen
+  }
+  return next
+}
+
+function reduce(state: AppData, action: Action): AppData {
   switch (action.type) {
     case 'task/add':
       return { ...state, tasks: [...state.tasks, action.task] }

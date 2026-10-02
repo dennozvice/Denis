@@ -4,8 +4,11 @@ export function Sparkline({
   width = 80,
   height = 24,
   label,
+  invert = false,
 }: {
   values: number[]
+  /** true se un aumento è negativo (es. spread): il pallino finale diventa rosso quando sale. */
+  invert?: boolean
   width?: number
   height?: number
   /** Testo per lettori di schermo, es. "Andamento 30 giorni: in crescita". */
@@ -19,7 +22,8 @@ export function Sparkline({
   const x = (i: number) => pad + (i / (values.length - 1)) * (width - pad * 2)
   const y = (v: number) => pad + (1 - (v - min) / range) * (height - pad * 2)
   const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
-  const up = values[values.length - 1] >= values[0]
+  const rising = values[values.length - 1] >= values[0]
+  const up = invert ? !rising : rising
   const last = values.length - 1
   return (
     <svg

@@ -105,6 +105,19 @@ export const APPOINTMENT_TYPE_TONE: Record<AppointmentType, Tone> = {
   altro: 'neutral',
 }
 
+/** Colore (variabile CSS) di ogni tipo di appuntamento: tutti distinti, per pallini e barre in agenda. */
+export const APPOINTMENT_TYPE_COLOR: Record<AppointmentType, string> = {
+  primo_incontro: 'var(--primary)',
+  revisione_portafoglio: 'var(--accent)',
+  firma_contratto: 'var(--positive)',
+  consegna_polizza: 'var(--violet)',
+  call: 'var(--series-7)',
+  formazione: 'var(--warning)',
+  riunione_agenzia: 'var(--series-6)',
+  personale: 'var(--neutral)',
+  altro: 'var(--text-3)',
+}
+
 export const APPOINTMENT_STATUS_LABEL: Record<AppointmentStatus, string> = {
   pianificato: 'Pianificato',
   confermato: 'Confermato',

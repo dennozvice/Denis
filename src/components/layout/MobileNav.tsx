@@ -5,7 +5,7 @@ import { NAV_ITEMS, SETTINGS_ITEM } from './nav'
 import { useNavCounts } from './useNavCounts'
 
 const PRIMARY: { page: PageId; label: string; icon: typeof LayoutDashboard }[] = [
-  { page: 'home', label: 'Home', icon: LayoutDashboard },
+  { page: 'home', label: 'Panoramica', icon: LayoutDashboard },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays },
   { page: 'attivita', label: 'Attività', icon: ListChecks },
   { page: 'clienti', label: 'Clienti', icon: Users },
@@ -29,8 +29,17 @@ export function MobileNav({ page }: { page: PageId }) {
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    // tocco fuori dal menu (e fuori dal bottone "Altro") = chiudi
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Element | null
+      if (target && !target.closest('#more-sheet') && !target.closest('[aria-controls="more-sheet"]')) setOpen(false)
+    }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onPointer)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onPointer)
+    }
   })
 
   return (
