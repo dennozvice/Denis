@@ -89,7 +89,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
   const name = clientFullName(client) || client.lastName
   const contact = lastContactInfo(client, today, data.settings.recontactAfterDays)
   const totals = policyTotals(client.policies)
-  const age = client.birthDate ? ageOn(client.birthDate, today) : undefined
+  const age = client.birthDate && client.birthDate <= today ? ageOn(client.birthDate, today) : undefined
   const nextBirthday = client.birthDate ? nextAnniversary(client.birthDate, today) : undefined
   /** Compleanno entro 30 giorni (per la pillola nell'intestazione). */
   const birthday = nextBirthday && diffDays(today, nextBirthday) <= 30 ? nextBirthday : undefined
