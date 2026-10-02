@@ -867,7 +867,18 @@ th[aria-sort='descending'] .fd-sort-icon {
 
   .fd-widget .card-actions {
     width: 100%;
-    justify-content: space-between;
+  }
+
+  .fd-widget .card-actions .segmented {
+    flex: 1 1 auto;
+  }
+
+  .fd-widget .card-actions .segmented button {
+    flex: 1 1 0;
+  }
+
+  .fd-more {
+    margin-left: auto;
   }
 
   .fd-select,
