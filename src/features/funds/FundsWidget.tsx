@@ -98,7 +98,7 @@ export function FundsWidget() {
       <>
         <div className="fd-chart-head">
           {selected.length === 1 ? (
-            <Segmented options={MODE_OPTIONS} value={singleMode} onChange={setSingleMode} ariaLabel="Unità del grafico" />
+            <Segmented<ChartMode> options={MODE_OPTIONS} value={singleMode} onChange={setSingleMode} ariaLabel="Unità del grafico" />
           ) : (
             <p className="xsmall muted">
               {selected.length > 1 ? 'Rendimento % nel periodo' : 'Nessun fondo selezionato'}
@@ -132,7 +132,7 @@ export function FundsWidget() {
       subtitle={asOf && status === 'ready' ? `Aggiornato al ${formatDateShort(asOf)}` : undefined}
       actions={
         <>
-          <Segmented options={PERIOD_OPTIONS} value={period} onChange={setPeriod} ariaLabel="Periodo" />
+          <Segmented<PerformancePeriod> options={PERIOD_OPTIONS} value={period} onChange={setPeriod} ariaLabel="Periodo" />
           <a className="btn btn-ghost btn-sm fd-tap fd-more" href={buildHref('fondi')}>
             Dettagli
             <ChevronRight size={14} aria-hidden="true" />
@@ -186,7 +186,9 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
               <span className="visually-hidden">Mostra nel grafico</span>
             </th>
             <th scope="col">Fondo</th>
-            <th scope="col">Rischio</th>
+            <th scope="col" className="fd-col-risk">
+              Rischio
+            </th>
             <th scope="col" className="num">
               Valore quota
             </th>
@@ -219,7 +221,7 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
                     </div>
                   </div>
                 </td>
-                <td>
+                <td className="fd-col-risk">
                   <SriMeter value={f.sri} />
                 </td>
                 <td className="num">
@@ -245,7 +247,7 @@ function FundsTable({ funds, period, selected, onToggle }: ListProps) {
                 <td className="fd-col-trend">
                   <Sparkline
                     values={spark}
-                    width={80}
+                    width={72}
                     height={24}
                     label={trendLabel(spark, gs ? 'Rendimenti annui' : 'Andamento 30 giorni')}
                   />
@@ -276,8 +278,7 @@ function FundsMobileList({ funds, period, selected, onToggle }: ListProps) {
                 </a>
               </div>
               <div className="fd-mitem-sub xsmall muted">
-                {f.category}
-                {f.sri ? ` · Rischio ${f.sri}/7` : ''}
+                {[f.category, f.sri ? `Rischio ${f.sri}/7` : undefined].filter(Boolean).join(' · ')}
               </div>
               <div className="fd-mitem-values">
                 <span className="fd-mitem-nav num">

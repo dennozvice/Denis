@@ -229,7 +229,7 @@ const zoneFormatters = new Map<string, Intl.DateTimeFormat | null>()
 
 function zoneFormatter(timeZone: string): Intl.DateTimeFormat | null {
   if (!zoneFormatters.has(timeZone)) {
-    let f: Intl.DateTimeFormat | null = null
+    let f: Intl.DateTimeFormat | null
     try {
       f = new Intl.DateTimeFormat('en-US', {
         timeZone,
@@ -466,7 +466,11 @@ export function parseIcs(text: string): IcsParseResult {
           : 1
       spansDays = days > 1
     } else {
-      let endWall = endParsed ? endParsed.wall : duration !== null ? startParsed.wall + duration : startParsed.wall + DEFAULT_DURATION
+      let endWall = endParsed
+        ? endParsed.wall
+        : duration !== null
+          ? startParsed.wall + duration
+          : startParsed.wall + DEFAULT_DURATION
       if (endWall <= startParsed.wall) endWall = startParsed.wall + DEFAULT_DURATION
       start = minutesToTime(startMin)
       const endDate = wallDate(endWall)
@@ -502,7 +506,9 @@ export function parseIcs(text: string): IcsParseResult {
     }
     const categories = raw.get('CATEGORIES')?.value
     if (categories) {
-      const list = splitEscaped(categories).map((c) => unescapeText(c).trim()).filter(Boolean)
+      const list = splitEscaped(categories)
+        .map((c) => unescapeText(c).trim())
+        .filter(Boolean)
       if (list.length) event.categories = list
     }
     events.push(event)
@@ -515,7 +521,9 @@ export function parseIcs(text: string): IcsParseResult {
     )
   }
   if (multiDay) {
-    warnings.push(`${count(multiDay, 'evento su più giorni', 'eventi su più giorni')}: viene importato solo il primo giorno.`)
+    warnings.push(
+      `${count(multiDay, 'evento su più giorni', 'eventi su più giorni')}: viene importato solo il primo giorno.`,
+    )
   }
   if (missingStart) {
     warnings.push(
@@ -537,7 +545,9 @@ export function parseIcs(text: string): IcsParseResult {
     warnings.push(`Fuso orario non riconosciuto ("${tz}"): gli orari sono stati importati così come sono.`)
   }
 
-  events.sort((a, b) => (a.date === b.date ? (a.start < b.start ? -1 : a.start > b.start ? 1 : 0) : a.date < b.date ? -1 : 1))
+  events.sort((a, b) =>
+    a.date === b.date ? (a.start < b.start ? -1 : a.start > b.start ? 1 : 0) : a.date < b.date ? -1 : 1,
+  )
   return { events, warnings }
 }
 
@@ -586,7 +596,10 @@ const PHONE_RE = /^\+?[\d\s().\-/]{6,}$/
 const GENERIC_LOCATIONS = new Set(['in ufficio', 'ufficio', 'dal cliente', 'videochiamata', 'telefono', 'online'])
 
 /** Modalità e dettaglio del luogo dedotti da LOCATION e DESCRIPTION. */
-export function guessLocation(location: string | undefined, description: string | undefined): { mode: LocationMode; detail?: string } {
+export function guessLocation(
+  location: string | undefined,
+  description: string | undefined,
+): { mode: LocationMode; detail?: string } {
   const loc = (location ?? '').trim()
   const desc = description ?? ''
   const detail = GENERIC_LOCATIONS.has(loc.toLowerCase()) ? undefined : loc || undefined
@@ -611,7 +624,8 @@ export function matchClient(summary: string, clients: Client[]): Client | undefi
     const last = normalize(c.lastName)
     if (!first || !last) continue
     for (const name of [`${first} ${last}`, `${last} ${first}`]) {
-      if (haystack.includes(` ${name} `) && (!best || name.length > best.length)) best = { client: c, length: name.length }
+      if (haystack.includes(` ${name} `) && (!best || name.length > best.length))
+        best = { client: c, length: name.length }
     }
   }
   return best?.client
@@ -748,7 +762,11 @@ export interface IcsExportOptions {
 }
 
 /** Calendario iCalendar (righe CRLF, piegate a 75 ottetti) con gli appuntamenti indicati. */
-export function appointmentsToIcs(appointments: Appointment[], clients: Client[], options: IcsExportOptions = {}): string {
+export function appointmentsToIcs(
+  appointments: Appointment[],
+  clients: Client[],
+  options: IcsExportOptions = {},
+): string {
   const stamp = icsUtcStamp(options.now ?? new Date())
   const byId = new Map(clients.map((c) => [c.id, c]))
   const lines = [
@@ -766,8 +784,10 @@ export function appointmentsToIcs(appointments: Appointment[], clients: Client[]
     const clientName = client ? `${client.firstName} ${client.lastName}`.trim() : ''
     const summary = clientName ? `${a.title} – ${clientName}` : a.title
     const startMin = timeToMinutes(a.start)
-    const end = timeToMinutes(a.end) > startMin ? a.end : minutesToTime(Math.min(startMin + DEFAULT_DURATION, LAST_MINUTE))
-    const location = a.locationDetail?.trim() || (a.location === 'telefono' && client?.phone) || LOCATION_TEXT[a.location]
+    const end =
+      timeToMinutes(a.end) > startMin ? a.end : minutesToTime(Math.min(startMin + DEFAULT_DURATION, LAST_MINUTE))
+    const location =
+      a.locationDetail?.trim() || (a.location === 'telefono' && client?.phone) || LOCATION_TEXT[a.location]
     const status = a.status === 'annullato' ? 'CANCELLED' : a.status === 'pianificato' ? 'TENTATIVE' : 'CONFIRMED'
     lines.push(
       'BEGIN:VEVENT',

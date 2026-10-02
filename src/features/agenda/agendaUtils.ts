@@ -11,7 +11,14 @@ import {
   timeToMinutes,
   type RomeNow,
 } from '../../lib/dates'
-import { capitalize, formatDateLong, formatDayMonth, formatMonthShort, formatMonthYear, formatWeekdayDayMonth } from '../../lib/format'
+import {
+  capitalize,
+  formatDateLong,
+  formatDayMonth,
+  formatMonthShort,
+  formatMonthYear,
+  formatWeekdayDayMonth,
+} from '../../lib/format'
 
 export type AgendaView = 'giorno' | 'settimana' | 'mese'
 
@@ -75,7 +82,13 @@ export function appointmentPhase(a: Pick<Appointment, 'date' | 'start' | 'end'>,
 }
 
 /** Tipi di appuntamento con un cliente, per i quali ha senso registrare un esito. */
-const CLIENT_FACING: AppointmentType[] = ['primo_incontro', 'revisione_portafoglio', 'firma_contratto', 'consegna_polizza', 'call']
+const CLIENT_FACING: AppointmentType[] = [
+  'primo_incontro',
+  'revisione_portafoglio',
+  'firma_contratto',
+  'consegna_polizza',
+  'call',
+]
 
 /** Appuntamento concluso con un cliente ma senza esito registrato. */
 export function needsOutcome(a: Appointment, now: RomeNow): boolean {
@@ -110,7 +123,14 @@ export function layoutOverlaps(appointments: Appointment[], minDuration = 0): Po
       const startMin = timeToMinutes(appointment.start)
       const endMin = Math.max(timeToMinutes(appointment.end), startMin + 1)
       // l'ingombro visivo minimo conta come durata per le sovrapposizioni
-      return { appointment, startMin, endMin, visualEnd: Math.max(endMin, startMin + minDuration), column: 0, columns: 1 }
+      return {
+        appointment,
+        startMin,
+        endMin,
+        visualEnd: Math.max(endMin, startMin + minDuration),
+        column: 0,
+        columns: 1,
+      }
     })
     .sort((a, b) => a.startMin - b.startMin || b.visualEnd - a.visualEnd)
 
@@ -136,7 +156,13 @@ export function layoutOverlaps(appointments: Appointment[], minDuration = 0): Po
     clusterEnd = Math.max(clusterEnd, it.visualEnd)
   }
   flush()
-  return items.map(({ appointment, startMin, endMin, column, columns }) => ({ appointment, startMin, endMin, column, columns }))
+  return items.map(({ appointment, startMin, endMin, column, columns }) => ({
+    appointment,
+    startMin,
+    endMin,
+    column,
+    columns,
+  }))
 }
 
 /** Fascia oraria da mostrare: almeno 08–20, estesa per includere tutti gli appuntamenti (esclusi quelli "tutto il giorno"). */

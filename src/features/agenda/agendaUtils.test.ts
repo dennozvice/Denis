@@ -49,7 +49,7 @@ describe('orari', () => {
     expect(endAfter('09:30', 45)).toBe('10:15')
     expect(endAfter('23:30')).toBe('23:59')
   })
-  it('defaultStartFor: oggi = prossima mezz\'ora, altri giorni = 09:00', () => {
+  it("defaultStartFor: oggi = prossima mezz'ora, altri giorni = 09:00", () => {
     expect(defaultStartFor('2026-10-02', now('2026-10-02', '10:12'))).toBe('10:30')
     expect(defaultStartFor('2026-10-05', now('2026-10-02', '10:12'))).toBe('09:00')
   })
@@ -112,7 +112,7 @@ describe('layoutOverlaps', () => {
     expect(out.map((p) => p.columns)).toEqual([3, 3, 3])
     expect(new Set(out.map((p) => p.column)).size).toBe(3)
   })
-  it('l\'ingombro minimo conta come sovrapposizione', () => {
+  it("l'ingombro minimo conta come sovrapposizione", () => {
     const out = layoutOverlaps([appt('a', '14:30', '14:40'), appt('b', '14:45', '15:30')], 30)
     expect(out.map((p) => p.columns)).toEqual([2, 2])
   })
@@ -158,7 +158,7 @@ describe('link', () => {
     expect(telHref('+39 000 000 0106')).toBe('tel:+390000000106')
     expect(telHref('Link nella mail')).toBeUndefined()
   })
-  it('mapsHref codifica l\'indirizzo', () => {
+  it("mapsHref codifica l'indirizzo", () => {
     expect(mapsHref('Via dei Tigli 12, Milano')).toBe(
       'https://www.google.com/maps/search/?api=1&query=Via%20dei%20Tigli%2012%2C%20Milano',
     )

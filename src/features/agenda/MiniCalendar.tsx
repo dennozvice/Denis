@@ -18,6 +18,8 @@ export interface MiniCalendarProps {
   /** Facoltativo: id dell'elemento radice (per aria-controls). */
   id?: string
   className?: string
+  /** Facoltativo: nasconde intestazione e frecce (quando la pagina ha già la sua barra di navigazione). */
+  hideHeader?: boolean
 }
 
 export const WEEKDAY_LONG = ['lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato', 'domenica']
@@ -31,7 +33,13 @@ export function dayAriaLabel(day: DateKey, count: number, today: DateKey): strin
 }
 
 /** Pallini colorati per tipo di appuntamento (massimo 3, poi "+"). */
-export function TypeDots({ types, className = 'ag-dots' }: { types: AppointmentType[] | undefined; className?: string }) {
+export function TypeDots({
+  types,
+  className = 'ag-dots',
+}: {
+  types: AppointmentType[] | undefined
+  className?: string
+}) {
   if (!types || types.length === 0) return null
   return (
     <span className={className} aria-hidden="true">
@@ -48,7 +56,17 @@ export function TypeDots({ types, className = 'ag-dots' }: { types: AppointmentT
  * Semantica ARIA "grid" con tabindex mobile: frecce = giorno/settimana, Home/Fine = inizio/fine settimana,
  * PagSu/PagGiù = mese precedente/successivo (con Maiusc: anno), Invio/Spazio = seleziona.
  */
-export function MiniCalendar({ month, today, selected, marks, onSelect, onMonthChange, id, className }: MiniCalendarProps) {
+export function MiniCalendar({
+  month,
+  today,
+  selected,
+  marks,
+  onSelect,
+  onMonthChange,
+  id,
+  className,
+  hideHeader = false,
+}: MiniCalendarProps) {
   const titleId = useId()
   const gridRef = useRef<HTMLDivElement>(null)
   const pendingFocus = useRef<DateKey | null>(null)
@@ -119,36 +137,38 @@ export function MiniCalendar({ month, today, selected, marks, onSelect, onMonthC
 
   return (
     <div className={`ag-mc${className ? ` ${className}` : ''}`} id={id}>
-      <div className="ag-mc-header">
-        <h3 id={titleId} className="ag-mc-title" aria-live="polite">
+      <div className={hideHeader ? 'visually-hidden' : 'ag-mc-header'}>
+        <h3 id={titleId} className="ag-mc-title" aria-live={hideHeader ? undefined : 'polite'}>
           {capitalize(formatMonthYear(month))}
         </h3>
-        <div className="ag-mc-nav">
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm ag-mc-today"
-            onClick={() => select(today)}
-            aria-label="Vai a oggi"
-          >
-            Oggi
-          </button>
-          <button
-            type="button"
-            className="icon-btn ag-mc-arrow"
-            aria-label="Mese precedente"
-            onClick={() => onMonthChange(addMonths(month, -1))}
-          >
-            <ChevronLeft size={18} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="icon-btn ag-mc-arrow"
-            aria-label="Mese successivo"
-            onClick={() => onMonthChange(addMonths(month, 1))}
-          >
-            <ChevronRight size={18} aria-hidden="true" />
-          </button>
-        </div>
+        {!hideHeader && (
+          <div className="ag-mc-nav">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm ag-mc-today"
+              onClick={() => select(today)}
+              aria-label="Vai a oggi"
+            >
+              Oggi
+            </button>
+            <button
+              type="button"
+              className="icon-btn ag-mc-arrow"
+              aria-label="Mese precedente"
+              onClick={() => onMonthChange(addMonths(month, -1))}
+            >
+              <ChevronLeft size={18} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="icon-btn ag-mc-arrow"
+              aria-label="Mese successivo"
+              onClick={() => onMonthChange(addMonths(month, 1))}
+            >
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div role="grid" aria-labelledby={titleId} className="ag-mc-grid" ref={gridRef}>

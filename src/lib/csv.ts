@@ -31,8 +31,8 @@ export function parseItalianNumber(input: string, options: NumberParseOptions = 
   let s = input
     .trim()
     .replace(/^"(.*)"$/s, '$1')
-    .replace(/[\s  €%']/g, '')
-    .replace(/[−–]/g, '-')
+    .replace(/[\s\u00a0\u202f€%']/g, '')
+    .replace(/[\u2212\u2013]/g, '-')
   if (s === '') return undefined
   let sign = 1
   if (s.startsWith('-')) {
@@ -219,7 +219,7 @@ const normalizeHeader = (s: string) =>
   s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -237,14 +237,14 @@ interface Layout {
   value: number
 }
 
-const looksNumeric = (s: string) => /^[-+−]?[\d.,\s €%]+$/.test(s) && /\d/.test(s)
+const looksNumeric = (s: string) => /^[-+\u2212]?[\d.,\s\u00a0€%]+$/.test(s) && /\d/.test(s)
 
 /** Separatore decimale prevalente nei valori: decide i casi ambigui come "10.420". */
 function detectDecimal(values: string[], delimiter: Delimiter): ',' | '.' {
   let comma = 0
   let dot = 0
   for (const raw of values) {
-    const s = raw.replace(/[\s €%"]/g, '')
+    const s = raw.replace(/[\s\u00a0€%"]/g, '')
     const c = s.lastIndexOf(',')
     const d = s.lastIndexOf('.')
     if (c >= 0 && d >= 0) {
@@ -267,7 +267,7 @@ function detectDecimal(values: string[], delimiter: Delimiter): ',' | '.' {
  */
 export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): PriceCsvResult {
   const defaultKey = options.defaultKey?.trim() || undefined
-  const allLines = text.replace(/^﻿/, '').split(/\r\n|\n|\r/)
+  const allLines = text.replace(/^\uFEFF/, '').split(/\r\n|\n|\r/)
   const numbered = allLines
     .map((content, i) => ({ content, line: i + 1 }))
     .filter((l) => l.content.trim() !== '' && !/^\s*#/.test(l.content))
@@ -305,7 +305,7 @@ export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): Pric
     const fields = splitCsvLine(content, delimiter)
     let keyField: string | undefined
     let dateField: string | undefined
-    let rest: string[] = []
+    let rest: string[]
     if (layout) {
       keyField = layout.key >= 0 ? fields[layout.key] : undefined
       dateField = fields[layout.date]

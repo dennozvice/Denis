@@ -15,7 +15,7 @@ describe('parseItalianNumber', () => {
     ['€ 1.200', 1200],
     ['1.200 €', 1200],
     ['1 234,5', 1234.5],
-    ['1 234,5', 1234.5],
+    ['1\u00a0234,5', 1234.5],
     ['1.234.567,89', 1234567.89],
     ['1,234,567.89', 1234567.89],
     ['1.234.567', 1234567],
@@ -99,7 +99,7 @@ describe('parsePriceCsv', () => {
   })
 
   it('funziona anche senza intestazione e con BOM e CRLF', () => {
-    const r = parsePriceCsv('﻿f-a;01/09/2026;10,5\r\nf-b;01/09/2026;20,25\r\n')
+    const r = parsePriceCsv('\uFEFFf-a;01/09/2026;10,5\r\nf-b;01/09/2026;20,25\r\n')
     expect(r.hasHeader).toBe(false)
     expect(r.errors).toEqual([])
     expect(r.rows).toEqual([

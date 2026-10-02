@@ -128,6 +128,7 @@
 }
 
 .fd-chart-table-wrap {
+  position: relative;
   max-height: 360px;
   overflow: auto;
 }

@@ -161,7 +161,9 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
                 <tr>
                   <th scope="col">Codice (id)</th>
                   <th scope="col">Nome</th>
-                  <th scope="col">Tipo</th>
+                  <th scope="col" className="fd-codes-type">
+                    Tipo
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -171,7 +173,7 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
                       <code className="fd-code-inline">{i.id}</code>
                     </td>
                     <td>{i.name}</td>
-                    <td className="muted">{INSTRUMENT_GROUP_LABEL[i.group]}</td>
+                    <td className="muted fd-codes-type">{INSTRUMENT_GROUP_LABEL[i.group]}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,23 +202,30 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
             </select>
           </label>
           <div className="field">
-            <label className="field-label" htmlFor={`${uid}-file`}>
+            <span className="field-label" id={`${uid}-file-label`}>
               Carica un file (.csv, .txt)
-            </label>
-            <input
-              id={`${uid}-file`}
-              type="file"
-              accept=".csv,.txt,text/csv,text/plain"
-              className="fd-file"
-              onChange={(e) => void onFile(e)}
-              aria-describedby={fileError ? `${uid}-file-error` : undefined}
-            />
-            {fileName && !fileError && <span className="field-hint">Caricato: {fileName}</span>}
-            {fileError && (
-              <span className="field-hint fd-error-text" id={`${uid}-file-error`}>
-                {fileError}
+            </span>
+            <div className="fd-file-row">
+              <input
+                id={`${uid}-file`}
+                type="file"
+                accept=".csv,.txt,text/csv,text/plain"
+                className="visually-hidden fd-file-input"
+                onChange={(e) => void onFile(e)}
+                aria-labelledby={`${uid}-file-label`}
+                aria-describedby={`${uid}-file-status`}
+              />
+              <label htmlFor={`${uid}-file`} className="btn fd-tap fd-file-btn">
+                <FileUp size={16} aria-hidden="true" />
+                Scegli un file…
+              </label>
+              <span
+                id={`${uid}-file-status`}
+                className={`xsmall truncate ${fileError ? 'fd-error-text' : 'muted'}`}
+              >
+                {fileError ?? (fileName ? `Caricato: ${fileName}` : 'Nessun file selezionato')}
               </span>
-            )}
+            </div>
           </div>
           <label className="field span-2">
             <span>Dati da importare</span>

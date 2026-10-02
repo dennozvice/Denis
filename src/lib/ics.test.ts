@@ -131,7 +131,11 @@ const GOOGLE_SAMPLE = [
 
 describe('unfoldLines', () => {
   it('ricongiunge le righe piegate con spazio o tab e gestisce CRLF/LF/CR', () => {
-    expect(unfoldLines('A:uno\r\n  due\r\nB:tre\n\tquattro\rC:cinque')).toEqual(['A:uno due', 'B:trequattro', 'C:cinque'])
+    expect(unfoldLines('A:uno\r\n  due\r\nB:tre\n\tquattro\rC:cinque')).toEqual([
+      'A:uno due',
+      'B:trequattro',
+      'C:cinque',
+    ])
   })
   it('ignora le righe vuote e il BOM', () => {
     expect(unfoldLines('\uFEFFA:1\r\n\r\nB:2\r\n')).toEqual(['A:1', 'B:2'])
@@ -146,7 +150,7 @@ describe('parseIcs – Outlook', () => {
     expect(events.map((e) => e.date)).toEqual(['2026-10-05', '2026-10-06', '2026-10-07'])
   })
 
-  it('tratta i fusi Windows dell\'Europa centrale come ora di Roma', () => {
+  it("tratta i fusi Windows dell'Europa centrale come ora di Roma", () => {
     expect(events[0]).toMatchObject({ start: '10:00', end: '11:00', allDay: false, recurring: false })
     expect(events[1]).toMatchObject({ start: '14:30', end: '15:00' })
     expect(events[2]).toMatchObject({ start: '09:00', end: '09:30' })
@@ -171,11 +175,11 @@ describe('parseIcs – Google', () => {
   const { events, warnings } = parseIcs(GOOGLE_SAMPLE)
   const byUid = (uid: string) => events.find((e) => e.uid === uid)!
 
-  it('converte gli orari UTC (Z) nell\'ora di Roma, con ora legale', () => {
+  it("converte gli orari UTC (Z) nell'ora di Roma, con ora legale", () => {
     expect(byUid('g1@google.com')).toMatchObject({ date: '2026-10-05', start: '10:00', end: '11:00' })
   })
 
-  it('gestisce il ritorno all\'ora solare del 25 ottobre 2026', () => {
+  it("gestisce il ritorno all'ora solare del 25 ottobre 2026", () => {
     expect(byUid('g2@google.com')).toMatchObject({ date: '2026-10-24', start: '11:00', end: '12:00' })
     expect(byUid('g3@google.com')).toMatchObject({ date: '2026-10-25', start: '10:00', end: '11:30' })
   })
@@ -192,7 +196,14 @@ describe('parseIcs – casi particolari', () => {
 
   it('eventi "tutto il giorno" (VALUE=DATE): 00:00–23:59, DTEND esclusivo', () => {
     const { events, warnings } = parseIcs(
-      wrap('BEGIN:VEVENT', 'UID:d1', 'DTSTART;VALUE=DATE:20261005', 'DTEND;VALUE=DATE:20261006', 'SUMMARY:Ferie', 'END:VEVENT'),
+      wrap(
+        'BEGIN:VEVENT',
+        'UID:d1',
+        'DTSTART;VALUE=DATE:20261005',
+        'DTEND;VALUE=DATE:20261006',
+        'SUMMARY:Ferie',
+        'END:VEVENT',
+      ),
     )
     expect(events[0]).toMatchObject({ date: '2026-10-05', start: '00:00', end: '23:59', allDay: true })
     expect(warnings).toEqual([])
@@ -254,7 +265,9 @@ describe('parseIcs – casi particolari', () => {
   })
 
   it('orari "fluttuanti" (senza fuso) presi così come sono; senza fine = 60 minuti', () => {
-    const { events } = parseIcs(wrap('BEGIN:VEVENT', 'UID:f', 'DTSTART:20261005T163000', 'SUMMARY:Senza fine', 'END:VEVENT'))
+    const { events } = parseIcs(
+      wrap('BEGIN:VEVENT', 'UID:f', 'DTSTART:20261005T163000', 'SUMMARY:Senza fine', 'END:VEVENT'),
+    )
     expect(events[0]).toMatchObject({ date: '2026-10-05', start: '16:30', end: '17:30' })
   })
 
@@ -291,7 +304,7 @@ describe('parseIcs – casi particolari', () => {
     ])
   })
 
-  it('fusi sconosciuti: orario così com\'è e avviso (una volta per fuso)', () => {
+  it("fusi sconosciuti: orario così com'è e avviso (una volta per fuso)", () => {
     const { events, warnings } = parseIcs(
       wrap(
         'BEGIN:VEVENT',
@@ -306,7 +319,9 @@ describe('parseIcs – casi particolari', () => {
       ),
     )
     expect(events[0]).toMatchObject({ start: '10:00', end: '11:00' })
-    expect(warnings).toEqual(['Fuso orario non riconosciuto ("Fuso Inventato"): gli orari sono stati importati così come sono.'])
+    expect(warnings).toEqual([
+      'Fuso orario non riconosciuto ("Fuso Inventato"): gli orari sono stati importati così come sono.',
+    ])
   })
 
   it('fusi IANA diversi da Roma vengono convertiti', () => {
@@ -362,7 +377,7 @@ describe('testo e durate', () => {
     expect(unescapeText('C:\\\\nuovi')).toBe('C:\\nuovi')
   })
 
-  it('escapeText è l\'inverso di unescapeText', () => {
+  it("escapeText è l'inverso di unescapeText", () => {
     const original = 'Nota; con, virgole\\barre\r\ne a capo'
     expect(escapeText(original)).toBe('Nota\\; con\\, virgole\\\\barre\\ne a capo')
     expect(unescapeText(escapeText(original))).toBe('Nota; con, virgole\\barre\ne a capo')
@@ -422,13 +437,21 @@ describe('guessAppointmentType', () => {
 })
 
 describe('guessAppointmentType con CATEGORIES', () => {
-  it('usa la categoria se coincide con un tipo dell\'app', () => {
+  it("usa la categoria se coincide con un tipo dell'app", () => {
     expect(guessAppointmentType('Esito proposta PAC', ['Telefonata'])).toBe('call')
     expect(guessAppointmentType('Firma', ['Lavoro'])).toBe('firma_contratto')
   })
   it('legge CATEGORIES multiple dal file', () => {
     const { events } = parseIcs(
-      crlf(['BEGIN:VCALENDAR', 'BEGIN:VEVENT', 'UID:c', 'DTSTART:20261005T100000', 'CATEGORIES:Lavoro,Riunione di agenzia\\, sede', 'END:VEVENT', 'END:VCALENDAR']),
+      crlf([
+        'BEGIN:VCALENDAR',
+        'BEGIN:VEVENT',
+        'UID:c',
+        'DTSTART:20261005T100000',
+        'CATEGORIES:Lavoro,Riunione di agenzia\\, sede',
+        'END:VEVENT',
+        'END:VCALENDAR',
+      ]),
     )
     expect(events[0].categories).toEqual(['Lavoro', 'Riunione di agenzia, sede'])
   })
@@ -455,7 +478,10 @@ describe('guessLocation', () => {
     expect(guessLocation(undefined, undefined)).toEqual({ mode: 'ufficio' })
     expect(guessLocation('Via Roma 1, Milano', undefined)).toEqual({ mode: 'domicilio', detail: 'Via Roma 1, Milano' })
     expect(guessLocation('+39 02 1234 5678', undefined)).toEqual({ mode: 'telefono', detail: '+39 02 1234 5678' })
-    expect(guessLocation('Sala riunioni agenzia', undefined)).toEqual({ mode: 'ufficio', detail: 'Sala riunioni agenzia' })
+    expect(guessLocation('Sala riunioni agenzia', undefined)).toEqual({
+      mode: 'ufficio',
+      detail: 'Sala riunioni agenzia',
+    })
   })
 
   it('le etichette generiche del nostro export non diventano dettagli', () => {
@@ -480,11 +506,26 @@ describe('matchClient', () => {
 })
 
 describe('icsEventsToAppointments', () => {
-  const base: IcsEvent = { summary: '', date: '2026-10-05', start: '10:00', end: '11:00', allDay: false, recurring: false }
+  const base: IcsEvent = {
+    summary: '',
+    date: '2026-10-05',
+    start: '10:00',
+    end: '11:00',
+    allDay: false,
+    recurring: false,
+  }
 
   it('produce appuntamenti con origine ics, tipo, luogo e cliente', () => {
     const [a] = icsEventsToAppointments(
-      [{ ...base, uid: 'u1', summary: 'Revisione portafoglio Mario Rossi', location: 'Via dei Tigli 12, Milano', description: 'Note' }],
+      [
+        {
+          ...base,
+          uid: 'u1',
+          summary: 'Revisione portafoglio Mario Rossi',
+          location: 'Via dei Tigli 12, Milano',
+          description: 'Note',
+        },
+      ],
       CLIENTS,
     )
     expect(a).toEqual({
@@ -573,7 +614,16 @@ describe('appointmentsToIcs', () => {
       locationDetail: 'Via dei Tigli 12, Milano',
       status: 'pianificato',
     }),
-    appt({ id: 'a03', title: 'Esito proposta PAC', type: 'call', date: '2026-10-06', start: '14:30', end: '14:50', location: 'telefono', clientId: 'c01' }),
+    appt({
+      id: 'a03',
+      title: 'Esito proposta PAC',
+      type: 'call',
+      date: '2026-10-06',
+      start: '14:30',
+      end: '14:50',
+      location: 'telefono',
+      clientId: 'c01',
+    }),
   ]
   const ics = appointmentsToIcs(appointments, CLIENTS, { now: NOW })
   const lines = ics.split('\r\n')

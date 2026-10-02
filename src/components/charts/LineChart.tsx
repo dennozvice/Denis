@@ -105,10 +105,13 @@ export function timeTicks(first: DateKey, last: DateKey, maxTicks = 6): TimeTick
     return out
   }
   const withYear = span > 400
-  // primi del mese compresi nel periodo
+  // primi del mese compresi nel periodo, esclusi quelli attaccati ai bordi (etichette tagliate)
+  const margin = Math.max(3, Math.round(span * 0.03))
+  const from = addDays(first, margin)
+  const to = addDays(last, -margin)
   const starts: DateKey[] = []
-  let m = parseKey(first).day === 1 ? first : startOfMonth(addDays(startOfMonth(first), 32))
-  while (m <= last) {
+  let m = parseKey(from).day === 1 ? from : startOfMonth(addDays(startOfMonth(from), 32))
+  while (m <= to) {
     starts.push(m)
     m = startOfMonth(addDays(m, 32))
   }
@@ -266,7 +269,7 @@ export function LineChart({
   }, [series, dayNums, d0, d1, plotLeft, plotRight, plotTop, plotBottom, yMin, yMax])
 
   const plotWidth = plotRight - plotLeft
-  const xTicks = data.empty ? [] : timeTicks(dates[0], dates[dates.length - 1], Math.floor(plotWidth / 72))
+  const xTicks = data.empty ? [] : timeTicks(dates[0], dates[dates.length - 1], Math.min(6, Math.floor(plotWidth / 60)))
 
   const activeIndex = active !== null && active < dates.length ? active : null
   const activeDate = activeIndex !== null ? dates[activeIndex] : undefined
@@ -291,7 +294,7 @@ export function LineChart({
     if (data.empty) return
     const current = activeIndex ?? dates.length - 1
     const big = Math.max(1, Math.round(dates.length / 10))
-    let next: number | null = null
+    let next: number
     switch (e.key) {
       case 'ArrowLeft':
         next = activeIndex === null ? current : current - (e.shiftKey ? big : 1)

@@ -2,7 +2,14 @@
 import { Building2, MapPin, Phone, Video } from 'lucide-react'
 import { Pill } from '../../components/ui/Pill'
 import type { Tone } from '../../domain/labels'
-import { APPOINTMENT_OUTCOME_LABEL, APPOINTMENT_TYPE_LABEL, APPOINTMENT_TYPE_TONE, LOCATION_LABEL, TONE_BG, TONE_COLOR } from '../../domain/labels'
+import {
+  APPOINTMENT_OUTCOME_LABEL,
+  APPOINTMENT_TYPE_LABEL,
+  APPOINTMENT_TYPE_TONE,
+  LOCATION_LABEL,
+  TONE_BG,
+  TONE_COLOR,
+} from '../../domain/labels'
 import type { Appointment, AppointmentOutcome, Client, LocationMode } from '../../domain/types'
 import { clientFullName } from '../../store/selectors'
 import { videoHref, type Phase } from './agendaUtils'
@@ -23,7 +30,8 @@ export function LocationIcon({ mode, size = 14 }: { mode: LocationMode; size?: n
 /** Testo del luogo: dettaglio (indirizzo, sala…) oppure l'etichetta generica. I link non vengono mostrati per intero. */
 export function locationText(a: Pick<Appointment, 'location' | 'locationDetail'>): string {
   const detail = a.locationDetail?.trim()
-  if (!detail || a.location === 'telefono' || (a.location === 'video' && videoHref(detail))) return LOCATION_LABEL[a.location]
+  if (!detail || a.location === 'telefono' || (a.location === 'video' && videoHref(detail)))
+    return LOCATION_LABEL[a.location]
   return detail
 }
 

@@ -107,7 +107,7 @@ export function slugify(input: string): string {
   const slug = input
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48)
@@ -118,7 +118,7 @@ const normalizeName = (s: string) =>
   s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -221,7 +221,6 @@ export function buildImports(groups: ImportGroup[], imports: Instrument[]): Inst
         id: g.match.id,
         name: g.match.key.trim(),
         group: 'fondo',
-        category: 'Importato',
         unit: 'EUR',
         decimals: 3,
         colorIndex: (newCount % 8) + 1,
