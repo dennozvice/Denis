@@ -26,7 +26,28 @@ export function Modal({ open, title, onClose, children, footer, wide }: ModalPro
     const dialog = ref.current
     if (!dialog) return
     if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
+    if (!open && dialog.open) {
+      dialog.close()
+      // Doppio clic su un bottone che chiude la finestra: il secondo clic (detail ≥ 2) arriverebbe
+      // all'elemento sottostante (link, riga…). Lo si ignora per un attimo.
+      const swallow = (e: MouseEvent) => {
+        if (e.detail >= 2) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }
+      document.addEventListener('click', swallow, true)
+      document.addEventListener('dblclick', swallow, true)
+      const timer = window.setTimeout(() => {
+        document.removeEventListener('click', swallow, true)
+        document.removeEventListener('dblclick', swallow, true)
+      }, 500)
+      return () => {
+        window.clearTimeout(timer)
+        document.removeEventListener('click', swallow, true)
+        document.removeEventListener('dblclick', swallow, true)
+      }
+    }
   }, [open])
 
   return (

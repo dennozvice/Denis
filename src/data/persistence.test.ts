@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoData } from './demoSeed'
-import { DATA_KEY, loadAppData, normalizeAppData, parseBackup, saveAppData, serializeBackup, type KeyValueStorage } from './persistence'
+import {
+  DATA_KEY,
+  loadAppData,
+  loadAppDataResult,
+  normalizeAppData,
+  normalizeImports,
+  parseBackup,
+  saveAppData,
+  serializeBackup,
+  type KeyValueStorage,
+} from './persistence'
 
 function memoryStorage(): KeyValueStorage & { map: Map<string, string> } {
   const map = new Map<string, string>()
@@ -53,6 +63,26 @@ describe('persistenza', () => {
     expect(data.clients[0].policies).toHaveLength(1)
     expect(data.clients[0].policies[0].kind).toBe('altro')
     expect(data.cases[0]).toMatchObject({ type: 'riscatto', status: 'aperta' })
+  })
+
+  it('dati illeggibili: copia conservata senza sovrascrivere quella precedente', () => {
+    const s = memoryStorage()
+    s.setItem('advisor-desk:data.bak', 'vecchia copia')
+    s.setItem(DATA_KEY, '{rotto')
+    const r = loadAppDataResult(s)
+    expect(r.status).toBe('corrupt')
+    expect(s.map.get('advisor-desk:data.bak')).toBe('vecchia copia')
+    if (r.status === 'corrupt') expect(s.map.get(r.backupKey)).toBe('{rotto')
+  })
+
+  it('serie importate: punti non validi scartati', () => {
+    const list = normalizeImports([
+      { id: 'x', name: 'X', series: [{ date: '30/09/2026', value: 1 }, null, { date: '2026-10-01', value: 'a' }, { date: '2026-10-02', value: 10 }, { date: '2026-09-30', value: 9 }] },
+      { id: 'vuota', series: [{ date: 'boh', value: 1 }] },
+    ])
+    expect(list).toHaveLength(1)
+    expect(list[0].series).toEqual([{ date: '2026-09-30', value: 9 }, { date: '2026-10-02', value: 10 }])
+    expect(list[0]).toMatchObject({ unit: 'EUR', group: 'fondo', source: 'import' })
   })
 
   it('backup: andata e ritorno', () => {

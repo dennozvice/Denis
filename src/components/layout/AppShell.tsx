@@ -3,6 +3,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import type { PageId } from '../../router/router'
 import { MobileNav } from './MobileNav'
 import { PrivacyNotice } from './PrivacyNotice'
+import { RecoveryNotice } from './RecoveryNotice'
 import { SaveWarning } from './SaveWarning'
 import { Sidebar } from './Sidebar'
 import { Topbar } from './Topbar'
@@ -25,6 +26,7 @@ export function AppShell({ page, children }: { page: PageId; children: ReactNode
         <Topbar />
         <main id="contenuto" tabIndex={-1} style={{ outline: 'none' }}>
           <div className="notices">
+            <RecoveryNotice />
             <SaveWarning />
             <PrivacyNotice />
           </div>

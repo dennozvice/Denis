@@ -7,9 +7,9 @@
  *   const actions = useActions()           // scrittura: actions.addTask({...}), actions.toggleTask(id)…
  */
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
-import { createDemoData } from '../data/demoSeed'
+import { createDemoData, createEmptyData } from '../data/demoSeed'
 import { shiftDemoData } from '../data/demoShift'
-import { DATA_KEY, loadAppData, normalizeAppData, saveAppData, type SaveResult } from '../data/persistence'
+import { DATA_KEY, loadAppDataResult, normalizeAppData, saveAppData, type SaveResult } from '../data/persistence'
 import type { AppData, Appointment, Case, Client, Goal, Settings, Task, Training } from '../domain/types'
 import { createId } from '../lib/id'
 import { nowInRome, nowIso } from '../lib/dates'
@@ -19,15 +19,32 @@ const DataContext = createContext<AppData | null>(null)
 const DispatchContext = createContext<React.Dispatch<Action> | null>(null)
 const SaveStatusContext = createContext<SaveResult>({ ok: true })
 
-function initialState(): AppData {
+/** Se i dati salvati erano illeggibili: chiave della copia conservata, per offrire il recupero. */
+export interface RecoveryInfo {
+  backupKey: string
+  dismiss(): void
+}
+const RecoveryContext = createContext<RecoveryInfo | null>(null)
+
+function initialState(): { data: AppData; corruptBackupKey?: string } {
   const today = nowInRome().date
-  const saved = loadAppData()
-  return saved ? shiftDemoData(saved, today) : createDemoData(today)
+  const result = loadAppDataResult()
+  if (result.status === 'ok') return { data: shiftDemoData(result.data, today) }
+  // Dati presenti ma illeggibili: si parte VUOTI (non con la demo, che li confonderebbe con i propri)
+  // e si mostra un avviso con la copia conservata.
+  if (result.status === 'corrupt') return { data: createEmptyData(today), corruptBackupKey: result.backupKey }
+  return { data: createDemoData(today) }
 }
 
 export function StoreProvider({ children, initial }: { children: ReactNode; initial?: AppData }) {
-  const [state, dispatch] = useReducer(appReducer, undefined, () => initial ?? initialState())
+  const [boot] = useState(() => (initial ? { data: initial } : initialState()))
+  const [state, dispatch] = useReducer(appReducer, boot.data)
   const [saveStatus, setSaveStatus] = useState<SaveResult>({ ok: true })
+  const [recoveryKey, setRecoveryKey] = useState(boot.corruptBackupKey)
+  const recovery = useMemo<RecoveryInfo | null>(
+    () => (recoveryKey ? { backupKey: recoveryKey, dismiss: () => setRecoveryKey(undefined) } : null),
+    [recoveryKey],
+  )
 
   // Salvataggio con debounce: evita di scrivere a ogni tasto premuto nei campi di testo.
   useEffect(() => {
@@ -70,7 +87,9 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
   return (
     <DataContext.Provider value={state}>
       <DispatchContext.Provider value={dispatch}>
-        <SaveStatusContext.Provider value={saveStatus}>{children}</SaveStatusContext.Provider>
+        <SaveStatusContext.Provider value={saveStatus}>
+          <RecoveryContext.Provider value={recovery}>{children}</RecoveryContext.Provider>
+        </SaveStatusContext.Provider>
       </DispatchContext.Provider>
     </DataContext.Provider>
   )
@@ -86,6 +105,11 @@ export function useDispatch(): React.Dispatch<Action> {
   const v = useContext(DispatchContext)
   if (!v) throw new Error('useDispatch deve essere usato dentro <StoreProvider>')
   return v
+}
+
+/** Informazioni di recupero se all'avvio i dati salvati non erano leggibili (altrimenti null). */
+export function useRecovery(): RecoveryInfo | null {
+  return useContext(RecoveryContext)
 }
 
 /** Esito dell'ultimo salvataggio (per mostrare un avviso se il browser non salva). */

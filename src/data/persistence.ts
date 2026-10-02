@@ -3,6 +3,7 @@
  * I dati restano SOLO su questo dispositivo/browser: nessun server, nessun invio in rete.
  */
 import {
+  APPOINTMENT_OUTCOME_LABEL,
   APPOINTMENT_STATUS_LABEL,
   APPOINTMENT_TYPE_LABEL,
   CASE_STATUS_LABEL,
@@ -46,6 +47,8 @@ function oneOf<T extends string>(labels: Record<T, string>, value: unknown, fall
 }
 
 const optDate = (v: unknown) => (isDateKey(v) ? v : undefined)
+const optString = (v: unknown) => (isString(v) ? v : undefined)
+const optNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
 function normalizeSettings(raw: unknown): Settings {
   const s = isObject(raw) ? raw : {}
@@ -82,7 +85,11 @@ export function normalizeAppData(raw: unknown): AppData | null {
         priority: oneOf(PRIORITY_LABEL, t.priority, 'media'),
         status: oneOf(TASK_STATUS_LABEL, t.status, 'da_fare'),
         dueTime: isTimeKey(t.dueTime) ? t.dueTime : undefined,
+        clientId: optString(t.clientId),
+        deadlineId: optString(t.deadlineId),
+        notes: optString(t.notes),
         createdAt: isString(t.createdAt) ? t.createdAt : new Date(0).toISOString(),
+        completedAt: optString(t.completedAt),
       }),
     ) as unknown as AppData['tasks'],
     appointments: arrayOf<Record<string, unknown>>(
@@ -98,11 +105,20 @@ export function normalizeAppData(raw: unknown): AppData | null {
         type: oneOf(APPOINTMENT_TYPE_LABEL, a.type, 'altro'),
         location: oneOf(LOCATION_LABEL, a.location, 'ufficio'),
         status: oneOf(APPOINTMENT_STATUS_LABEL, a.status, 'confermato'),
+        outcome: isString(a.outcome) && a.outcome in APPOINTMENT_OUTCOME_LABEL ? a.outcome : undefined,
+        clientId: optString(a.clientId),
+        locationDetail: optString(a.locationDetail),
+        notes: optString(a.notes),
       }
     }) as unknown as AppData['appointments'],
     clients: arrayOf<Record<string, unknown>>(raw.clients, (c) => hasId(c) && isString(c.lastName)).map((c) => ({
       ...c,
       firstName: isString(c.firstName) ? c.firstName : '',
+      phone: optString(c.phone),
+      email: optString(c.email),
+      city: optString(c.city),
+      notes: optString(c.notes),
+      tags: Array.isArray(c.tags) ? c.tags.filter(isString) : undefined,
       birthDate: optDate(c.birthDate),
       docExpiry: optDate(c.docExpiry),
       amlReviewDue: optDate(c.amlReviewDue),
@@ -112,7 +128,13 @@ export function normalizeAppData(raw: unknown): AppData | null {
         ...p,
         kind: oneOf(POLICY_KIND_LABEL, p.kind, 'altro'),
         ref: isString(p.ref) ? p.ref : '',
+        productName: optString(p.productName),
         maturityDate: optDate(p.maturityDate),
+        annualPremium: optNumber(p.annualPremium),
+        pac:
+          isObject(p.pac) && optNumber(p.pac.amount) !== undefined
+            ? { amount: p.pac.amount as number, dayOfMonth: Math.min(31, Math.max(1, Math.round(optNumber(p.pac.dayOfMonth) ?? 1))) }
+            : undefined,
       })),
     })) as unknown as AppData['clients'],
     cases: arrayOf<Record<string, unknown>>(raw.cases, (k) => hasId(k) && isString(k.title) && isDateKey(k.openedOn)).map(
@@ -121,6 +143,9 @@ export function normalizeAppData(raw: unknown): AppData | null {
         type: oneOf(CASE_TYPE_LABEL, k.type, 'riscatto'),
         status: oneOf(CASE_STATUS_LABEL, k.status, 'aperta'),
         dueDate: optDate(k.dueDate),
+        clientId: optString(k.clientId),
+        amount: optNumber(k.amount),
+        notes: optString(k.notes),
       }),
     ) as unknown as AppData['cases'],
     goals: arrayOf(raw.goals, (g) => hasId(g) && typeof g.target === 'number' && typeof g.current === 'number'),
@@ -133,24 +158,42 @@ export function normalizeAppData(raw: unknown): AppData | null {
   }
 }
 
-export function loadAppData(storage: KeyValueStorage | null = browserStorage()): AppData | null {
-  if (!storage) return null
-  let text: string | null = null
+export type LoadResult =
+  | { status: 'ok'; data: AppData }
+  | { status: 'missing' }
+  /** Dati presenti ma illeggibili: una copia intatta è stata salvata in `backupKey`. */
+  | { status: 'corrupt'; backupKey: string }
+
+export function loadAppDataResult(storage: KeyValueStorage | null = browserStorage()): LoadResult {
+  if (!storage) return { status: 'missing' }
+  let text: string | null
   try {
     text = storage.getItem(DATA_KEY)
-    if (!text) return null
-    const data = normalizeAppData(JSON.parse(text))
-    if (!data) throw new Error('schema non riconosciuto')
-    return data
   } catch {
-    // Dati illeggibili: se ne conserva una copia per sicurezza e si riparte.
-    try {
-      if (text) storage.setItem(BACKUP_KEY, text)
-    } catch {
-      /* ignora */
-    }
-    return null
+    return { status: 'missing' }
   }
+  if (!text) return { status: 'missing' }
+  try {
+    const data = normalizeAppData(JSON.parse(text))
+    if (data) return { status: 'ok', data }
+  } catch {
+    /* JSON non valido: gestito sotto */
+  }
+  // Dati illeggibili: se ne conserva una copia senza mai sovrascrivere una copia precedente.
+  let backupKey = BACKUP_KEY
+  try {
+    const existing = storage.getItem(BACKUP_KEY)
+    if (existing && existing !== text) backupKey = `${BACKUP_KEY}.${new Date().toISOString()}`
+    storage.setItem(backupKey, text)
+  } catch {
+    /* ignora: al limite la copia resta nella chiave principale finché non si salva */
+  }
+  return { status: 'corrupt', backupKey }
+}
+
+export function loadAppData(storage: KeyValueStorage | null = browserStorage()): AppData | null {
+  const result = loadAppDataResult(storage)
+  return result.status === 'ok' ? result.data : null
 }
 
 export type SaveResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' | 'error' }
@@ -166,13 +209,49 @@ export function saveAppData(data: AppData, storage: KeyValueStorage | null = bro
   }
 }
 
+const INSTRUMENT_GROUPS = ['fondo', 'gestione_separata', 'indice', 'tasso', 'spread', 'cambio'] as const
+const INSTRUMENT_UNITS = ['EUR', 'pt', 'pct', 'bp', 'fx'] as const
+
+/**
+ * Valida le serie importate (da localStorage o da un backup): tiene solo i punti con data valida e
+ * valore numerico, ordinati e senza date doppie; completa i metadati mancanti; scarta le serie vuote.
+ */
+export function normalizeImports(raw: unknown): Instrument[] {
+  if (!Array.isArray(raw)) return []
+  const out: Instrument[] = []
+  for (const i of raw) {
+    if (!isObject(i) || !isString(i.id) || !Array.isArray(i.series)) continue
+    const byDate = new Map<string, number>()
+    for (const p of i.series) {
+      if (isObject(p) && isDateKey(p.date) && typeof p.value === 'number' && Number.isFinite(p.value)) byDate.set(p.date, p.value)
+    }
+    if (byDate.size === 0) continue
+    const series = [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, value]) => ({ date, value }))
+    const group = (INSTRUMENT_GROUPS as readonly string[]).includes(i.group as string) ? (i.group as Instrument['group']) : 'fondo'
+    const unit = (INSTRUMENT_UNITS as readonly string[]).includes(i.unit as string) ? (i.unit as Instrument['unit']) : 'EUR'
+    const sri = typeof i.sri === 'number' && Number.isInteger(i.sri) && i.sri >= 1 && i.sri <= 7 ? (i.sri as Instrument['sri']) : undefined
+    out.push({
+      id: i.id,
+      name: isString(i.name) && i.name.trim() ? i.name : i.id,
+      group,
+      category: optString(i.category),
+      sri,
+      unit,
+      decimals: typeof i.decimals === 'number' && i.decimals >= 0 && i.decimals <= 6 ? Math.round(i.decimals) : 3,
+      series,
+      source: 'import',
+      colorIndex: typeof i.colorIndex === 'number' && i.colorIndex >= 1 && i.colorIndex <= 8 ? Math.round(i.colorIndex) : 1,
+      benchmarkId: optString(i.benchmarkId),
+      description: optString(i.description),
+    })
+  }
+  return out
+}
+
 export function loadMarketImports(storage: KeyValueStorage | null = browserStorage()): Instrument[] {
   if (!storage) return []
   try {
-    const raw = JSON.parse(storage.getItem(IMPORTS_KEY) ?? '[]')
-    return Array.isArray(raw)
-      ? raw.filter((i) => isObject(i) && isString(i.id) && isString(i.name) && Array.isArray(i.series))
-      : []
+    return normalizeImports(JSON.parse(storage.getItem(IMPORTS_KEY) ?? '[]'))
   } catch {
     return []
   }
@@ -226,9 +305,7 @@ export function parseBackup(text: string): { data: AppData; imports: Instrument[
     if (isObject(raw) && raw.app === 'advisor-desk') {
       const data = normalizeAppData(raw.data)
       if (!data) return null
-      const imports = Array.isArray(raw.marketImports)
-        ? (raw.marketImports.filter((i) => isObject(i) && isString(i.id) && Array.isArray(i.series)) as Instrument[])
-        : []
+      const imports = normalizeImports(raw.marketImports)
       return { data, imports }
     }
     const data = normalizeAppData(raw)
