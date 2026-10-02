@@ -25,6 +25,13 @@ describe('selettori', () => {
     expect(t.total).toBe(t.overdue.length + t.today.length + t.doneToday.length)
   })
 
+  it('le completate si contano nel giorno di Roma, non in UTC', () => {
+    // 22:30 UTC del 1° ottobre = 00:30 del 2 ottobre a Roma
+    const late = { ...data.tasks[0], id: 'x', dueDate: '2026-09-30', status: 'completata' as const, completedAt: '2026-10-01T22:30:00.000Z' }
+    expect(todayTasks([late], TODAY).doneToday).toHaveLength(1)
+    expect(todayTasks([late], '2026-10-01').doneToday).toHaveLength(0)
+  })
+
   it('agenda di oggi ordinata e prossimo appuntamento', () => {
     expect(appointmentsOn(data.appointments, TODAY).map((a) => a.start)).toEqual(['09:30', '11:30', '14:30', '16:00'])
     expect(nextAppointment(data.appointments, morning)?.id).toBe('a01')

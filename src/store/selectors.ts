@@ -13,7 +13,7 @@ import type {
   Task,
 } from '../domain/types'
 import { POLICY_KIND_LABEL, PRIORITY_RANK } from '../domain/labels'
-import { addDays, addMonths, ageOn, diffDays, nextAnniversary, timeToMinutes, type RomeNow } from '../lib/dates'
+import { addDays, addMonths, ageOn, diffDays, instantToRome, nextAnniversary, timeToMinutes, type RomeNow } from '../lib/dates'
 
 // ---------------------------------------------------------------- generali
 
@@ -35,6 +35,13 @@ export function clientNameById(clients: Client[] | Map<string, Client>, id: stri
 // ---------------------------------------------------------------- attività
 
 export const isOpen = (t: Task) => t.status !== 'completata'
+
+/** Giorno (Europe/Rome) in cui l'attività è stata completata. */
+export function completedOn(task: Task): DateKey | undefined {
+  if (!task.completedAt) return undefined
+  const instant = new Date(task.completedAt)
+  return Number.isNaN(instant.getTime()) ? undefined : instantToRome(instant).date
+}
 
 /** Ordine: aperte prima delle completate, poi data, orario (senza orario in fondo), priorità, titolo. */
 export function compareTasks(a: Task, b: Task): number {
@@ -77,7 +84,7 @@ export function todayTasks(tasks: Task[], today: DateKey): TodayTasks {
   const todayOpen = sortTasks(tasks.filter((t) => isOpen(t) && t.dueDate === today))
   const doneToday = sortTasks(
     tasks.filter(
-      (t) => !isOpen(t) && (t.dueDate === today || (t.completedAt !== undefined && t.completedAt.slice(0, 10) === today)),
+      (t) => !isOpen(t) && (t.dueDate === today || completedOn(t) === today),
     ),
   )
   const tomorrowTasks = sortTasks(tasks.filter((t) => isOpen(t) && t.dueDate === tomorrow))

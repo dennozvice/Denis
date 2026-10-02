@@ -16,7 +16,9 @@ L'app funziona tutta nel browser. Non c'è un server, non serve un login e nessu
 >
 > - È un progetto personale e non ufficiale. Non è affiliato né approvato da alcuna compagnia assicurativa, e non contiene loghi o marchi aziendali.
 > - **Fondi, valori quota e indici mostrati di default sono simulati** ("Dati dimostrativi") e non sono quotazioni reali. Per usare valori veri si importano da file CSV (vedi sotto).
-> - Anche i clienti precaricati sono fittizi e servono solo a mostrare il funzionamento.
+> - I valori dimostrativi sono fermi a una data fissa e non si aggiornano: non scambiarli per quotazioni correnti e non mostrarli ai clienti.
+> - Anche i clienti precaricati sono fittizi, con numeri di telefono non validi, e servono solo a mostrare il funzionamento.
+> - I nomi degli indici (FTSE MIB, Euro Stoxx 50, MSCI World…) sono marchi dei rispettivi proprietari e qui sono citati solo come riferimento.
 
 ## Avvio rapido
 
@@ -28,6 +30,12 @@ npm run dev
 ```
 
 Poi apri l'indirizzo che compare nel terminale (di solito <http://localhost:5173>).
+
+**Problemi frequenti**
+
+- **Windows: PowerShell risponde "l'esecuzione di script è disabilitata".** Usa il *Prompt dei comandi* (`cmd`) al posto di PowerShell. In alternativa esegui una volta `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+- **Ho aperto `dist/index.html` con un doppio clic e la pagina è vuota.** È normale: i browser bloccano gli script dei file locali. Usa `npm run preview`, oppure la versione pubblicata su GitHub Pages.
+- **PC aziendale con Node o npm bloccati.** Usa direttamente il sito pubblicato su GitHub Pages: si apre come qualunque pagina web.
 
 Per creare la versione da pubblicare:
 
@@ -52,6 +60,14 @@ La prima volta va attivato:
 Il sito sarà su `https://<utente>.github.io/<repository>/`.
 
 Il sito pubblicato è pubblico ma **contiene solo il codice**. I dati che inserisci restano nel browser di chi li inserisce.
+
+> **Nota sui siti `github.io`.** Tutti i siti GitHub Pages di uno stesso utente (`https://<utente>.github.io/...`) condividono lo stesso "spazio" nel browser. Un'altra pagina pubblicata sullo stesso account potrebbe quindi leggere i dati salvati. Se usi dati reali conviene una di queste soluzioni:
+>
+> - avviare l'app in locale (`npm run dev` / `npm run preview`);
+> - pubblicarla su un dominio dedicato;
+> - non pubblicare altre pagine sullo stesso account.
+>
+> Se un'azione di pubblicazione fallisce, apri la scheda **Actions** su GitHub: il passaggio in rosso indica cosa non va (lint, test o build).
 
 ## Come si usa
 
@@ -92,7 +108,8 @@ Se reimporti lo stesso file, gli eventi già presenti vengono aggiornati senza d
 
 ## Privacy e dati personali (GDPR)
 
-- I dati sono salvati **solo nel `localStorage` di questo browser**. Non sono cifrati e non sono sincronizzati tra dispositivi.
+- I dati sono salvati **solo nel `localStorage` di questo browser**. Non sono cifrati e **non sono sincronizzati tra dispositivi**: quello che inserisci sul PC non compare sul telefono. Per spostarli usa *Esporta backup* e *Importa backup*.
+- Se apri l'app in più schede, queste restano allineate tra loro.
 - **Prima di inserire dati reali dei clienti** verifica le regole della tua compagnia o agenzia. Potrebbe essere obbligatorio usare solo il CRM ufficiale.
 - Non usarla su PC condivisi.
 - Evita dati sensibili: informazioni sanitarie, codici fiscali completi, numeri di polizza interi. Per le polizze l'app chiede solo le ultime 4 cifre.

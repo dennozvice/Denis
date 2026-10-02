@@ -1,4 +1,4 @@
-import { CalendarDays, ChartLine, Ellipsis, LayoutDashboard, ListChecks } from 'lucide-react'
+import { CalendarDays, Ellipsis, LayoutDashboard, ListChecks, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { buildHref, type PageId } from '../../router/router'
 import { NAV_ITEMS, SETTINGS_ITEM } from './nav'
@@ -8,7 +8,7 @@ const PRIMARY: { page: PageId; label: string; icon: typeof LayoutDashboard }[] =
   { page: 'home', label: 'Home', icon: LayoutDashboard },
   { page: 'agenda', label: 'Agenda', icon: CalendarDays },
   { page: 'attivita', label: 'Attività', icon: ListChecks },
-  { page: 'fondi', label: 'Fondi', icon: ChartLine },
+  { page: 'clienti', label: 'Clienti', icon: Users },
 ]
 
 const MORE = [...NAV_ITEMS.filter((i) => !PRIMARY.some((p) => p.page === i.page)), SETTINGS_ITEM]

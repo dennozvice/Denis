@@ -290,7 +290,10 @@ function buildGestioneSeparata(asOf: DateKey): Instrument {
 
 const memo = new Map<DateKey, Instrument[]>()
 
-/** Genera (e memorizza) tutti gli strumenti dimostrativi fino alla data `asOf`. */
+/**
+ * Genera (e memorizza) tutti gli strumenti dimostrativi fino alla data `asOf`.
+ * Il provider dimostrativo si ferma comunque alla data di ancoraggio (vedi sotto).
+ */
 export function buildDemoInstruments(asOf: DateKey): Instrument[] {
   let cached = memo.get(asOf)
   if (!cached) {
@@ -300,9 +303,16 @@ export function buildDemoInstruments(asOf: DateKey): Instrument[] {
   return cached
 }
 
+/** Ultima data per cui esistono valori dimostrativi. */
+export const DEMO_AS_OF: DateKey = ANCHOR
+
+/**
+ * Provider dimostrativo. I valori NON avanzano con il calendario: restano fermi alla data
+ * di ancoraggio, così non possono essere scambiati per quotazioni aggiornate.
+ */
 export const demoMarketProvider: MarketDataProvider = {
   id: 'demo',
   label: 'Dati dimostrativi',
   isDemo: true,
-  getInstruments: (asOf) => Promise.resolve(buildDemoInstruments(asOf)),
+  getInstruments: (asOf) => Promise.resolve(buildDemoInstruments(asOf < ANCHOR ? asOf : ANCHOR)),
 }

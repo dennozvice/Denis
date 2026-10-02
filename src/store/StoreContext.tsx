@@ -8,7 +8,8 @@
  */
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
 import { createDemoData } from '../data/demoSeed'
-import { loadAppData, saveAppData, type SaveResult } from '../data/persistence'
+import { shiftDemoData } from '../data/demoShift'
+import { DATA_KEY, loadAppData, normalizeAppData, saveAppData, type SaveResult } from '../data/persistence'
 import type { AppData, Appointment, Case, Client, Goal, Settings, Task, Training } from '../domain/types'
 import { createId } from '../lib/id'
 import { nowInRome, nowIso } from '../lib/dates'
@@ -19,7 +20,9 @@ const DispatchContext = createContext<React.Dispatch<Action> | null>(null)
 const SaveStatusContext = createContext<SaveResult>({ ok: true })
 
 function initialState(): AppData {
-  return loadAppData() ?? createDemoData(nowInRome().date)
+  const today = nowInRome().date
+  const saved = loadAppData()
+  return saved ? shiftDemoData(saved, today) : createDemoData(today)
 }
 
 export function StoreProvider({ children, initial }: { children: ReactNode; initial?: AppData }) {
@@ -31,6 +34,27 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
     const timer = window.setTimeout(() => setSaveStatus(saveAppData(state)), 300)
     return () => window.clearTimeout(timer)
   }, [state])
+
+  // Chiede al browser di non cancellare i dati in automatico (es. Safari dopo 7 giorni di inattività).
+  useEffect(() => {
+    navigator.storage?.persist?.().catch(() => undefined)
+  }, [])
+
+  // Più schede aperte: se un'altra scheda salva, questa si allinea (niente sovrascritture a vicenda).
+  // Il salvataggio successivo scrive lo stesso JSON, che non genera un nuovo evento: nessun ciclo.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== DATA_KEY || !e.newValue) return
+      try {
+        const data = normalizeAppData(JSON.parse(e.newValue))
+        if (data) dispatch({ type: 'data/replace', data })
+      } catch {
+        /* contenuto non valido: si ignora */
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
 
   // Salva subito anche se la pagina viene chiusa durante il debounce.
   const latest = useRef(state)
