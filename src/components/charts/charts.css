@@ -1,0 +1,176 @@
+/* Grafici (LineChart). Classi con prefisso fd-chart-. Solo variabili di tokens.css per i colori. */
+
+.fd-chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.fd-chart-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-3);
+  flex-wrap: wrap;
+  min-height: 32px;
+}
+
+.fd-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  min-width: 0;
+}
+
+.fd-chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.fd-chart-swatch {
+  flex: none;
+}
+
+.btn.fd-chart-table-btn {
+  margin-left: auto;
+  min-height: 32px;
+  color: var(--primary-text);
+}
+
+.fd-chart-plot {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  border-radius: var(--r-chip);
+}
+
+.fd-chart-plot:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.fd-chart-svg {
+  display: block;
+  overflow: visible;
+  /* lo scorrimento verticale della pagina resta possibile, il trascinamento orizzontale muove il mirino */
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.fd-chart-tick {
+  fill: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-chart-hit {
+  cursor: crosshair;
+}
+
+.fd-chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  min-width: 140px;
+  max-width: min(280px, calc(50% - 16px));
+  padding: 8px 10px;
+  border-radius: var(--r-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fd-chart-tooltip-date {
+  color: var(--text-3);
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.fd-chart-tooltip-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 6px;
+}
+
+.fd-chart-tooltip-label {
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.fd-chart-tooltip-value {
+  color: var(--text-1);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: 6px;
+}
+
+.fd-chart-empty {
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.fd-chart-table-wrap {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.fd-chart-table {
+  font-size: var(--fs-sm);
+}
+
+.fd-chart-table th,
+.fd-chart-table td {
+  padding: 6px 10px;
+}
+
+.fd-chart-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.fd-chart-table .fd-chart-table-date {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  text-transform: none;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-chart-table-note {
+  padding: var(--sp-2) 0;
+}
+
+@media (max-width: 767px) {
+  .btn.fd-chart-table-btn {
+    min-height: 44px;
+  }
+
+  .fd-chart-tooltip {
+    min-width: 120px;
+    max-width: calc(50% - 12px);
+  }
+}
