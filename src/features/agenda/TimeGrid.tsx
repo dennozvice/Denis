@@ -1,11 +1,13 @@
 import { ClipboardCheck, ExternalLink, Navigation, Phone } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
+import { Modal } from '../../components/ui/Modal'
 import type { Appointment, Client, DateKey, TimeKey } from '../../domain/types'
 import { isWeekend, minutesToTime, parseKey, weekdayIndex, type RomeNow } from '../../lib/dates'
-import { formatDateLong, WEEKDAY_SHORT } from '../../lib/format'
+import { capitalize, formatDateLong, formatWeekdayDayMonth, plural, WEEKDAY_SHORT } from '../../lib/format'
 import { clientFullName, isAllDay } from '../../store/selectors'
 import {
   appointmentPhase,
+  capOverlaps,
   dayAriaLabel,
   hourRange,
   layoutOverlaps,
@@ -23,6 +25,8 @@ import {
   StatusPill,
   typeStyle,
 } from './AppointmentBits'
+import { DayTimeline } from './DayTimeline'
+import { useMediaQuery } from './useMediaQuery'
 import './agenda.css'
 
 interface TimeGridProps {
@@ -43,11 +47,20 @@ interface TimeGridProps {
 const HOUR_HEIGHT = { day: 64, week: 48 } as const
 /** Altezza minima visiva dei blocchi, in minuti (gli eventi brevi restano leggibili). */
 const MIN_VISUAL = { day: 32, week: 28 } as const
+/** Eventi affiancati al massimo per gruppo di sovrapposizione (su mobile 2): gli altri finiscono nel pulsante "+N". */
+const MAX_COLUMNS = { day: 3, week: 2 } as const
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
 
-/** Griglia oraria (08–20, estesa se serve) con eventi posizionati per orario e affiancati se sovrapposti. */
+/**
+ * Griglia oraria (08–20, estesa se serve) con eventi posizionati per orario e affiancati se sovrapposti.
+ * Oltre MAX_COLUMNS eventi contemporanei compare un pulsante "+N" che apre l'elenco di quelli non mostrati.
+ */
 export function TimeGrid({ days, appointments, variant, now, clients, onEdit, onSlot, onOpenDay }: TimeGridProps) {
+  // elenco "+N" aperto: si conservano gli id, così l'elenco segue i dati aggiornati
+  const [more, setMore] = useState<{ day: DateKey; ids: string[]; range: string } | null>(null)
+  const isMobile = useMediaQuery('(max-width: 767px)')
+  const maxColumns = isMobile ? Math.min(MAX_COLUMNS[variant], 2) : MAX_COLUMNS[variant]
   const hourHeight = HOUR_HEIGHT[variant]
   const { startHour, endHour } = hourRange(appointments)
   const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
@@ -57,6 +70,29 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
   const nowVisible = days.includes(now.date) && now.minutes >= startHour * 60 && now.minutes <= endHour * 60
 
   const gridStyle = { '--ag-hour': `${hourHeight}px`, '--ag-cols': days.length } as CSSProperties
+
+  const byId = new Map(appointments.map((a) => [a.id, a]))
+  const moreList = more ? more.ids.flatMap((id) => byId.get(id) ?? []) : []
+  const moreTitle = more ? `${capitalize(formatWeekdayDayMonth(more.day))}, ${more.range}` : ''
+  const moreFooter = (
+    <>
+      {onOpenDay && more && (
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => {
+            setMore(null)
+            onOpenDay(more.day)
+          }}
+        >
+          Apri il giorno
+        </button>
+      )}
+      <button type="button" className="btn btn-primary" onClick={() => setMore(null)}>
+        Chiudi
+      </button>
+    </>
+  )
 
   return (
     <div className={`ag-tg ag-tg--${variant}`} style={gridStyle}>
@@ -142,9 +178,12 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
         </div>
 
         {days.map((day) => {
-          const dayEvents = layoutOverlaps(
-            timed.filter((a) => a.date === day),
-            MIN_VISUAL[variant],
+          const { visible, hidden } = capOverlaps(
+            layoutOverlaps(
+              timed.filter((a) => a.date === day),
+              MIN_VISUAL[variant],
+            ),
+            maxColumns,
           )
           return (
             <div
@@ -170,15 +209,17 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
                 )}
               </div>
 
-              {dayEvents.map(({ appointment: a, startMin, endMin, column, columns }) => {
+              {visible.map(({ appointment: a, startMin, endMin, column, columns, crowded }) => {
                 const top = toPx(startMin)
                 const height = Math.max(endMin - startMin, MIN_VISUAL[variant]) * (hourHeight / 60) - 2
+                // con eventi nascosti la fascia a destra (--ag-more-w) resta al pulsante "+N"
+                const area = crowded ? '(100% - var(--ag-more-w))' : '100%'
                 const style: CSSProperties = {
                   ...typeStyle(a),
                   top,
                   height,
-                  left: `calc(${(column / columns) * 100}% + 2px)`,
-                  width: `calc(${100 / columns}% - 4px)`,
+                  left: `calc(${area} * ${column / columns} + 2px)`,
+                  width: `calc(${area} / ${columns} - 4px)`,
                 }
                 const client = a.clientId ? clients.get(a.clientId) : undefined
                 return variant === 'day' ? (
@@ -204,6 +245,32 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
                 )
               })}
 
+              {hidden.map((g) => {
+                const n = g.appointments.length
+                // orari reali (non l'ingombro minimo): dal primo inizio all'ultima fine del gruppo
+                const first = g.appointments[0].start
+                const lastEnd = g.appointments.reduce((end, a) => (a.end > end ? a.end : end), g.appointments[0].end)
+                const range = `${first}–${lastEnd}`
+                const label = plural(n, 'altro appuntamento', 'altri appuntamenti')
+                return (
+                  <button
+                    key={g.appointments[0].id}
+                    type="button"
+                    className="ag-tg-more num"
+                    style={{
+                      top: toPx(g.startMin),
+                      height: Math.max((g.endMin - g.startMin) * (hourHeight / 60) - 2, 24),
+                    }}
+                    onClick={() => setMore({ day, ids: g.appointments.map((a) => a.id), range })}
+                    aria-haspopup="dialog"
+                    aria-label={`${capitalize(label)} dalle ${first} alle ${lastEnd}: mostra l'elenco`}
+                    title={`${capitalize(label)} (${range})`}
+                  >
+                    +{n}
+                  </button>
+                )
+              })}
+
               {nowVisible && day === now.date && (
                 <div className="ag-tg-now" style={{ top: toPx(now.minutes) }}>
                   <span className="visually-hidden">Adesso: {now.time}</span>
@@ -213,6 +280,29 @@ export function TimeGrid({ days, appointments, variant, now, clients, onEdit, on
           )
         })}
       </div>
+
+      <Modal open={moreList.length > 0} title={moreTitle} onClose={() => setMore(null)} footer={moreFooter}>
+        <p className="small muted">
+          {plural(
+            moreList.length,
+            'appuntamento contemporaneo non mostrato',
+            'appuntamenti contemporanei non mostrati',
+          )}{' '}
+          nella griglia per mancanza di spazio.
+        </p>
+        {more && (
+          <DayTimeline
+            day={more.day}
+            appointments={moreList}
+            now={now}
+            clients={clients}
+            onEdit={(a, focusOutcome) => {
+              setMore(null)
+              onEdit(a, focusOutcome)
+            }}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
@@ -296,7 +386,11 @@ function DayEvent({ appointment: a, client, now, style, height, onEdit }: EventP
         </span>
         {showMeta && (
           <span className="ag-ev-sub">
-            {name && <span className="ag-ev-client">{name}</span>}
+            {name && (
+              <span className="ag-ev-client" title={name}>
+                {name}
+              </span>
+            )}
             <span className="ag-ev-loc">
               <LocationIcon mode={a.location} size={13} />
               <span className="truncate">{locationText(a)}</span>

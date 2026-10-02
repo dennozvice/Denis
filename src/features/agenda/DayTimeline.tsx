@@ -144,7 +144,7 @@ function TimelineItem({
             </span>
           )}
           {client && (
-            <a className="ag-tl-client" href={buildHref('clienti', { id: client.id })}>
+            <a className="ag-tl-client" href={buildHref('clienti', { id: client.id })} title={name}>
               {name}
             </a>
           )}

@@ -493,13 +493,19 @@
   display: none;
 }
 
-/* bersaglio alto almeno 24px (WCAG 2.5.8) senza allargare la riga: il padding è compensato dal margine */
+/* bersaglio alto almeno 24px (WCAG 2.5.8) senza allargare la riga: il padding è compensato dal margine.
+   Nomi lunghi senza spazi: puntini di sospensione (nome completo nel title) invece di allargare la pagina. */
 .ag-tl-client {
   display: inline-block;
+  min-width: 0;
+  max-width: 100%;
   padding-block: 2px;
   margin-block: -2px;
+  overflow: hidden;
   font-weight: 500;
   line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ag-tl-loc {
@@ -995,6 +1001,41 @@
   background: var(--negative);
 }
 
+/* Pulsante "+N": eventi contemporanei oltre il limite di colonne, nella fascia riservata a destra */
+.ag-tg--day {
+  --ag-more-w: 44px;
+}
+
+.ag-tg--week {
+  --ag-more-w: 30px;
+}
+
+.ag-tg-more {
+  position: absolute;
+  right: 2px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: calc(var(--ag-more-w) - 4px);
+  min-height: 24px;
+  padding: 3px 0 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--primary-text);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.ag-tg-more:hover {
+  z-index: 3;
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
 /* Blocchi degli eventi */
 .ag-ev {
   position: absolute;
@@ -1179,10 +1220,16 @@
   font-size: var(--fs-xs);
 }
 
+/* nome lungo: si accorcia lui (al massimo 60% della riga), il luogo resta leggibile */
 .ag-ev-client {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  overflow: hidden;
   font-weight: 500;
   color: var(--text-1);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ag-ev-loc {
@@ -1247,6 +1294,14 @@
   }
 
   .ag-ev--day:not(.is-tall) .ag-ev-sub {
+    display: none;
+  }
+}
+
+/* blocchi stretti (eventi affiancati): niente azioni rapide, il titolo prende tutto lo spazio
+   (il clic sul blocco apre comunque l'appuntamento) */
+@container (max-width: 130px) {
+  .ag-ev--day .ag-ev-actions {
     display: none;
   }
 }

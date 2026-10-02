@@ -113,11 +113,32 @@ export function needsOutcome(a: Appointment, now: RomeNow): boolean {
   return appointmentPhase(a, now) === 'passato'
 }
 
-/** Minuti occupati in agenda: somma delle durate, esclusi gli eventi "tutto il giorno" (ferie, festività…). */
-export function busyMinutes(appointments: Pick<Appointment, 'start' | 'end'>[]): number {
-  return appointments
+/**
+ * Minuti occupati in agenda: durata dell'UNIONE degli intervalli (le sovrapposizioni contano una volta sola),
+ * esclusi gli eventi "tutto il giorno" (ferie, festività…). Con più giorni l'unione si calcola giorno per giorno.
+ */
+export function busyMinutes(appointments: (Pick<Appointment, 'start' | 'end'> & { date?: DateKey })[]): number {
+  const intervals = appointments
     .filter((a) => !isAllDay(a))
-    .reduce((sum, a) => sum + Math.max(0, timeToMinutes(a.end) - timeToMinutes(a.start)), 0)
+    .map((a) => ({ date: a.date ?? '', start: timeToMinutes(a.start), end: timeToMinutes(a.end) }))
+    .filter((i) => i.end > i.start)
+    .sort((x, y) => (x.date < y.date ? -1 : x.date > y.date ? 1 : x.start - y.start))
+  let total = 0
+  let date: string | undefined
+  let runStart = 0
+  let runEnd = -1
+  for (const i of intervals) {
+    if (i.date === date && i.start <= runEnd) {
+      runEnd = Math.max(runEnd, i.end)
+      continue
+    }
+    if (runEnd > runStart) total += runEnd - runStart
+    date = i.date
+    runStart = i.start
+    runEnd = i.end
+  }
+  if (runEnd > runStart) total += runEnd - runStart
+  return total
 }
 
 // ---------------------------------------------------------------- form: stato ed esito
@@ -171,6 +192,8 @@ export interface PositionedAppointment {
   columns: number
   startMin: number
   endMin: number
+  /** Fine dell'ingombro visivo (almeno la durata minima): serve a raggruppare gli eventi nascosti. */
+  visualEnd: number
 }
 
 /**
@@ -216,13 +239,50 @@ export function layoutOverlaps(appointments: Appointment[], minDuration = 0): Po
     clusterEnd = Math.max(clusterEnd, it.visualEnd)
   }
   flush()
-  return items.map(({ appointment, startMin, endMin, column, columns }) => ({
-    appointment,
-    startMin,
-    endMin,
-    column,
-    columns,
-  }))
+  return items
+}
+
+/** Eventi nascosti contigui, mostrati nella griglia come un unico pulsante "+N". */
+export interface HiddenGroup {
+  startMin: number
+  /** Fine dell'ingombro visivo del gruppo. */
+  endMin: number
+  /** Appuntamenti nascosti, in ordine di orario. */
+  appointments: Appointment[]
+}
+
+export interface CappedLayout {
+  /** Eventi da disegnare; `crowded` = il loro gruppo ha eventi nascosti (a destra resta lo spazio per il "+N"). */
+  visible: (PositionedAppointment & { crowded: boolean })[]
+  hidden: HiddenGroup[]
+}
+
+/**
+ * Limita gli eventi affiancati a `maxColumns` per gruppo di sovrapposizione: oltre, i blocchi diventano
+ * troppo stretti (titoli a 0px, blocchi che sconfinano nel giorno accanto). Gli eventi delle colonne in eccesso
+ * vengono raccolti in gruppi contigui, da mostrare come "+N".
+ */
+export function capOverlaps(items: PositionedAppointment[], maxColumns: number): CappedLayout {
+  const max = Math.max(1, Math.floor(maxColumns))
+  const visible: CappedLayout['visible'] = []
+  const extra: PositionedAppointment[] = []
+  for (const it of items) {
+    if (it.columns <= max) visible.push({ ...it, crowded: false })
+    else if (it.column < max) visible.push({ ...it, columns: max, crowded: true })
+    else extra.push(it)
+  }
+  extra.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin)
+  const hidden: HiddenGroup[] = []
+  for (const it of extra) {
+    const last = hidden.at(-1)
+    if (last && it.startMin < last.endMin) {
+      last.appointments.push(it.appointment)
+      last.endMin = Math.max(last.endMin, it.visualEnd)
+    } else {
+      hidden.push({ startMin: it.startMin, endMin: it.visualEnd, appointments: [it.appointment] })
+    }
+  }
+  return { visible, hidden }
 }
 
 /** Fascia oraria da mostrare: almeno 08–20, estesa per includere tutti gli appuntamenti (esclusi quelli "tutto il giorno"). */

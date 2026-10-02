@@ -5,6 +5,7 @@ import {
   appointmentHeadline,
   appointmentPhase,
   busyMinutes,
+  capOverlaps,
   dayAriaLabel,
   defaultStartFor,
   endAfter,
@@ -102,6 +103,28 @@ describe('stato', () => {
     )
     expect(busyMinutes([appt('a', '00:00', '23:59')])).toBe(0)
   })
+  it('busyMinutes conta le sovrapposizioni una volta sola (unione degli intervalli)', () => {
+    // 12 appuntamenti contemporanei = 1 ora, non 12
+    expect(busyMinutes(Array.from({ length: 12 }, (_, i) => appt(`o${i}`, '10:00', '11:00')))).toBe(60)
+    // parziale, contenuto, adiacente e separato: 09:00–11:00 + 11:00–11:30 + 14:00–14:45
+    expect(
+      busyMinutes([
+        appt('a', '09:30', '11:00'),
+        appt('b', '09:00', '10:00'),
+        appt('c', '09:15', '09:45'),
+        appt('d', '11:00', '11:30'),
+        appt('e', '14:00', '14:45'),
+      ]),
+    ).toBe(195)
+    // ordine qualsiasi, durate nulle o negative ignorate
+    expect(busyMinutes([appt('a', '15:00', '16:00'), appt('b', '10:00', '10:00'), appt('c', '12:00', '11:00')])).toBe(
+      60,
+    )
+    expect(busyMinutes([])).toBe(0)
+  })
+  it('busyMinutes: stessi orari in giorni diversi non si sovrappongono', () => {
+    expect(busyMinutes([appt('a', '10:00', '11:00'), appt('b', '10:00', '11:00', { date: '2026-10-03' })])).toBe(120)
+  })
 })
 
 describe('form: esito, stato e data', () => {
@@ -163,6 +186,54 @@ describe('layoutOverlaps', () => {
   it("l'ingombro minimo conta come sovrapposizione", () => {
     const out = layoutOverlaps([appt('a', '14:30', '14:40'), appt('b', '14:45', '15:30')], 30)
     expect(out.map((p) => p.columns)).toEqual([2, 2])
+  })
+})
+
+describe('capOverlaps', () => {
+  const crowd = (n: number, start = '10:00', end = '11:00') =>
+    Array.from({ length: n }, (_, i) => appt(`o${i + 1}`, start, end))
+
+  it('entro il limite non cambia nulla', () => {
+    const { visible, hidden } = capOverlaps(layoutOverlaps(crowd(3)), 3)
+    expect(visible.map((p) => [p.column, p.columns, p.crowded])).toEqual([
+      [0, 3, false],
+      [1, 3, false],
+      [2, 3, false],
+    ])
+    expect(hidden).toEqual([])
+  })
+  it('12 eventi contemporanei: 3 colonne visibili e un gruppo "+9"', () => {
+    const { visible, hidden } = capOverlaps(layoutOverlaps(crowd(12)), 3)
+    expect(visible).toHaveLength(3)
+    expect(visible.every((p) => p.columns === 3 && p.crowded && p.column < 3)).toBe(true)
+    expect(hidden).toHaveLength(1)
+    expect(hidden[0]).toMatchObject({ startMin: 600, endMin: 660 })
+    expect(hidden[0].appointments).toHaveLength(9)
+    // nessun appuntamento perso o duplicato
+    const ids = [...visible.map((p) => p.appointment.id), ...hidden[0].appointments.map((a) => a.id)]
+    expect(new Set(ids).size).toBe(12)
+  })
+  it('solo il gruppo affollato viene limitato; gli eventi nascosti separati formano gruppi distinti', () => {
+    const list = [
+      ...crowd(3, '09:00', '10:00'),
+      appt('x', '12:00', '13:00'),
+      appt('y', '12:30', '13:00'),
+      ...crowd(3, '15:00', '15:30').map((a) => ({ ...a, id: `p${a.id}` })),
+    ]
+    const { visible, hidden } = capOverlaps(layoutOverlaps(list), 2)
+    const byId = Object.fromEntries(visible.map((p) => [p.appointment.id, [p.columns, p.crowded]]))
+    expect(byId.x).toEqual([2, false])
+    expect(byId.y).toEqual([2, false])
+    expect(visible.filter((p) => p.crowded)).toHaveLength(4)
+    expect(hidden.map((g) => [g.startMin, g.appointments.length])).toEqual([
+      [540, 1],
+      [900, 1],
+    ])
+  })
+  it("l'ingombro minimo vale anche per i gruppi nascosti", () => {
+    const list = [...crowd(2, '14:00', '14:10'), appt('z', '14:00', '14:10')]
+    const { hidden } = capOverlaps(layoutOverlaps(list, 30), 2)
+    expect(hidden).toEqual([{ startMin: 840, endMin: 870, appointments: [list[2]] }])
   })
 })
 
