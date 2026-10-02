@@ -1,0 +1,352 @@
+/* Pagina Impostazioni. Prefisso classi: sh-set- */
+
+.sh-set-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.sh-set-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+
+.sh-set-cols h3 {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* ---------- Campi ---------- */
+.sh-set-theme .segmented button {
+  min-height: 40px;
+  padding: 0 var(--sp-4);
+}
+
+.sh-set-number {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.sh-set-number .input {
+  width: 112px;
+  text-align: right;
+}
+
+.sh-set-number .input[aria-invalid='true'] {
+  border-color: var(--negative);
+  box-shadow: 0 0 0 1px var(--negative);
+}
+
+.sh-set-unit {
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.sh-set-error {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--negative);
+}
+
+.sh-set-error:empty {
+  display: none;
+}
+
+.sh-set-effect {
+  display: block;
+  padding: 8px 12px;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.sh-set-effect strong {
+  color: var(--text-1);
+}
+
+/* ---------- Backup e dati ---------- */
+.sh-set-status {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.sh-set-status-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sh-set-status-label {
+  font-weight: 600;
+}
+
+.sh-set-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+}
+
+.sh-set-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--r-chip);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+
+.sh-set-stats dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-set-stats dd {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+@container (max-width: 400px) {
+  .sh-set-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.sh-set-actions {
+  display: flex;
+  flex-direction: column;
+}
+
+.sh-set-action,
+.sh-set-danger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.sh-set-action {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sh-set-action:first-child {
+  padding-top: 0;
+}
+
+.sh-set-action:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.sh-set-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sh-set-action-text p {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.sh-set-action .btn,
+.sh-set-danger .btn {
+  flex: none;
+  min-width: 172px;
+}
+
+.sh-set-danger {
+  padding: var(--sp-4);
+  border-radius: var(--r-control);
+  border: 1px solid var(--negative);
+  background: var(--negative-bg);
+}
+
+.sh-set-danger .btn-danger {
+  background: var(--surface);
+  border-color: var(--negative);
+}
+
+.sh-set-danger .btn-danger:hover {
+  background: var(--negative);
+  color: var(--surface);
+}
+
+/* ---------- Privacy ---------- */
+.sh-set-points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.sh-set-points li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.sh-set-points li > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--primary-text);
+}
+
+.sh-set-points strong {
+  color: var(--text-1);
+}
+
+.sh-set-inline-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  padding-top: var(--sp-1);
+}
+
+/* ---------- Dati di mercato e integrazioni ---------- */
+.sh-set-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sh-set-block + .sh-set-block {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.sh-set-block p,
+.sh-set-bullets {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.sh-set-block p.muted {
+  color: var(--text-3);
+}
+
+.sh-set-bullets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: var(--sp-5);
+  list-style: disc;
+}
+
+.sh-set-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  min-height: 40px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+/* ---------- Informazioni ---------- */
+.sh-set-info {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.sh-set-info > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.sh-set-info > div:first-child {
+  padding-top: 0;
+}
+
+.sh-set-info dt {
+  color: var(--text-3);
+}
+
+.sh-set-info dd {
+  margin: 0;
+  font-weight: 500;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sh-set-disclaimer {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1199px) {
+  .sh-set-cols,
+  .sh-set-col {
+    gap: var(--sp-4);
+  }
+
+  .sh-set-action,
+  .sh-set-danger {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 979px) {
+  .sh-set-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 767px) {
+  .sh-set-cols,
+  .sh-set-col {
+    gap: var(--sp-3);
+  }
+
+  .sh-set-theme .segmented {
+    display: flex;
+  }
+
+  .sh-set-theme .segmented button {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+
+  .sh-set-action .btn,
+  .sh-set-danger .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .sh-set-danger {
+    padding: var(--sp-3);
+  }
+}

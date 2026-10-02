@@ -1,0 +1,1105 @@
+/* Fondi e mercati (widget in home, pagina #/fondi, importazione CSV). Prefisso fd-. Solo variabili di tokens.css. */
+
+/* ---------- Comuni ---------- */
+.btn.fd-tap {
+  min-height: 40px;
+}
+
+.fd-card .segmented button {
+  min-height: 36px;
+}
+
+.fd-error {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--negative-bg);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+}
+
+.fd-error > svg {
+  color: var(--negative);
+  flex: none;
+}
+
+.fd-error-text {
+  color: var(--negative);
+}
+
+.fd-warn-text {
+  color: var(--warning);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fd-hint {
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.fd-card .fd-only-narrow {
+  display: none;
+}
+
+.fd-series-dot {
+  width: 10px;
+  height: 10px;
+}
+
+/* ---------- Indicatore di rischio SRI ---------- */
+.fd-sri {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.fd-sri-bars {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.fd-sri-bars > span {
+  width: 4px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.fd-sri-bars > span.fd-sri-on {
+  background: var(--primary);
+  box-shadow: none;
+}
+
+.fd-sri-num {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Tabelle ---------- */
+/* contenitore di riferimento per i testi nascosti (position: absolute) dentro le celle
+   e per le container query che nascondono le colonne meno importanti */
+.fd-table-wrap {
+  --fd-fade: 40px;
+  position: relative;
+  container: fd-table / inline-size;
+}
+
+/* tabella più larga della card: dissolvenza sul bordo dove c'è altro da scorrere
+   (nella maschera conta solo l'opacità del colore) */
+.fd-table-wrap[data-more-end] {
+  mask-image: linear-gradient(to left, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-table-wrap[data-more-start] {
+  mask-image: linear-gradient(to right, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-table-wrap[data-more-start][data-more-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    var(--surface) var(--fd-fade),
+    var(--surface) calc(100% - var(--fd-fade)),
+    transparent
+  );
+}
+
+/* con la prima colonna fissa il bordo sinistro resta sempre leggibile */
+.fd-compare-wrap[data-more-start]:not([data-more-end]) {
+  mask-image: none;
+}
+
+.fd-compare-wrap[data-more-start][data-more-end] {
+  mask-image: linear-gradient(to left, transparent, var(--surface) var(--fd-fade));
+}
+
+.fd-scroll-hint {
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+/* colonne meno importanti: nascoste quando la tabella non sta nella card (soglie = larghezza minima misurata) */
+@container fd-table (max-width: 699px) {
+  .fd-widget .fd-col-risk {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 619px) {
+  .fd-widget .fd-col-trend {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 923px) {
+  .fd-col-low {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 706px) {
+  #fd-markets .fd-col-type {
+    display: none;
+  }
+}
+
+@container fd-table (max-width: 643px) {
+  #fd-markets .fd-col-trend {
+    display: none;
+  }
+}
+
+.fd-table {
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-table td,
+.fd-table th {
+  vertical-align: middle;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.fd-table thead th:first-child,
+.fd-table tbody > tr > :first-child {
+  padding-left: 0;
+}
+
+.fd-table thead th:last-child,
+.fd-table tbody > tr > :last-child {
+  padding-right: 0;
+}
+
+.fd-table .fd-col-check {
+  width: 44px;
+  padding-left: 4px;
+  padding-right: 0;
+}
+
+.fd-table .fd-col-trend {
+  width: 80px;
+}
+
+/* "Var. ultimo dato" va a capo invece di allargare la colonna */
+.fd-table th.num.fd-col-last {
+  white-space: normal;
+  min-width: 72px;
+}
+
+.fd-check {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.fd-check:hover {
+  background: var(--surface-3);
+}
+
+.fd-check:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.fd-check input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.fd-fund {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.fd-fund > .dot {
+  margin-top: 6px;
+}
+
+.fd-fund-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fd-fund-name {
+  color: var(--text-1);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.fd-fund-name:hover {
+  color: var(--primary-text);
+}
+
+.fd-value {
+  display: block;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.fd-caption {
+  display: block;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.fd-table tbody th {
+  text-align: left;
+  font-size: var(--fs-md);
+  font-weight: 400;
+  color: var(--text-1);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+}
+
+.fd-table tbody tr:last-child th {
+  border-bottom: none;
+}
+
+.fd-table .fd-row-head {
+  white-space: nowrap;
+}
+
+/* fonte dei valori (Demo / Importato) accanto al nome o alla categoria */
+.pill.fd-src {
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+}
+
+.fd-fund-meta,
+.fd-row-name {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+}
+
+.fd-row-name {
+  gap: 4px 8px;
+}
+
+/* "Var. ultimo dato" con la data di confronto sotto */
+.fd-last-change {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+/* intestazioni ordinabili */
+.fd-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  border: none;
+  border-radius: var(--r-chip);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+}
+
+.fd-sort:hover {
+  background: var(--surface-3);
+  color: var(--text-1);
+}
+
+.num > .fd-sort {
+  flex-direction: row;
+}
+
+.fd-table thead th[aria-sort] {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.fd-sort-icon {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+th[aria-sort='ascending'] .fd-sort,
+th[aria-sort='descending'] .fd-sort {
+  color: var(--text-1);
+}
+
+th[aria-sort='ascending'] .fd-sort-icon,
+th[aria-sort='descending'] .fd-sort-icon {
+  opacity: 1;
+}
+
+/* prima colonna fissa nelle tabelle larghe (scorrimento orizzontale).
+   Si ferma al bordo interno del contenitore: l'ombra a sinistra copre la fascia di padding,
+   dove altrimenti scorrerebbero le altre colonne. */
+.fd-sticky-first .fd-col-name {
+  --fd-gutter: var(--sp-5);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  min-width: 200px;
+  box-shadow:
+    inset -1px 0 0 var(--border),
+    calc(var(--fd-gutter) * -1) 0 0 var(--surface);
+}
+
+.fd-sticky-first tbody tr:hover .fd-col-name {
+  background: var(--surface-2);
+}
+
+/* sotto questa larghezza i nomi dei fondi vanno a capo prima, per lasciare spazio ai periodi */
+@container fd-table (max-width: 759px) {
+  .fd-sticky-first .fd-col-name {
+    min-width: 160px;
+  }
+}
+
+/* ---------- Widget home ---------- */
+.fd-chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin-bottom: calc(var(--sp-2) * -1);
+}
+
+.fd-widget .card-actions {
+  gap: var(--sp-2);
+}
+
+/* elenco mobile */
+.fd-mlist {
+  display: flex;
+  flex-direction: column;
+}
+
+.fd-mitem {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: var(--sp-1);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+
+.fd-mitem-check {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  margin-top: -6px;
+}
+
+.fd-mitem-check .fd-check {
+  width: 44px;
+  height: 44px;
+}
+
+.fd-mitem-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fd-mitem-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.fd-mitem-sub {
+  padding-left: 18px;
+}
+
+.fd-mitem-values {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  flex-wrap: wrap;
+  padding-left: 18px;
+  margin-top: 4px;
+}
+
+.fd-mitem-nav {
+  font-weight: 600;
+}
+
+.fd-mitem-nav .fd-caption {
+  display: inline;
+}
+
+.fd-mitem-spark {
+  margin-left: auto;
+}
+
+/* scheletro di caricamento */
+.fd-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.fd-skel-title {
+  width: 180px;
+  height: 18px;
+}
+
+.fd-skel-chart {
+  display: block;
+  height: 240px;
+  border-radius: var(--r-control);
+}
+
+.fd-skel-chart-lg {
+  height: 320px;
+}
+
+.fd-skel-row {
+  display: flex;
+  gap: var(--sp-4);
+  align-items: center;
+}
+
+.fd-skel-name {
+  flex: 1 1 auto;
+  height: 16px;
+}
+
+.fd-skel-val {
+  width: 72px;
+  height: 16px;
+}
+
+/* ---------- Pagina ---------- */
+.fd-page .page-header .fd-disclaimer {
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.fd-page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.fd-markets-demo {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.fd-gs-note {
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 3px solid var(--border-input);
+  background: var(--surface-2);
+  border-radius: 0 var(--r-chip) var(--r-chip) 0;
+}
+
+/* interruttore "Mostra fondi dimostrativi" nel footer del widget: allineato al testo della card */
+.fd-demo-toggle {
+  margin-left: calc(var(--sp-2) * -1);
+}
+
+.fd-demo-banner {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.fd-demo-banner > p {
+  min-width: 220px;
+}
+
+.fd-select .select {
+  min-width: 240px;
+  max-width: 100%;
+}
+
+.fd-detail-card,
+#fd-compare,
+#fd-markets {
+  scroll-margin-top: calc(var(--topbar-h) + var(--sp-4));
+}
+
+.fd-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.fd-detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.fd-hero {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.fd-hero-value {
+  font-size: var(--fs-2xl);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.fd-hero-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.fd-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.fd-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-control);
+  font-size: var(--fs-sm);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.fd-inline-check:hover {
+  background: var(--surface-2);
+}
+
+.fd-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.fd-stats-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.fd-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-2);
+  margin: 0;
+}
+
+.fd-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fd-stat dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fd-stat dd {
+  margin: 0;
+}
+
+.fd-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3) var(--sp-3);
+  margin: 0;
+}
+
+.fd-facts > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fd-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.fd-facts dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.fd-facts .fd-facts-wide {
+  grid-column: 1 / -1;
+}
+
+.fd-facts .fd-facts-wide dd {
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+/* barre della gestione separata */
+.fd-bars {
+  width: 100%;
+  min-width: 0;
+}
+
+.fd-bars svg {
+  display: block;
+  overflow: visible;
+}
+
+.fd-bar-value {
+  fill: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.fd-bar-value-last {
+  fill: var(--text-1);
+  font-weight: 700;
+}
+
+.fd-bar-year {
+  fill: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* mercati: schede su mobile */
+.fd-mcards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+.fd-mcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-radius: var(--r-control);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.fd-mcard-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.fd-mcard-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fd-mcard-name .fd-fund-name {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.fd-mcard-value {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--fs-lg);
+}
+
+.fd-mcard-periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+
+.fd-mcard-periods > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fd-mcard-periods dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.fd-mcard-periods dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+/* dati importati */
+.fd-imports {
+  display: flex;
+  flex-direction: column;
+}
+
+.fd-import-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.fd-import-item:first-child {
+  border-top: none;
+}
+
+/* ---------- Finestra di importazione ---------- */
+.fd-import-help {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.fd-code {
+  margin: 4px 0 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--surface-3);
+  color: var(--text-1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.fd-code-inline {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-xs);
+  padding: 2px 6px;
+  border-radius: var(--r-chip);
+  background: var(--surface-3);
+  color: var(--text-1);
+  white-space: nowrap;
+}
+
+.fd-import-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 1.1em;
+  list-style: disc;
+}
+
+.fd-details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 0 var(--sp-3);
+}
+
+.fd-details > summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--primary-text);
+}
+
+.fd-details[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.fd-codes-wrap {
+  max-height: 240px;
+  overflow: auto;
+  margin: 0 calc(var(--sp-3) * -1);
+  padding: 0 var(--sp-3);
+}
+
+.fd-codes {
+  font-size: var(--fs-sm);
+}
+
+.fd-codes th,
+.fd-codes td {
+  padding: 6px 8px;
+}
+
+.fd-drop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--border-input);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  cursor: pointer;
+}
+
+.fd-drop:hover,
+.fd-drop.is-dragging {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.fd-drop:focus-within {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.btn.fd-drop-pick {
+  flex: none;
+  min-height: 36px;
+  pointer-events: none;
+}
+
+.fd-drop-name {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  overflow-wrap: anywhere;
+}
+
+.fd-textarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--fs-sm);
+  min-height: 160px;
+}
+
+.fd-banner-error {
+  background: var(--negative-bg);
+}
+
+.fd-banner-error > svg {
+  color: var(--negative);
+}
+
+.fd-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+}
+
+.fd-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.fd-preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-chip);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.fd-preview-name {
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+/* sostituzione di uno strumento dimostrativo: avviso e nome da dare al fondo reale */
+.fd-replace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: 4px;
+}
+
+.fd-replace .fd-warn-text {
+  align-items: flex-start;
+}
+
+.fd-replace .fd-warn-text svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.fd-replace-name {
+  max-width: 360px;
+}
+
+.fd-preview-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--text-2);
+}
+
+.fd-preview-errors p {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warning);
+}
+
+.fd-preview-errors ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fd-preview-errors .fd-future-check {
+  align-self: flex-start;
+  margin-left: calc(var(--sp-2) * -1);
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1199px) {
+  .fd-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fd-stat-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .fd-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .btn.fd-tap,
+  .fd-select .select {
+    min-height: 44px;
+  }
+
+  .fd-card .segmented button {
+    min-height: 44px;
+  }
+
+  .fd-sort {
+    min-height: 44px;
+  }
+
+  .fd-card .fd-only-wide {
+    display: none;
+  }
+
+  .fd-card .fd-mlist.fd-only-narrow {
+    display: flex;
+  }
+
+  .fd-card .fd-mcards.fd-only-narrow {
+    display: grid;
+  }
+
+  .fd-widget .card-actions {
+    width: 100%;
+  }
+
+  .fd-widget .card-actions .segmented {
+    flex: 1 1 auto;
+  }
+
+  .fd-widget .card-actions .segmented button {
+    flex: 1 1 0;
+  }
+
+  .fd-more {
+    margin-left: auto;
+  }
+
+  .fd-select,
+  .fd-select .select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .fd-detail-card .card-actions {
+    width: 100%;
+  }
+
+  .fd-hero-value {
+    font-size: 24px;
+  }
+
+  .fd-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .fd-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fd-stats {
+    padding: var(--sp-3);
+  }
+
+  .fd-inline-check {
+    min-height: 44px;
+  }
+
+  .fd-import-help {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .fd-sticky-first .fd-col-name {
+    --fd-gutter: var(--sp-4);
+  }
+
+  .btn.fd-drop-pick {
+    min-height: 40px;
+  }
+
+  .fd-details > summary {
+    min-height: 44px;
+  }
+
+  .fd-codes .fd-codes-type {
+    display: none;
+  }
+}

@@ -1,0 +1,1441 @@
+/* Clienti: rubrica, scheda cliente, form e widget "Ricorrenze e ricontatti". Prefisso cl-. Solo variabili di tokens.css. */
+
+/* ---------- Toni condivisi (icone tonde) ---------- */
+.cl-comp-icon,
+.cl-wicon,
+.cl-case-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--neutral-bg);
+  color: var(--neutral);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='primary'] {
+  background: var(--primary-bg);
+  color: var(--primary-text);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='positive'] {
+  background: var(--positive-bg);
+  color: var(--positive);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='negative'] {
+  background: var(--negative-bg);
+  color: var(--negative);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='warning'] {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='accent'] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+:is(.cl-comp-icon, .cl-wicon)[data-tone='violet'] {
+  background: var(--violet-bg);
+  color: var(--violet);
+}
+
+.cl-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.cl-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: var(--fs-lg);
+}
+
+.icon-btn.cl-icon-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.cl-late {
+  color: var(--negative);
+  font-weight: 600;
+}
+
+.cl-soon {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.cl-privacy-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-privacy-hint svg {
+  flex: none;
+}
+
+/* ---------- Pagina: intestazione ---------- */
+.cl-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.cl-title-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+/* ---------- Master / detail ---------- */
+.cl-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.cl-list-panel {
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+/* Rubrica vuota: il riquadro "Aggiungi il primo cliente" occupa tutta la larghezza */
+.cl-layout[data-empty] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cl-layout[data-empty] .cl-list-panel {
+  padding: var(--sp-8) var(--sp-4);
+}
+
+.cl-detail-panel:empty {
+  display: none;
+}
+
+.cl-detail-panel {
+  min-width: 0;
+}
+
+@media (min-width: 1200px) {
+  .cl-detail-panel {
+    position: sticky;
+    top: calc(var(--topbar-h) + var(--sp-4));
+    max-height: calc(100dvh - var(--topbar-h) - var(--sp-8));
+    overflow-y: auto;
+    /* spazio per l'anello di focus e l'ombra della card */
+    padding: 3px;
+    margin: -3px;
+    scrollbar-width: thin;
+  }
+
+  .cl-back-bar {
+    display: none;
+  }
+}
+
+.cl-detail-placeholder {
+  min-height: 320px;
+  justify-content: center;
+}
+
+/* ---------- Barra strumenti dell'elenco ---------- */
+.cl-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.cl-search {
+  position: relative;
+  display: block;
+}
+
+.cl-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.input.cl-search-input {
+  padding-left: 40px;
+  padding-right: 44px;
+}
+
+.cl-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.icon-btn.cl-search-clear {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+}
+
+.cl-toolbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--sp-3);
+}
+
+.cl-filter > span {
+  font-size: var(--fs-xs);
+}
+
+.cl-result-count {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Righe dell'elenco ---------- */
+.cl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 calc(var(--sp-2) * -1);
+}
+
+.cl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 60px;
+  padding: var(--sp-2) var(--sp-2);
+  border-radius: var(--r-control);
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+
+.cl-row:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.cl-row[aria-current='true'] {
+  background: var(--primary-bg);
+}
+
+.cl-row[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
+}
+
+.cl-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.cl-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cl-row-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  min-width: 0;
+}
+
+.cl-name {
+  font-weight: 600;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+
+.cl-row-name .pill {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-more-tags {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.cl-row-meta {
+  display: block;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.cl-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.cl-last-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.cl-last-contact[data-stale] {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+/* Sulla riga selezionata (sfondo --primary-bg) l'arancio scende sotto 4,5:1: lo si appoggia su una pastiglia chiara */
+.cl-row[aria-current='true'] .cl-last-contact[data-stale] {
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+}
+
+/* Le scadenze hanno etichette per esteso ("Questionario adeguatezza tra 25 gg"): vanno a capo invece di comprimere il nome */
+.cl-row-side .pill {
+  max-width: 22ch;
+  height: auto;
+  border-radius: var(--r-control);
+  min-height: 22px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  line-height: 1.35;
+  white-space: normal;
+  text-align: right;
+}
+
+/* ---------- Scheda cliente ---------- */
+.cl-detail {
+  gap: 0;
+  padding: 0;
+}
+
+.cl-detail > * {
+  padding-left: var(--sp-6);
+  padding-right: var(--sp-6);
+}
+
+.cl-back-bar {
+  padding-top: var(--sp-3);
+}
+
+.btn.cl-back {
+  margin-left: calc(var(--sp-3) * -1);
+  padding: 0 var(--sp-3);
+  color: var(--primary-text);
+}
+
+.cl-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  padding-top: var(--sp-6);
+}
+
+.cl-detail-id {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.cl-detail-name {
+  font-size: var(--fs-xl);
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.cl-detail-name:focus,
+.cl-detail-name:focus-visible {
+  /* riceve il focus solo da script (tabindex=-1) per annunciare la scheda: niente anello */
+  outline: none;
+}
+
+.cl-detail-sub {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.cl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.cl-contact-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-top: var(--sp-4);
+}
+
+.btn.cl-contact-btn {
+  max-width: 100%;
+  min-width: 0;
+  color: var(--primary-text);
+  font-weight: 500;
+}
+
+.btn.cl-contact-btn svg {
+  flex: none;
+}
+
+.cl-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.cl-consent svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.cl-consent strong,
+.cl-comp-extra strong {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.cl-consent strong[data-unset],
+.cl-comp-extra strong[data-unset] {
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.cl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding-top: var(--sp-3);
+}
+
+.cl-actions .btn svg {
+  color: var(--primary-text);
+  flex: none;
+}
+
+.cl-actions .btn:disabled svg {
+  color: var(--positive);
+}
+
+.cl-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin: 0;
+  padding-top: var(--sp-5);
+  padding-bottom: var(--sp-5);
+}
+
+.cl-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  min-width: 0;
+}
+
+.cl-fact dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+.cl-fact dd {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.cl-fact[data-alert] dd {
+  color: var(--warning);
+}
+
+.cl-fact-sub {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.cl-fact[data-alert] .cl-fact-sub:last-child {
+  color: var(--warning);
+}
+
+.cl-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-top: var(--sp-5);
+  padding-bottom: var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.cl-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-md);
+}
+
+.cl-section-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.cl-section-empty {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.cl-subhead {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  margin-bottom: var(--sp-2);
+}
+
+.cl-more {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* Adempimenti */
+.cl-comp-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-comp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 56px;
+  padding: var(--sp-2) 0;
+}
+
+.cl-comp-row + .cl-comp-row {
+  border-top: 1px dashed var(--border);
+}
+
+.cl-comp-icon {
+  width: 36px;
+  height: 36px;
+}
+
+.cl-comp-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cl-comp-label {
+  font-weight: 600;
+}
+
+.cl-comp-meta {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+.cl-comp-extra {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* Rischio antiriciclaggio alto: adeguata verifica rafforzata */
+.cl-comp-extra strong[data-alert] {
+  color: var(--negative);
+}
+
+.cl-comp-side {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  flex: none;
+}
+
+/* "Attività presente": porta all'attività già collegata all'adempimento (area di tocco ampliata) */
+.pill.cl-comp-task {
+  position: relative;
+  margin-left: var(--sp-1);
+}
+
+.pill.cl-comp-task::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
+}
+
+.pill.cl-comp-task:hover {
+  text-decoration: underline;
+}
+
+/* Polizze */
+.cl-pol-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.cl-pol {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+}
+
+.cl-pol-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.cl-pol-kind {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cl-pol-product {
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.cl-pol-ref {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.02em;
+}
+
+.cl-pol-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+}
+
+.cl-pol-grid dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-pol-grid dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+/* Attività */
+.cl-task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cl-task {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: 2px 0;
+}
+
+.cl-task + .cl-task {
+  border-top: 1px dashed var(--border);
+}
+
+.cl-task-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-left: -10px;
+  cursor: pointer;
+}
+
+.cl-task-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 0;
+}
+
+.cl-task-title {
+  color: var(--text-1);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cl-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-task-meta > * + *::before {
+  content: '·';
+  margin-right: 6px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+/* Appuntamenti */
+.cl-appt-groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+}
+
+.cl-appt-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.cl-appt {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.cl-appt-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  line-height: 1.1;
+}
+
+.cl-appt[data-highlight] .cl-appt-date {
+  background: var(--primary-bg);
+  border-color: transparent;
+  color: var(--primary-text);
+}
+
+.cl-appt-day {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+}
+
+.cl-appt-month {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.cl-appt-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cl-appt-title {
+  color: var(--text-1);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cl-appt-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-appt-side {
+  flex: none;
+}
+
+.btn.cl-outcome-btn {
+  color: var(--primary-text);
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+/* Pratiche */
+.cl-case-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.cl-case {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 48px;
+}
+
+.cl-case-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-control);
+}
+
+.cl-case-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cl-case-title {
+  color: var(--text-1);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.cl-case-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* Note */
+.cl-notes {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.cl-notes svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.cl-detail > .cl-section:last-of-type {
+  padding-bottom: var(--sp-6);
+}
+
+/* Link dentro la scheda: sottolineati al passaggio, colore del testo */
+.cl-task-title:hover,
+.cl-appt-title:hover,
+.cl-case-title:hover {
+  color: var(--primary-text);
+}
+
+/* ---------- Form cliente ---------- */
+.cl-form {
+  gap: var(--sp-5);
+}
+
+.cl-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: var(--primary-bg);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+}
+
+.cl-privacy-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary-text);
+}
+
+.cl-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.cl-fieldset + .cl-fieldset {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.cl-fieldset > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+
+.cl-fieldset > legend + * {
+  clear: both;
+}
+
+.cl-required {
+  color: var(--negative);
+}
+
+.cl-required-note {
+  margin-top: calc(var(--sp-2) * -1);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cl-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  font-size: var(--fs-md);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.cl-error,
+.field > .cl-error {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--negative);
+}
+
+.cl-form .input[aria-invalid='true'],
+.cl-form .select[aria-invalid='true'] {
+  border-color: var(--negative);
+}
+
+.cl-sensitive {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--warning);
+}
+
+.cl-sensitive svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.cl-form-empty {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+
+.cl-policy-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.cl-policy-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+}
+
+.cl-policy-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.cl-policy-row-title {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+
+.icon-btn.cl-policy-remove {
+  margin-right: calc(var(--sp-2) * -1);
+  color: var(--negative);
+}
+
+.icon-btn.cl-policy-remove:hover {
+  background: var(--negative-bg);
+  color: var(--negative);
+}
+
+.cl-policy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.cl-policy-grid .cl-span-2 {
+  grid-column: span 2;
+}
+
+/* Tipo di premio e PAC iniziano una nuova riga: i campi collegati restano affiancati */
+.cl-policy-grid .cl-grid-newline {
+  grid-column-start: 1;
+}
+
+.cl-ref-input {
+  position: relative;
+  display: block;
+}
+
+.cl-ref-mask {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+.cl-ref-input .input {
+  padding-left: 52px;
+  letter-spacing: 0.08em;
+}
+
+.btn.cl-form-delete {
+  margin-right: auto;
+}
+
+/* Telefoni stretti: "Elimina" diventa solo icona, così i tre pulsanti stanno su una riga */
+@media (max-width: 480px) {
+  .btn.cl-form-delete {
+    width: 44px;
+    padding: 0;
+  }
+
+  .cl-form-delete-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ---------- Widget Ricorrenze e ricontatti ---------- */
+/* Titolo e "Vedi tutti" restano sulla stessa riga anche con la card stretta (il titolo va a capo). */
+.cl-widget .card-title {
+  flex-basis: 8rem;
+}
+
+.cl-widget .segmented {
+  display: flex;
+}
+
+.cl-widget .segmented button {
+  flex: 1 1 0;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+/* La disposizione delle righe dipende dalla larghezza della card, non dello schermo. */
+.cl-wlist {
+  display: flex;
+  flex-direction: column;
+  container: cl-wlist / inline-size;
+}
+
+/*
+ * Riga a griglia. Card stretta (default): tutto il testo a sinistra, una colonna di azioni a destra.
+ * Ricorrenza:  icona | nome / data / descrizione / dettaglio | promemoria
+ * Ricontatto:  icona | nome / ultimo contatto / "In agenda" o "Pianifica" | chiama
+ */
+.cl-wrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: var(--sp-3);
+  align-items: start;
+  min-height: 56px;
+  padding: var(--sp-2) 0;
+}
+
+.cl-wrow + .cl-wrow {
+  border-top: 1px solid var(--border);
+}
+
+.cl-wrow-rec {
+  grid-template-areas:
+    'icon name act'
+    'icon when act'
+    'icon meta act'
+    'icon detail act';
+}
+
+.cl-wrow-contact {
+  grid-template-areas:
+    'icon name call'
+    'icon meta call'
+    'icon extra call';
+}
+
+.cl-wicon {
+  grid-area: icon;
+  width: 32px;
+  height: 32px;
+}
+
+/* Nome: fino a due righe, poi i puntini */
+.cl-wname {
+  grid-area: name;
+  justify-self: start;
+  max-width: 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: var(--text-1);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.cl-wname:hover {
+  color: var(--primary-text);
+}
+
+.cl-wmeta {
+  grid-area: meta;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.cl-wdetail {
+  grid-area: detail;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.cl-wwhen {
+  grid-area: when;
+  justify-self: start;
+  margin: 3px 0 2px;
+}
+
+.cl-wact {
+  grid-area: act;
+}
+
+.cl-wcall {
+  grid-area: call;
+}
+
+.cl-reminder-done {
+  color: var(--positive);
+}
+
+.cl-planned {
+  grid-area: extra;
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--positive);
+}
+
+.btn.cl-plan-btn {
+  grid-area: extra;
+  justify-self: start;
+  margin-top: var(--sp-1);
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.cl-plan-btn svg {
+  color: var(--primary-text);
+}
+
+/* Card larga: data (o "Pianifica") in una colonna a destra, righe centrate */
+@container cl-wlist (min-width: 24rem) {
+  .cl-wrow {
+    align-items: center;
+  }
+
+  .cl-wrow-rec {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'icon name when act'
+      'icon meta when act'
+      'icon detail when act';
+  }
+
+  .cl-wrow-contact {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      'icon name plan call'
+      'icon meta plan call'
+      'icon extra plan call';
+  }
+
+  .cl-wwhen {
+    margin: 0;
+  }
+
+  .btn.cl-plan-btn {
+    grid-area: plan;
+    margin-top: 0;
+  }
+}
+
+.btn.cl-wmore {
+  align-self: flex-start;
+  margin-left: calc(var(--sp-3) * -1);
+  padding: 0 var(--sp-3);
+  color: var(--primary-text);
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Tablet e mobile: elenco OPPURE scheda ---------- */
+@media (max-width: 1199px) {
+  .cl-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+
+  .cl-layout[data-selected] .cl-list-panel,
+  .cl-layout:not([data-selected]) .cl-detail-panel {
+    display: none;
+  }
+
+  .cl-list {
+    margin: 0 calc(var(--sp-2) * -1);
+  }
+
+  /* Elenco a tutta larghezza: le etichette delle scadenze stanno su una riga */
+  .cl-row-side .pill {
+    max-width: none;
+  }
+
+  .cl-back-bar + .cl-detail-head {
+    padding-top: var(--sp-3);
+  }
+}
+
+@media (max-width: 767px) {
+  .cl-list-panel {
+    padding: var(--sp-3);
+  }
+
+  /* Su mobile ultimo contatto e scadenza vanno sotto il nome: il testo ha tutta la larghezza */
+  .cl-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    min-height: 64px;
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+  }
+
+  .cl-row .cl-avatar {
+    grid-row: span 2;
+  }
+
+  .cl-row-side {
+    grid-column: 2;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px var(--sp-3);
+  }
+
+  .cl-row-side .pill {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .cl-detail > * {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+
+  .cl-detail-head {
+    padding-top: var(--sp-3);
+    gap: var(--sp-3);
+  }
+
+  .cl-avatar-lg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .cl-detail .btn,
+  .cl-widget .btn,
+  .btn.cl-new {
+    min-height: 44px;
+  }
+
+  .icon-btn.cl-icon-btn,
+  .cl-task-check {
+    width: 44px;
+    height: 44px;
+  }
+
+
+  .cl-contact-links {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-actions .btn,
+  .cl-contact-links .btn {
+    justify-content: flex-start;
+    padding: 0 var(--sp-3);
+    white-space: normal;
+    text-align: left;
+    line-height: 1.2;
+  }
+
+  .cl-pol {
+    padding: var(--sp-3);
+  }
+
+  .cl-pol-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-2);
+  }
+
+  .cl-comp-row {
+    flex-wrap: wrap;
+  }
+
+  .cl-comp-main {
+    flex-basis: calc(100% - 48px);
+  }
+
+  .cl-comp-side {
+    margin-left: 48px;
+  }
+
+  .cl-policy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cl-policy-grid .cl-span-2 {
+    grid-column: auto;
+  }
+
+  .cl-check {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 400px) {
+  .cl-policy-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cl-policy-grid .cl-span-2 {
+    grid-column: auto;
+  }
+}
+
+/* Etichette, nomi ed email molto lunghi (senza spazi) non devono allargare la pagina */
+.cl-tags .pill {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-detail h2,
+.cl-detail a,
+.cl-name {
+  overflow-wrap: anywhere;
+}

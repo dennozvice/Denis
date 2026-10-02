@@ -1,0 +1,634 @@
+/* Pratiche: widget "Pratiche in corso", pagina Pratiche e form. Prefisso classi: cs- (condiviso con deadlines/) */
+
+/* ---------- Elementi comuni ---------- */
+.cs-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--neutral-bg);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.icon-btn.cs-icon-btn {
+  color: var(--text-3);
+}
+
+.icon-btn.cs-icon-btn:hover {
+  color: var(--text-1);
+}
+
+.icon-btn.cs-icon-danger:hover {
+  color: var(--negative);
+  background: var(--negative-bg);
+}
+
+.btn.cs-more {
+  align-self: flex-start;
+  min-height: 40px;
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.cs-type-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--cs-tone-bg, var(--neutral-bg));
+  color: var(--cs-tone, var(--neutral));
+}
+
+.cs-type-icon[data-size='sm'] {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.cs-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.cs-group-title[data-tone='negative'] {
+  color: var(--negative);
+}
+
+.cs-group-title[data-tone='negative'] .cs-count {
+  background: var(--negative-bg);
+  color: var(--negative);
+}
+
+/* ---------- Widget "Pratiche in corso" ---------- */
+/* Il "+" resta accanto al titolo: è il sottotitolo ad andare a capo */
+.cs-oc-widget > .card-header {
+  flex-wrap: nowrap;
+}
+
+.cs-oc-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.cs-oc-list > li + li {
+  border-top: 1px solid var(--border);
+}
+
+.cs-oc-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  margin: 0 calc(var(--sp-2) * -1);
+  padding: 10px var(--sp-2);
+  border-radius: var(--r-control);
+  color: var(--text-1);
+  text-decoration: none;
+  transition: background var(--dur) var(--ease);
+}
+
+.cs-oc-row:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.cs-oc-row:hover .cs-oc-title {
+  color: var(--primary-text);
+}
+
+.cs-oc-row:focus-visible {
+  outline-offset: -2px;
+}
+
+.cs-oc-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cs-oc-top,
+.cs-oc-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.cs-oc-type {
+  min-width: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cs-oc-title {
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+.cs-oc-meta {
+  align-items: baseline;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cs-oc-meta-text {
+  min-width: 0;
+}
+
+.cs-oc-amount {
+  flex: none;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.cs-oc-flag {
+  display: flex;
+  margin-top: 4px;
+}
+
+.cs-oc-flag .pill,
+.cs-oc-due .pill {
+  height: auto;
+  min-height: 22px;
+  white-space: normal;
+  line-height: 1.3;
+  padding-block: 2px;
+}
+
+.cs-oc-due {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+}
+
+/* ---------- Pagina ---------- */
+.cs-tabs {
+  display: flex;
+  margin-top: calc(var(--sp-2) * -1);
+}
+
+.cs-tabs .segmented button {
+  min-height: 36px;
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-md);
+}
+
+.card.cs-toolbar {
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.cs-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.cs-toolbar-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.cs-toolbar .segmented button {
+  min-height: 34px;
+}
+
+.cs-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.cs-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.input.cs-search-input {
+  padding-left: 36px;
+}
+
+.cs-filter {
+  flex: 0 1 220px;
+  min-width: 160px;
+}
+
+.btn.cs-reset {
+  flex: none;
+}
+
+/* ---------- Elenco pratiche: tabella (contenitore largo) o schede ---------- */
+.cs-cases {
+  container: cs-cases / inline-size;
+}
+
+/* Intestazione con il numero di pratiche: riceve il focus se la riga attiva sparisce dall'elenco */
+.cs-results-title {
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.cs-results-title:focus,
+.card.cs-empty:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.card.cs-empty:focus {
+  border-radius: var(--r-card);
+}
+
+.cs-table-view {
+  display: none;
+  padding: var(--sp-2) var(--sp-5);
+  border: var(--card-border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.cs-card-view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+@container cs-cases (min-width: 560px) {
+  .cs-card-view {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container cs-cases (min-width: 940px) {
+  .cs-table-view {
+    display: block;
+    overflow-x: auto;
+  }
+
+  .cs-card-view {
+    display: none;
+  }
+}
+
+.cs-table {
+  font-size: var(--fs-sm);
+}
+
+.cs-table th {
+  padding-top: var(--sp-3);
+}
+
+.cs-table td {
+  padding: 10px 10px;
+}
+
+.cs-table th {
+  padding-inline: 10px;
+}
+
+.cs-table tr > :first-child {
+  padding-left: 0;
+}
+
+.cs-table tr > :last-child {
+  padding-right: 0;
+}
+
+.cs-table tbody tr:hover {
+  background: transparent;
+}
+
+.cs-table tbody tr:hover > td {
+  background: var(--surface-2);
+}
+
+.cs-table tr[data-closed] .cs-case-title,
+.cs-card[data-closed] .cs-case-title {
+  color: var(--text-2);
+}
+
+.cs-td-case {
+  min-width: 200px;
+}
+
+.cs-case-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.cs-case-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.cs-case-type {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
+
+.cs-table .cs-case-type {
+  white-space: nowrap;
+}
+
+.cs-case-title {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-1);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border-radius: 4px;
+}
+
+.cs-case-title:hover {
+  color: var(--primary-text);
+  text-decoration: underline;
+}
+
+.cs-client-link {
+  font-weight: 500;
+}
+
+.cs-td-opened {
+  white-space: nowrap;
+}
+
+.cs-td-opened > span {
+  display: block;
+}
+
+.cs-sub {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cs-td-due {
+  min-width: 120px;
+}
+
+.cs-due {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.cs-due-date {
+  white-space: nowrap;
+}
+
+.cs-due-note {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+/* La colonna si adatta al selettore, largo quanto l'etichetta più lunga ("In attesa documenti"): mai troncata */
+.cs-td-status {
+  width: 1%;
+}
+
+.cs-td-status .select.cs-status-select {
+  width: auto;
+}
+
+/* Tabella stretta: il titolo va a capo, le righe secondarie (età, nota del reclamo) si nascondono */
+@container cs-cases (max-width: 1079px) {
+  .cs-table .cs-sub,
+  .cs-table .cs-due-note {
+    display: none;
+  }
+}
+
+.cs-td-amount {
+  font-weight: 600;
+}
+
+.cs-td-actions {
+  width: 1%;
+}
+
+.cs-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+/* Selettore di stato con pallino colorato (il testo dello stato resta sempre visibile) */
+.cs-status {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.cs-status::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--cs-tone, var(--neutral));
+  pointer-events: none;
+}
+
+.select.cs-status-select {
+  padding: 6px 6px 6px 28px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  background-color: var(--cs-tone-bg, var(--surface));
+  border-color: transparent;
+}
+
+.select.cs-status-select:hover {
+  border-color: var(--border-input);
+}
+
+/* Valore scelto con le frecce, non ancora confermato (Invio o uscendo dal campo) */
+.select.cs-status-select[data-pending] {
+  border-color: var(--primary);
+  border-style: dashed;
+}
+
+/* Schede (mobile / tablet) */
+.cs-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  border: var(--card-border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  min-width: 0;
+}
+
+.cs-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.cs-card-amount {
+  font-weight: 600;
+}
+
+.cs-card-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.cs-card-facts > div {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.cs-card-facts dt {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.cs-card-facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.cs-card-facts .cs-due {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.cs-sub-inline {
+  color: var(--text-3);
+}
+
+.cs-card-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--border);
+}
+
+.cs-card-foot .cs-status {
+  flex: 1 1 auto;
+}
+
+/* ---------- Form ---------- */
+.cs-required {
+  color: var(--negative);
+}
+
+.cs-error {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--negative);
+}
+
+.btn.cs-modal-delete {
+  margin-right: auto;
+}
+
+/* ---------- Touch ---------- */
+@media (pointer: coarse) {
+  .cs-toolbar .segmented button,
+  .cs-tabs .segmented button {
+    min-height: 40px;
+  }
+}
+
+/* ---------- Mobile ---------- */
+@media (max-width: 767px) {
+  .icon-btn.cs-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .card-link.cs-footer-link {
+    min-height: 44px;
+  }
+
+  .select.cs-status-select {
+    min-height: 44px;
+  }
+
+  .cs-tabs .segmented,
+  .cs-toolbar .segmented {
+    display: flex;
+    width: 100%;
+  }
+
+  .cs-tabs .segmented button,
+  .cs-toolbar .segmented button {
+    flex: 1 1 0;
+    min-height: 40px;
+  }
+
+  .cs-search,
+  .cs-filter {
+    flex-basis: 100%;
+  }
+
+  .btn.cs-reset {
+    width: 100%;
+  }
+
+  .cs-page .page-header > .btn {
+    width: 100%;
+  }
+}

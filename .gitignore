@@ -4,3 +4,7 @@ dist
 .DS_Store
 *.log
 coverage
+
+# Backup esportati dalla dashboard: contengono dati dei clienti, non vanno committati
+advisor-desk-backup-*.json
+*.ics

@@ -1,0 +1,567 @@
+/* Topbar: ricerca globale e notifiche. Prefisso classi: sh- */
+
+@keyframes sh-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------- Ricerca: campo nella topbar ---------- */
+.sh-search-inline {
+  width: 320px;
+  margin-right: var(--sp-2);
+}
+
+.icon-btn.sh-search-trigger {
+  display: none;
+}
+
+.sh-search {
+  position: relative;
+}
+
+.sh-search-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.sh-search-box {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.sh-search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+
+.sh-search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 40px 0 38px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--border-input);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: var(--fs-md);
+  text-overflow: ellipsis;
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.sh-search-input::placeholder {
+  color: var(--text-3);
+}
+
+/* Campo vuoto: a destra c'è il suggerimento "Ctrl K" */
+.sh-search--inline .sh-search-input:placeholder-shown {
+  padding-right: 64px;
+}
+
+.sh-search-input:hover {
+  background: var(--surface);
+}
+
+.sh-search-input:focus {
+  outline: none;
+  background: var(--surface);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.sh-kbd,
+.sh-results-foot kbd {
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 3px 6px;
+  white-space: nowrap;
+}
+
+.sh-kbd {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+}
+
+.sh-search-input:focus ~ .sh-kbd {
+  display: none;
+}
+
+.sh-search-clear {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 40px;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-3);
+}
+
+.sh-search-clear:hover {
+  color: var(--text-1);
+}
+
+/* ---------- Ricerca: risultati ---------- */
+.sh-results[hidden] {
+  display: none;
+}
+
+.sh-search--inline .sh-results {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max(100%, 440px);
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+  animation: sh-pop 120ms var(--ease);
+}
+
+.sh-group + .sh-group {
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-1);
+  border-top: 1px solid var(--border);
+}
+
+.sh-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sh-group-count {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-option {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: var(--r-control);
+  cursor: pointer;
+}
+
+.sh-option[aria-selected='true'] {
+  background: var(--primary-bg);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.sh-option-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sh-option-title,
+.sh-option-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sh-option-title {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-1);
+  line-height: 1.35;
+}
+
+.sh-option-detail {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-option-enter {
+  flex: none;
+  color: var(--primary-text);
+}
+
+.sh-mark {
+  background: transparent;
+  color: var(--primary-text);
+  font-weight: 700;
+}
+
+.sh-noresults {
+  padding: var(--sp-5) var(--sp-4);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.sh-noresults strong {
+  color: var(--text-1);
+}
+
+.sh-results-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-1) var(--sp-4);
+  margin-top: var(--sp-1);
+  padding: 8px 10px 2px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.sh-results-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* ---------- Ricerca a schermo intero (smartphone) ---------- */
+.sh-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: var(--surface);
+  color: var(--text-1);
+}
+
+.sh-overlay[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.sh-overlay::backdrop {
+  background: var(--surface);
+}
+
+html:has(.sh-overlay[open]) {
+  overflow: hidden;
+}
+
+.sh-search--overlay {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.sh-search--overlay .sh-search-field {
+  padding: calc(10px + env(safe-area-inset-top)) var(--sp-3) 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sh-search--overlay .sh-search-input {
+  height: 44px;
+  font-size: 16px; /* evita lo zoom automatico su iOS */
+  padding-right: 44px;
+}
+
+.sh-search--overlay .sh-search-input:placeholder-shown {
+  padding-right: 12px;
+}
+
+.sh-search--overlay .sh-search-clear {
+  width: 44px;
+}
+
+.sh-overlay-close {
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  flex: none;
+}
+
+.sh-search--overlay .sh-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2) var(--sp-2) calc(var(--sp-6) + env(safe-area-inset-bottom));
+}
+
+.sh-search--overlay .sh-option {
+  min-height: 52px;
+}
+
+.sh-search--overlay .sh-option-title {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.sh-overlay-hint {
+  padding: var(--sp-6) var(--sp-5);
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+}
+
+/* ---------- Notifiche ---------- */
+.sh-notif {
+  position: relative;
+}
+
+.sh-notif-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  max-height: min(72vh, 600px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: sh-pop 120ms var(--ease);
+}
+
+.sh-notif-panel[hidden] {
+  display: none;
+}
+
+.sh-notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sh-notif-head h2 {
+  font-size: var(--fs-lg);
+}
+
+.sh-notif-body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+}
+
+.sh-notif-group + .sh-notif-group {
+  margin-top: var(--sp-1);
+}
+
+.sh-notif-group-label {
+  padding: 10px 8px 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.sh-notif-group-count {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-notif-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 8px;
+  border-radius: var(--r-control);
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+.sh-notif-item:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+.sh-notif-item:focus-visible {
+  outline-offset: -2px;
+}
+
+.sh-notif-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.sh-notif-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sh-notif-title {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.sh-notif-detail {
+  font-size: var(--fs-xs);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.sh-notif-detail[data-tone='negative'] {
+  color: var(--negative);
+}
+
+.sh-notif-detail[data-tone='warning'] {
+  color: var(--warning);
+}
+
+.sh-notif-detail[data-tone='primary'] {
+  color: var(--primary-text);
+}
+
+.sh-notif-chevron {
+  flex: none;
+  margin-top: 8px;
+  color: var(--text-3);
+}
+
+.sh-notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-6) var(--sp-5);
+  text-align: center;
+}
+
+.sh-notif-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--positive-bg);
+  color: var(--positive);
+}
+
+.sh-notif-empty p {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  max-width: 34ch;
+}
+
+.sh-notif-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: 2px 16px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+}
+
+.sh-notif-foot a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* ---------- Tablet ---------- */
+@media (max-width: 1199px) {
+  .sh-search-inline {
+    width: 240px;
+  }
+
+  /* Su tablet la scorciatoia da tastiera è poco utile: più spazio al testo segnaposto. */
+  .sh-kbd {
+    display: none;
+  }
+
+  .sh-search--inline .sh-search-input:placeholder-shown {
+    padding-right: 12px;
+  }
+}
+
+/* ---------- Smartphone ---------- */
+@media (max-width: 767px) {
+  .sh-search-inline {
+    display: none;
+  }
+
+  .icon-btn.sh-search-trigger {
+    display: inline-flex;
+  }
+
+  .icon-btn.sh-icon-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Il pannello occupa tutta la larghezza sotto la topbar (che fa da riferimento). */
+  .sh-notif {
+    position: static;
+  }
+
+  .sh-notif-panel {
+    top: 100%;
+    left: var(--sp-2);
+    right: var(--sp-2);
+    width: auto;
+    max-width: none;
+    margin-top: 4px;
+    max-height: calc(100dvh - var(--topbar-h) - var(--mobile-nav-h) - 24px - env(safe-area-inset-bottom));
+  }
+}
