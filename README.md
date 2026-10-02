@@ -81,7 +81,10 @@ Il sito pubblicato è pubblico ma **contiene solo il codice**. I dati che inseri
 | **Pratiche** | Gestione delle pratiche, più lo scadenzario completo a 30, 60, 90 o 180 giorni |
 | **Impostazioni** | Nome, nome dell'app, tema chiaro o scuro, regole dei promemoria, backup, ripristino della demo, cancellazione dei dati e informazioni sulla privacy |
 
-Scorciatoie da tastiera: `Ctrl K` (o `/`) per cercare clienti, attività, appuntamenti, pratiche e fondi.
+Scorciatoie da tastiera:
+
+- `Ctrl K` (o `/`) per cercare clienti, attività, appuntamenti, pratiche e fondi.
+- `Ctrl Z` per annullare l'ultima azione (completamento, rimando, eliminazione…) finché la notifica è visibile.
 
 ### Importare i valori reali dei fondi
 
@@ -95,7 +98,11 @@ Il mio fondo;01/10/2026;8,415
 ```
 
 - Se l'`id` è quello di un fondo già presente, i valori dimostrativi vengono sostituiti da quelli importati. L'elenco degli ID è nella finestra di import.
+  - In quel caso rischio (SRI) e descrizione dimostrativi vengono rimossi, e puoi dare al fondo il suo nome reale.
 - Se l'`id` è un nome nuovo, viene creato un nuovo fondo.
+- Sono accettati anche valori settimanali o mensili: volatilità e variazioni vengono calcolate in base alla frequenza dei dati.
+- Le righe con data futura o con valore quota pari a zero o negativo vengono segnalate prima dell'import.
+- Con l'interruttore **Mostra fondi dimostrativi** nascondi i fondi demo e lasci solo i tuoi.
 
 ### Importare l'agenda da Outlook o Google Calendar
 
@@ -104,7 +111,14 @@ Da **Agenda › Importa calendario (.ics)** carichi un file `.ics`. Si ottiene c
 - **Outlook:** *File › Salva calendario*.
 - **Google Calendar:** *Impostazioni › Importa ed esporta*.
 
-Se reimporti lo stesso file, gli eventi già presenti vengono aggiornati senza duplicati. Con **Esporta .ics** porti invece gli appuntamenti nel tuo calendario.
+Se reimporti lo stesso file, gli eventi già presenti vengono aggiornati senza duplicati:
+
+- titolo, data, orari e luogo arrivano dal calendario;
+- tipo, stato, esito, note e cliente collegato restano quelli che hai impostato nell'app.
+
+Delle serie ricorrenti (riunioni settimanali, anniversari…) viene importata la prossima occorrenza.
+
+Con **Esporta .ics** porti gli appuntamenti nel tuo calendario. Puoi scegliere se includere i nomi dei clienti, le note e gli indirizzi: il file può finire su servizi cloud, quindi includi solo ciò che serve.
 
 ## Privacy e dati personali (GDPR)
 
@@ -115,6 +129,9 @@ Se reimporti lo stesso file, gli eventi già presenti vengono aggiornati senza d
 - Evita dati sensibili: informazioni sanitarie, codici fiscali completi, numeri di polizza interi. Per le polizze l'app chiede solo le ultime 4 cifre.
 - Fai backup regolari da **Impostazioni › Esporta backup** e conserva il file in un luogo sicuro, perché contiene i dati dei clienti.
 - **Impostazioni › Cancella tutti i dati** rimuove ogni informazione da questo browser.
+- L'app non contatta server esterni, nemmeno per i caratteri: il font Inter è incluso nell'app.
+- Se un giorno i dati salvati risultassero illeggibili, l'app non li sovrascrive. Ne conserva una copia e ti propone di scaricarla, importare un backup o ripartire dalla demo.
+- La demo si aggiorna da sola ogni giorno, così le scadenze restano realistiche. Smette di farlo appena modifichi un cliente, un'attività, un appuntamento o una pratica.
 
 ## Personalizzazione
 
