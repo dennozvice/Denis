@@ -13,12 +13,22 @@ describe('normalizzazione', () => {
   it('divide la ricerca in parole', () => {
     expect(tokenize('  Mario   ROSSÌ ')).toEqual(['mario', 'rossi'])
     expect(tokenize('   ')).toEqual([])
+    expect(tokenize("d'identità ••••4821")).toEqual(['d', 'identita', '4821'])
   })
 
   it('richiede che tutte le parole compaiano, in qualunque ordine', () => {
     expect(matchesTokens('Mario Rossi Milano', ['rossi', 'mar'])).toBe(true)
     expect(matchesTokens('Mario Rossi Milano', ['rossi', 'roma'])).toBe(false)
     expect(matchesTokens('Mario Rossi', [])).toBe(false)
+  })
+
+  it('considera solo gli inizi di parola', () => {
+    expect(matchesTokens('Milano', ['mi'])).toBe(true)
+    expect(matchesTokens('Amministrativa', ['mi'])).toBe(false)
+    expect(matchesTokens('Valutazione prestazione', ['azion'])).toBe(false)
+    expect(matchesTokens('Azionario Europa', ['azion'])).toBe(true)
+    expect(matchesTokens('Polizza ••••4821', ['48'])).toBe(true)
+    expect(matchesTokens('mario.rossi@example.com', ['rossi'])).toBe(true)
   })
 })
 
@@ -29,11 +39,16 @@ describe('evidenziazione', () => {
   })
 
   it('fonde gli intervalli sovrapposti o adiacenti', () => {
-    expect(highlightRanges('Rossi', ['ros', 'ssi'])).toEqual([[0, 5]])
+    expect(highlightRanges('Rossi', ['ros', 'rossi'])).toEqual([[0, 5]])
+    expect(highlightRanges('Rossi', ['ssi'])).toEqual([])
     expect(highlightRanges('ab ab', ['ab'])).toEqual([
       [0, 2],
       [3, 5],
     ])
+  })
+
+  it('evidenzia solo gli inizi di parola', () => {
+    expect(highlightRanges('Termine a Milano', ['mi'])).toEqual([[10, 12]])
   })
 
   it('gestisce testi già decomposti (NFD)', () => {
@@ -91,7 +106,7 @@ describe('ricerca globale', () => {
   })
 
   it('limita a 5 risultati per gruppo e riporta il totale', () => {
-    const groups = searchAll(data, instruments, 'a', TODAY)
+    const groups = searchAll(data, instruments, 'milano', TODAY)
     for (const g of groups) {
       expect(g.items.length).toBeLessThanOrEqual(5)
       expect(g.total).toBeGreaterThanOrEqual(g.items.length)

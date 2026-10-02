@@ -27,21 +27,38 @@ export function normalizeText(text: string): string {
   return text.normalize('NFD').replace(DIACRITICS, '').toLowerCase()
 }
 
-/** Parole della ricerca, già normalizzate. */
-export function tokenize(query: string): string[] {
-  return normalizeText(query).split(/\s+/).filter(Boolean)
-}
+const WORD_SEPARATOR = /[^\p{L}\p{N}]+/u
+const WORD_CHAR = /[\p{L}\p{N}]/u
+const isWordChar = (ch: string | undefined) => ch !== undefined && WORD_CHAR.test(ch)
 
-/** true se TUTTE le parole compaiono nel testo (in qualunque ordine). */
-export function matchesTokens(haystack: string, tokens: string[]): boolean {
-  if (tokens.length === 0) return false
-  const h = normalizeText(haystack)
-  return tokens.every((t) => h.includes(t))
+/** Parole della ricerca, già normalizzate ("d'identità" → ["d", "identita"]). */
+export function tokenize(query: string): string[] {
+  return normalizeText(query).split(WORD_SEPARATOR).filter(Boolean)
 }
 
 /**
- * Intervalli [inizio, fine) del testo ORIGINALE che corrispondono alle parole cercate,
- * ignorando maiuscole e accenti; ordinati e fusi se sovrapposti o adiacenti.
+ * true se `token` è l'inizio di una parola di `norm` (testo già normalizzato):
+ * "ross" trova "Rossi", "mi" trova "Milano" ma non "Amministrativa", "azion" non trova "prestazione".
+ */
+function tokenMatches(norm: string, token: string): boolean {
+  let from = norm.indexOf(token)
+  while (from !== -1) {
+    if (!isWordChar(norm[from - 1])) return true
+    from = norm.indexOf(token, from + 1)
+  }
+  return false
+}
+
+/** true se TUTTE le parole cercate sono inizi di parola del testo (in qualunque ordine). */
+export function matchesTokens(haystack: string, tokens: string[]): boolean {
+  if (tokens.length === 0) return false
+  const h = normalizeText(haystack)
+  return tokens.every((t) => tokenMatches(h, t))
+}
+
+/**
+ * Intervalli [inizio, fine) del testo ORIGINALE che corrispondono alle parole cercate
+ * (solo a inizio parola, come la ricerca), ignorando maiuscole e accenti; ordinati e fusi se sovrapposti o adiacenti.
  */
 export function highlightRanges(text: string, tokens: string[]): Array<[number, number]> {
   let norm = ''
@@ -62,6 +79,10 @@ export function highlightRanges(text: string, tokens: string[]): Array<[number, 
     if (!token) continue
     let from = norm.indexOf(token)
     while (from !== -1) {
+      if (isWordChar(norm[from - 1])) {
+        from = norm.indexOf(token, from + 1)
+        continue
+      }
       const last = from + token.length - 1
       ranges.push([origin[from], origin[last] + width[last]])
       from = norm.indexOf(token, from + token.length)
@@ -83,7 +104,7 @@ export function highlightRanges(text: string, tokens: string[]): Array<[number, 
  */
 export function titleScore(title: string, tokens: string[]): number {
   const t = normalizeText(title)
-  const words = t.split(/[^a-z0-9]+/).filter(Boolean)
+  const words = t.split(WORD_SEPARATOR).filter(Boolean)
   let score = 0
   for (const tok of tokens) {
     if (words.some((w) => w.startsWith(tok))) score += 2
