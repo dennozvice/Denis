@@ -25,6 +25,24 @@ export const STORAGE_PREFIX = 'advisor-desk:'
 export const DATA_KEY = `${STORAGE_PREFIX}data`
 export const IMPORTS_KEY = `${STORAGE_PREFIX}market-imports`
 export const BACKUP_KEY = `${STORAGE_PREFIX}data.bak`
+/** Segna che la partenza "vuota" (senza clienti dimostrativi) è già stata applicata su questo browser. */
+export const EMPTY_START_KEY = `${STORAGE_PREFIX}empty-start`
+
+export function emptyStartApplied(storage: KeyValueStorage | null = browserStorage()): boolean {
+  try {
+    return storage?.getItem(EMPTY_START_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markEmptyStartApplied(storage: KeyValueStorage | null = browserStorage()): void {
+  try {
+    storage?.setItem(EMPTY_START_KEY, '1')
+  } catch {
+    /* ignora */
+  }
+}
 
 /** Sottoinsieme di Storage usato qui: permette test con un finto storage in memoria. */
 export type KeyValueStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>

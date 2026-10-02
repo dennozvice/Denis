@@ -11,6 +11,9 @@ import './styles/tokens.css'
 import './styles/base.css'
 import './styles/layout.css'
 import { App } from './App'
+import { setupPwa } from './lib/pwa'
+
+setupPwa()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

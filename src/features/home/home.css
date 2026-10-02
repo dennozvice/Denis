@@ -315,6 +315,14 @@ a.hm-market-cell:focus-visible {
   margin-top: auto;
 }
 
+.hm-kpi-meta .pill {
+  /* su tessere strette (2x2 su telefono) il testo va a capo invece di uscire dalla tessera */
+  max-width: 100%;
+  height: auto;
+  min-height: 22px;
+  white-space: normal;
+}
+
 .hm-kpi-meta-stack {
   flex-direction: column;
   align-items: stretch;
@@ -961,5 +969,93 @@ a.hm-market-cell:focus-visible {
   .icon-btn.hm-course-remove {
     width: 44px;
     height: 44px;
+  }
+}
+
+/* ---------- Benvenuto (dashboard vuota) ---------- */
+.hm-welcome {
+  gap: var(--sp-4);
+  border: 1px solid var(--primary-bg);
+  background: linear-gradient(135deg, var(--primary-bg), var(--surface) 60%);
+}
+
+.hm-welcome-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.hm-welcome-head h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.hm-welcome-head h2 svg {
+  color: var(--primary-text);
+}
+
+.hm-welcome-name {
+  max-width: 360px;
+}
+
+.hm-welcome-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.hm-welcome-step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 100%;
+  height: 100%;
+  min-height: 64px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text-1);
+  text-align: left;
+  text-decoration: none;
+}
+
+.hm-welcome-step:hover {
+  border-color: var(--primary);
+  text-decoration: none;
+}
+
+.hm-welcome-step > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary-text);
+}
+
+.hm-welcome-step > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.hm-welcome-foot .btn-link {
+  font-size: inherit;
+}
+
+@media (max-width: 1199px) {
+  .hm-welcome-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .hm-welcome-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .hm-welcome-name {
+    max-width: none;
   }
 }

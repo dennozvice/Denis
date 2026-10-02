@@ -17,7 +17,7 @@ import type {
 import { addDays, addMonths, addYears, isWeekend, parseKey } from '../lib/dates'
 
 export const DEFAULT_SETTINGS: Settings = {
-  advisorName: 'Denis',
+  advisorName: '',
   brandName: 'Advisor Desk',
   agencyName: '',
   theme: 'sistema',

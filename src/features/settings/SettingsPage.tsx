@@ -22,6 +22,7 @@ import { useNow } from '../../store/NowContext'
 import { clientsToRecontact, computeDeadlines } from '../../store/selectors'
 import { useActions, useAppData } from '../../store/StoreContext'
 import { BackupSection } from './BackupSection'
+import { InstallSection } from './InstallSection'
 import { APP_VERSION, IDD_MONTHS, parseIntInRange, RECONTACT_DAYS } from './settingsUtils'
 import './settings.css'
 
@@ -44,6 +45,7 @@ export function SettingsPage() {
       <div className="sh-set-cols">
         <div className="sh-set-col">
           <ProfileSection />
+          <InstallSection />
           <AppearanceSection />
           <RulesSection />
           <IntegrationsSection />

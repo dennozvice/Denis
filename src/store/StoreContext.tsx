@@ -7,10 +7,19 @@
  *   const actions = useActions()           // scrittura: actions.addTask({...}), actions.toggleTask(id)…
  */
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react'
-import { createDemoData, createEmptyData } from '../data/demoSeed'
+import { createEmptyData } from '../data/demoSeed'
 import { shiftDemoData } from '../data/demoShift'
-import { DATA_KEY, loadAppDataResult, normalizeAppData, saveAppData, type SaveResult } from '../data/persistence'
-import type { AppData, Appointment, Case, Client, Goal, Settings, Task, Training } from '../domain/types'
+import {
+  DATA_KEY,
+  emptyStartApplied,
+  loadAppDataResult,
+  markEmptyStartApplied,
+  normalizeAppData,
+  saveAppData,
+  type LoadResult,
+  type SaveResult,
+} from '../data/persistence'
+import type { AppData, Appointment, Case, Client, DateKey, Goal, Settings, Task, Training } from '../domain/types'
 import { createId } from '../lib/id'
 import { nowInRome, nowIso } from '../lib/dates'
 import { appReducer, type Action } from './reducer'
@@ -26,14 +35,32 @@ export interface RecoveryInfo {
 }
 const RecoveryContext = createContext<RecoveryInfo | null>(null)
 
-function initialState(): { data: AppData; corruptBackupKey?: string } {
-  const today = nowInRome().date
-  const result = loadAppDataResult()
-  if (result.status === 'ok') return { data: shiftDemoData(result.data, today) }
-  // Dati presenti ma illeggibili: si parte VUOTI (non con la demo, che li confonderebbe con i propri)
-  // e si mostra un avviso con la copia conservata.
+/**
+ * Dati con cui parte l'app, dato l'esito del caricamento (funzione pura, testabile).
+ * - Primo avvio: dati vuoti (nessun cliente, appuntamento o attività di esempio).
+ * - Dati illeggibili: vuoti, con la chiave della copia conservata per il recupero.
+ * - Le versioni precedenti partivano con una demo generata in automatico: se è ancora intatta
+ *   (mai modificata: demoGeneratedOn presente) si riparte vuoti UNA sola volta, mantenendo le impostazioni.
+ *   Una demo caricata in seguito dall'utente resta.
+ */
+export function resolveInitialData(
+  result: LoadResult,
+  today: DateKey,
+  emptyStartAlreadyApplied: boolean,
+): { data: AppData; corruptBackupKey?: string } {
+  if (result.status === 'ok') {
+    const pristineDemo = result.data.isDemo && Boolean(result.data.demoGeneratedOn)
+    if (!emptyStartAlreadyApplied && pristineDemo) return { data: createEmptyData(today, result.data.settings) }
+    return { data: shiftDemoData(result.data, today) }
+  }
   if (result.status === 'corrupt') return { data: createEmptyData(today), corruptBackupKey: result.backupKey }
-  return { data: createDemoData(today) }
+  return { data: createEmptyData(today) }
+}
+
+function initialState(): { data: AppData; corruptBackupKey?: string } {
+  const boot = resolveInitialData(loadAppDataResult(), nowInRome().date, emptyStartApplied())
+  markEmptyStartApplied()
+  return boot
 }
 
 export function StoreProvider({ children, initial }: { children: ReactNode; initial?: AppData }) {

@@ -205,12 +205,12 @@ export function BackupSection() {
         </li>
         <li className="sh-set-action">
           <div className="sh-set-action-text">
-            <h3>Ripristina dati dimostrativi</h3>
-            <p>Ricarica clienti, attività e appuntamenti di esempio, aggiornati alla data di oggi.</p>
+            <h3>Carica dati dimostrativi</h3>
+            <p>Per provare l&apos;app: clienti, attività e appuntamenti di esempio. Sostituiscono i dati attuali.</p>
           </div>
           <button type="button" className="btn" onClick={restoreDemo}>
             <RotateCcw size={16} aria-hidden="true" />
-            Ripristina demo
+            Carica demo
           </button>
         </li>
         <li className="sh-set-action">
