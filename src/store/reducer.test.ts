@@ -52,5 +52,9 @@ describe('reducer', () => {
     expect(imported).toHaveLength(1)
     expect(imported[0].start).toBe('11:00')
     expect(imported[0].id).toBe('i1')
+    // stato e note decisi nell'app sopravvivono al re-import
+    const s3 = appReducer(s2, { type: 'appointment/update', id: 'i1', patch: { status: 'svolto', notes: 'ok', type: 'firma_contratto' } })
+    const s4 = appReducer(s3, { type: 'appointment/import', appointments: [{ ...ev, id: 'i3', start: '12:00' }] })
+    expect(s4.appointments.find((a) => a.id === 'i1')).toMatchObject({ status: 'svolto', notes: 'ok', type: 'firma_contratto', start: '12:00' })
   })
 })

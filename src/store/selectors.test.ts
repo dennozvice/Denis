@@ -66,6 +66,19 @@ describe('selettori', () => {
     expect(findTaskForDeadline(linked, bday)?.id).toBe('z')
   })
 
+  it('reclamo senza scadenza: termine di 45 giorni dall\'apertura', () => {
+    const d2 = { ...data, cases: [{ id: 'r', type: 'reclamo' as const, title: 'R', openedOn: '2026-09-20', status: 'aperta' as const }] }
+    const dl = computeDeadlines(d2, TODAY, { horizonDays: 60 }).find((d) => d.caseId === 'r')
+    expect(dl?.date).toBe('2026-11-04')
+  })
+
+  it('nati il 29 febbraio: età corretta nel promemoria del 28 febbraio', () => {
+    const d2 = { ...data, clients: [{ id: 'x', firstName: 'A', lastName: 'B', birthDate: '1960-02-29', policies: [] }] }
+    const b = computeDeadlines(d2, '2027-02-20', { horizonDays: 30 }).find((d) => d.kind === 'compleanno')
+    expect(b?.date).toBe('2027-02-28')
+    expect(b?.title).toContain('67 anni')
+  })
+
   it('clienti da ricontattare', () => {
     const list = clientsToRecontact(data.clients, TODAY, 180)
     expect(list[0].client.id).toBe('c11')

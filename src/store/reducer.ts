@@ -117,8 +117,18 @@ function reduce(state: AppData, action: Action): AppData {
         const incoming = a.externalId ? byExternal.get(a.externalId) : undefined
         if (!incoming) return a
         byExternal.delete(a.externalId!)
-        // si conservano id, cliente collegato ed esito già registrati nell'app
-        return { ...a, ...incoming, id: a.id, clientId: a.clientId ?? incoming.clientId, outcome: a.outcome }
+        // dal calendario si aggiornano solo titolo, data, orari e luogo; tipo, stato, esito, note e
+        // cliente restano quelli decisi nell'app
+        return {
+          ...a,
+          title: incoming.title,
+          date: incoming.date,
+          start: incoming.start,
+          end: incoming.end,
+          location: incoming.location,
+          locationDetail: incoming.locationDetail,
+          clientId: a.clientId ?? incoming.clientId,
+        }
       })
       const fresh = action.appointments.filter((a) => !a.externalId || byExternal.has(a.externalId))
       return { ...state, appointments: [...updated, ...fresh] }

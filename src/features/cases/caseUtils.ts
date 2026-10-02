@@ -17,6 +17,8 @@ export const CASE_TYPE_TONE: Record<CaseType, Tone> = {
   variazione_beneficiario: 'primary',
   versamento_aggiuntivo: 'positive',
   switch: 'primary',
+  anticipazione: 'warning',
+  trasferimento: 'accent',
   reclamo: 'negative',
 }
 

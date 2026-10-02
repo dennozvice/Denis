@@ -28,11 +28,11 @@ export function MobileNav({ page }: { page: PageId }) {
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false)
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpenOn(null)
     // tocco fuori dal menu (e fuori dal bottone "Altro") = chiudi
     const onPointer = (e: PointerEvent) => {
       const target = e.target as Element | null
-      if (target && !target.closest('#more-sheet') && !target.closest('[aria-controls="more-sheet"]')) setOpen(false)
+      if (target && !target.closest('#more-sheet') && !target.closest('[aria-controls="more-sheet"]')) setOpenOn(null)
     }
     document.addEventListener('keydown', onKey)
     document.addEventListener('pointerdown', onPointer)
@@ -40,21 +40,10 @@ export function MobileNav({ page }: { page: PageId }) {
       document.removeEventListener('keydown', onKey)
       document.removeEventListener('pointerdown', onPointer)
     }
-  })
+  }, [open])
 
   return (
     <>
-      <div className="more-sheet" id="more-sheet" hidden={!open}>
-        {MORE.map((item) => {
-          const Icon = item.icon
-          return (
-            <a key={item.page} href={buildHref(item.page)} aria-current={item.page === page ? 'page' : undefined} onClick={() => setOpen(false)}>
-              <Icon size={20} aria-hidden="true" />
-              {item.label}
-            </a>
-          )
-        })}
-      </div>
       <nav className="mobile-nav" aria-label="Navigazione">
         {PRIMARY.map((item) => {
           const Icon = item.icon
@@ -78,6 +67,18 @@ export function MobileNav({ page }: { page: PageId }) {
           Altro
         </button>
       </nav>
+      {/* dopo il bottone nel DOM: con Tab o lo scorrimento del lettore di schermo si entra nel menu */}
+      <div className="more-sheet" id="more-sheet" hidden={!open}>
+        {MORE.map((item) => {
+          const Icon = item.icon
+          return (
+            <a key={item.page} href={buildHref(item.page)} aria-current={item.page === page ? 'page' : undefined} onClick={() => setOpen(false)}>
+              <Icon size={20} aria-hidden="true" />
+              {item.label}
+            </a>
+          )
+        })}
+      </div>
     </>
   )
 }

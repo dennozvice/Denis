@@ -51,8 +51,8 @@
   /* Serie dei grafici: il colore è legato all'ID del fondo, non alla posizione */
   --series-1: #2a78d6;
   --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
+  --series-3: #12855b;
+  --series-4: #b07800;
   --series-5: #8b5cf6;
   --series-6: #db2777;
   --series-7: #0891b2;
@@ -112,7 +112,7 @@
   --text-on-primary: #ffffff;
 
   --primary: #3b6fe0;
-  --primary-hover: #4b7cf0;
+  --primary-hover: #2f62d1;
   --primary-bg: #1a2a4f;
   --primary-text: #6e9bff;
 

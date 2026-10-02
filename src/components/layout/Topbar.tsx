@@ -1,3 +1,4 @@
+import { FlaskConical } from 'lucide-react'
 import { GlobalSearch } from '../../features/shell/GlobalSearch'
 import { NotificationsMenu } from '../../features/shell/NotificationsMenu'
 import { capitalize, formatDateLong, greeting, initials } from '../../lib/format'
@@ -8,7 +9,7 @@ import { ThemeToggle } from './ThemeToggle'
 
 export function Topbar() {
   const now = useNow()
-  const { settings } = useAppData()
+  const { settings, isDemo } = useAppData()
   const name = settings.advisorName.trim().split(/\s+/)[0]
   return (
     <header className="topbar">
@@ -22,6 +23,13 @@ export function Topbar() {
         </p>
       </div>
       <div className="topbar-actions">
+        {isDemo && (
+          <a className="pill topbar-demo" data-tone="warning" href={buildHref('impostazioni')} title="Clienti, attività e valori sono dimostrativi. Gestisci i dati da Impostazioni.">
+            <FlaskConical size={12} aria-hidden="true" />
+            Demo
+            <span className="visually-hidden">: stai usando dati dimostrativi</span>
+          </a>
+        )}
         <GlobalSearch />
         <NotificationsMenu />
         <ThemeToggle />

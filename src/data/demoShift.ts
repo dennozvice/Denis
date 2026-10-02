@@ -5,6 +5,7 @@
  * Si applica solo finché l'utente lavora sui dati dimostrativi (isDemo = true).
  */
 import type { AppData, DateKey, IsoInstant } from '../domain/types'
+import { goalPeriodKey } from './demoSeed'
 import { addDays, diffDays, isDateKey } from '../lib/dates'
 
 const shiftKey = <T extends DateKey | undefined>(key: T, days: number): T =>
@@ -44,6 +45,7 @@ export function shiftDemoData(data: AppData, today: DateKey): AppData {
       })),
     })),
     cases: data.cases.map((k) => ({ ...k, openedOn: shiftKey(k.openedOn, days), dueDate: shiftKey(k.dueDate, days) })),
+    goals: data.goals.map((g) => (g.periodKey ? { ...g, periodKey: goalPeriodKey(g.period, today) } : g)),
     training: {
       ...data.training,
       courses: data.training.courses.map((c) => ({ ...c, dueDate: shiftKey(c.dueDate, days) })),

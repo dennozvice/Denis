@@ -6,6 +6,7 @@ import type {
   AppData,
   Appointment,
   AppointmentType,
+  Case,
   Client,
   DateKey,
   Deadline,
@@ -13,7 +14,7 @@ import type {
   Task,
 } from '../domain/types'
 import { DEADLINE_TO_TASK_CATEGORY, POLICY_KIND_LABEL, PRIORITY_RANK } from '../domain/labels'
-import { addDays, addMonths, ageOn, diffDays, instantToRome, nextAnniversary, timeToMinutes, type RomeNow } from '../lib/dates'
+import { addDays, addMonths, diffDays, instantToRome, nextAnniversary, timeToMinutes, type RomeNow } from '../lib/dates'
 
 // ---------------------------------------------------------------- generali
 
@@ -147,6 +148,7 @@ export function nextAppointment(appointments: Appointment[], now: RomeNow): Appo
     .filter(
       (a) =>
         a.status !== 'annullato' &&
+        a.status !== 'svolto' &&
         !isAllDay(a) &&
         (a.date > now.date || (a.date === now.date && timeToMinutes(a.end) > now.minutes)),
     )
@@ -158,6 +160,7 @@ export function currentAppointment(appointments: Appointment[], now: RomeNow): A
   return appointments.find(
     (a) =>
       a.status !== 'annullato' &&
+      a.status !== 'svolto' &&
       !isAllDay(a) &&
       a.date === now.date &&
       timeToMinutes(a.start) <= now.minutes &&
@@ -166,6 +169,12 @@ export function currentAppointment(appointments: Appointment[], now: RomeNow): A
 }
 
 // ---------------------------------------------------------------- scadenze
+
+/** Scadenza di una pratica: quella indicata o, per i reclami senza data, 45 giorni dall'apertura. */
+export function caseDueDate(k: Pick<Case, 'type' | 'openedOn' | 'dueDate'>): DateKey | undefined {
+  if (k.dueDate) return k.dueDate
+  return k.type === 'reclamo' ? addDays(k.openedOn, 45) : undefined
+}
 
 export interface DeadlineOptions {
   /** Giorni in avanti da considerare (default 30). */
@@ -219,14 +228,20 @@ export function computeDeadlines(data: AppData, today: DateKey, options: Deadlin
     if (c.birthDate) {
       const next = nextAnniversary(c.birthDate, today)
       if (next <= limit) {
-        const age = ageOn(c.birthDate, next)
+        // anni compiuti nel giorno della ricorrenza: differenza tra gli anni (vale anche per il 29/02 festeggiato il 28/02)
+        const age = Number(next.slice(0, 4)) - Number(c.birthDate.slice(0, 4))
         push({
           id: `bday-${c.id}-${next}`,
           kind: 'compleanno',
           date: next,
           clientId: c.id,
           title: `${name} compie ${age} anni`,
-          detail: age === 67 ? 'Età pensionabile: verificare le prestazioni previdenziali' : age === 18 ? 'Maggiore età' : undefined,
+          detail:
+            age === 67
+              ? 'Possibile requisito per la pensione di vecchiaia: verificare le prestazioni della previdenza complementare'
+              : age === 18
+                ? 'Maggiore età'
+                : undefined,
           severity: 'info',
         })
       }
@@ -259,8 +274,9 @@ export function computeDeadlines(data: AppData, today: DateKey, options: Deadlin
   }
 
   for (const k of data.cases) {
-    if (k.status !== 'chiusa' && k.dueDate && inWindow(k.dueDate, true)) {
-      push({ id: `case-${k.id}`, kind: 'pratica', date: k.dueDate, clientId: k.clientId, caseId: k.id, title: k.title })
+    const due = caseDueDate(k)
+    if (k.status !== 'chiusa' && due && inWindow(due, true)) {
+      push({ id: `case-${k.id}`, kind: 'pratica', date: due, clientId: k.clientId, caseId: k.id, title: k.title })
     }
   }
 
@@ -383,10 +399,12 @@ export function computeNotifications(data: AppData, now: RomeNow): NotificationI
       href: d.caseId ? `#/pratiche?id=${d.caseId}` : d.clientId ? `#/clienti?id=${d.clientId}` : '#/clienti',
     })
   }
-  const next = nextAppointment(data.appointments, now)
-  if (next && next.date === now.date) {
+  const next = appointmentsOn(data.appointments, now.date).find(
+    (a) => a.status !== 'svolto' && !isAllDay(a) && timeToMinutes(a.start) >= now.minutes,
+  )
+  if (next) {
     const minutes = timeToMinutes(next.start) - now.minutes
-    if (minutes >= 0 && minutes <= 60) {
+    if (minutes <= 60) {
       items.unshift({
         id: `appt-${next.id}`,
         kind: 'appuntamento',

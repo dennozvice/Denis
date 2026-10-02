@@ -11,16 +11,18 @@ interface ChangeValueProps {
   variant?: 'pill' | 'text'
   /** Se true, un valore positivo è "negativo" (es. spread in aumento). Default false. */
   invert?: boolean
+  /** Se true, nessun colore buono/cattivo (es. tassi: un aumento non è né positivo né negativo). */
+  neutral?: boolean
 }
 
 /** Variazione con freccia ▲/▼, segno e colore (il significato non dipende solo dal colore). */
-export function ChangeValue({ value, kind = 'pct', decimals = 2, suffix = '', variant = 'pill', invert = false }: ChangeValueProps) {
+export function ChangeValue({ value, kind = 'pct', decimals = 2, suffix = '', variant = 'pill', invert = false, neutral = false }: ChangeValueProps) {
   if (value === undefined || Number.isNaN(value)) {
     return <span className="muted num" aria-label="Dato non disponibile">—</span>
   }
   const rounded = Number(value.toFixed(decimals))
   const direction = rounded > 0 ? 'up' : rounded < 0 ? 'down' : 'flat'
-  const good = direction === 'flat' ? null : (direction === 'up') !== invert
+  const good = direction === 'flat' || neutral ? null : (direction === 'up') !== invert
   const tone = good === null ? 'neutral' : good ? 'positive' : 'negative'
   const arrow = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '■'
   const text = kind === 'pct' ? formatPercent(value, decimals, true) : `${formatSignedNumber(value, decimals)}${suffix}`

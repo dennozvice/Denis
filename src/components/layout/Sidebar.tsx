@@ -30,7 +30,7 @@ export function Sidebar({ page }: { page: PageId }) {
   const counts = useNavCounts()
   return (
     <aside className="sidebar" aria-label="Navigazione principale">
-      <a className="brand" href={buildHref('home')}>
+      <a className="brand" href={buildHref('home')} aria-label={`${settings.brandName}: Panoramica`}>
         <span className="brand-mark" aria-hidden="true">
           {initials(settings.brandName)}
         </span>

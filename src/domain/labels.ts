@@ -13,6 +13,7 @@ import type {
   PerformancePeriod,
   PolicyKind,
   Priority,
+  RiskProfile,
   TaskCategory,
   TaskStatus,
 } from './types'
@@ -154,6 +155,7 @@ export const POLICY_KIND_LABEL: Record<PolicyKind, string> = {
   tcm: 'Protezione (TCM)',
   salute: 'Salute',
   casa: 'Casa',
+  altro: 'Altro',
 }
 
 export const CASE_TYPE_LABEL: Record<CaseType, string> = {
@@ -163,7 +165,37 @@ export const CASE_TYPE_LABEL: Record<CaseType, string> = {
   variazione_beneficiario: 'Variazione beneficiario',
   versamento_aggiuntivo: 'Versamento aggiuntivo',
   switch: 'Switch fondi',
+  anticipazione: 'Anticipazione (PIP)',
+  trasferimento: 'Trasferimento posizione',
   reclamo: 'Reclamo',
+}
+
+export const RISK_PROFILE_LABEL: Record<RiskProfile, string> = {
+  prudente: 'Prudente',
+  moderato: 'Moderato',
+  equilibrato: 'Equilibrato',
+  dinamico: 'Dinamico',
+  aggressivo: 'Aggressivo',
+}
+
+export const AML_RISK_LABEL: Record<'basso' | 'medio' | 'alto', string> = {
+  basso: 'Basso',
+  medio: 'Medio',
+  alto: 'Alto',
+}
+
+export const PREMIUM_TYPE_LABEL: Record<'annuo' | 'unico' | 'ricorrente', string> = {
+  annuo: 'Premio annuo',
+  unico: 'Premio unico',
+  ricorrente: 'Versamenti ricorrenti',
+}
+
+/** Termini di riferimento in giorni per alcune pratiche (dalla ricezione della documentazione completa). */
+export const CASE_DEFAULT_TERM_DAYS: Partial<Record<CaseType, number>> = {
+  reclamo: 45,
+  riscatto: 30,
+  liquidazione_scadenza: 30,
+  sinistro: 30,
 }
 
 export const CASE_STATUS_LABEL: Record<CaseStatus, string> = {

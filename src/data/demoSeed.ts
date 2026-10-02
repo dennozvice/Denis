@@ -35,20 +35,26 @@ export function createEmptyData(today: DateKey, settings: Settings = DEFAULT_SET
     appointments: [],
     clients: [],
     cases: [],
-    goals: defaultGoals(),
+    goals: defaultGoals(today),
     training: { year: parseKey(today).year, hoursRequired: 30, courses: [] },
     quickNote: '',
   }
 }
 
-function defaultGoals(): Goal[] {
-  return [
+/** Periodo a cui si riferisce il valore di un obiettivo: "YYYY-MM" (mese) o "YYYY" (anno). */
+export function goalPeriodKey(period: Goal['period'], today: DateKey): string {
+  return period === 'mese' ? today.slice(0, 7) : today.slice(0, 4)
+}
+
+function defaultGoals(today: DateKey): Goal[] {
+  const goals: Goal[] = [
     { id: 'g-prod-mese', kind: 'produzione', label: 'Produzione del mese', period: 'mese', unit: 'EUR', target: 25000, current: 0 },
     { id: 'g-prod-anno', kind: 'produzione', label: "Produzione dell'anno", period: 'anno', unit: 'EUR', target: 240000, current: 0 },
     { id: 'g-protezione', kind: 'protezione', label: 'Polizze protezione (TCM) nel mese', period: 'mese', unit: 'numero', target: 3, current: 0 },
     { id: 'g-previdenza', kind: 'previdenza', label: "Nuovi PIP nell'anno", period: 'anno', unit: 'numero', target: 12, current: 0 },
     { id: 'g-clienti', kind: 'nuovi_clienti', label: 'Nuovi clienti nel mese', period: 'mese', unit: 'numero', target: 4, current: 0 },
   ]
+  return goals.map((g) => ({ ...g, periodKey: goalPeriodKey(g.period, today) }))
 }
 
 /** Primo giorno lavorativo a partire da today+offset (sab/dom → lunedì). */
@@ -87,6 +93,9 @@ export function createDemoData(today: DateKey, settings: Settings = DEFAULT_SETT
         { id: 'p0101', kind: 'unit_linked', ref: '••••4821', startDate: addYears(d(40), -6), annualPremium: 3000 },
         { id: 'p0102', kind: 'pip', ref: '••••1177', startDate: addYears(d(95), -9), annualPremium: 2400, pac: { amount: 200, dayOfMonth: 5 } },
       ],
+      riskProfile: 'equilibrato',
+      amlRisk: 'basso',
+      marketingConsent: true,
       tags: ['cliente storico'],
       notes: 'Due figli all\'università. Interessato a ribilanciare verso componente più prudente.',
     },
@@ -347,14 +356,14 @@ export function createDemoData(today: DateKey, settings: Settings = DEFAULT_SETT
 
   const cases: Case[] = [
     { id: 'k01', type: 'riscatto', clientId: 'c05', title: 'Riscatto parziale polizza ••••2047', openedOn: d(-6), status: 'attesa_documenti', amount: 15000, notes: 'Mancano modulo firmato e IBAN.' },
-    { id: 'k02', type: 'reclamo', clientId: 'c12', title: 'Reclamo su tempi di liquidazione rimborso salute', openedOn: d(-35), dueDate: d(10), status: 'aperta' },
+    { id: 'k02', type: 'reclamo', clientId: 'c12', title: 'Reclamo sui tempi di liquidazione', openedOn: d(-35), dueDate: d(10), status: 'aperta' },
     { id: 'k03', type: 'liquidazione_scadenza', clientId: 'c10', title: 'Liquidazione a scadenza polizza ••••8120', openedOn: d(-2), dueDate: d(45), status: 'aperta', amount: 32500 },
     { id: 'k04', type: 'switch', clientId: 'c13', title: 'Switch da Azionario Globale a Bilanciato Dinamico', openedOn: d(-3), status: 'inviata_sede', amount: 20000 },
-    { id: 'k05', type: 'sinistro', clientId: 'c14', title: 'Rimborso spese mediche', openedOn: d(-18), status: 'inviata_sede', amount: 640 },
+    { id: 'k05', type: 'sinistro', clientId: 'c14', title: 'Richiesta di rimborso polizza ••••2287', openedOn: d(-18), status: 'inviata_sede', amount: 640 },
     { id: 'k06', type: 'variazione_beneficiario', clientId: 'c01', title: 'Variazione beneficiari polizza ••••4821', openedOn: d(-40), status: 'chiusa' },
   ]
 
-  const goals = defaultGoals().map((g) => {
+  const goals = defaultGoals(today).map((g) => {
     const current: Record<string, number> = {
       'g-prod-mese': 16200,
       'g-prod-anno': 168000,

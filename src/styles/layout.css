@@ -90,6 +90,10 @@
   text-decoration: none;
 }
 
+.sidebar :focus-visible {
+  outline-color: #ffffff;
+}
+
 .nav-link:hover {
   background: var(--nav-active-bg);
   color: var(--nav-text-active);
@@ -180,6 +184,15 @@
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+}
+
+.topbar-demo {
+  margin-right: var(--sp-2);
+  text-decoration: none;
+}
+
+.topbar-demo:hover {
+  text-decoration: underline;
 }
 
 .avatar {

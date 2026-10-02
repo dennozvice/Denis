@@ -89,18 +89,24 @@ export interface Appointment {
 
 // ---------------------------------------------------------------- Clienti
 
+export type RiskProfile = 'prudente' | 'moderato' | 'equilibrato' | 'dinamico' | 'aggressivo'
+
 export type ClientSegment = 'privato' | 'famiglia' | 'pensionato' | 'professionista' | 'azienda'
 
-export type PolicyKind = 'risparmio' | 'unit_linked' | 'multiramo' | 'pip' | 'tcm' | 'salute' | 'casa'
+export type PolicyKind = 'risparmio' | 'unit_linked' | 'multiramo' | 'pip' | 'tcm' | 'salute' | 'casa' | 'altro'
 
 export interface Policy {
   id: string
   kind: PolicyKind
   /** Riferimento mascherato, es. "••••4821". Non salvare il numero completo. */
   ref: string
+  /** Nome commerciale del prodotto (facoltativo). */
+  productName?: string
   startDate: DateKey
   maturityDate?: DateKey
   annualPremium?: number
+  /** Tipo di premio: annuo (ricorrente), unico o versamenti liberi/ricorrenti. Default: annuo. */
+  premiumType?: 'annuo' | 'unico' | 'ricorrente'
   /** Piano di accumulo: importo mensile e giorno di addebito. */
   pac?: { amount: number; dayOfMonth: number }
 }
@@ -122,6 +128,12 @@ export interface Client {
   iddQuestionnaireDate?: DateKey
   /** Data dell'ultimo contatto significativo (incontro o telefonata). */
   lastContact?: DateKey
+  /** Profilo di rischio risultante dal questionario di adeguatezza. */
+  riskProfile?: RiskProfile
+  /** Livello di rischio antiriciclaggio assegnato in adeguata verifica. */
+  amlRisk?: 'basso' | 'medio' | 'alto'
+  /** Consenso privacy per comunicazioni commerciali. */
+  marketingConsent?: boolean
   policies: Policy[]
   tags?: string[]
   notes?: string
@@ -136,6 +148,8 @@ export type CaseType =
   | 'variazione_beneficiario'
   | 'versamento_aggiuntivo'
   | 'switch'
+  | 'anticipazione'
+  | 'trasferimento'
   | 'reclamo'
 
 export type CaseStatus = 'aperta' | 'attesa_documenti' | 'inviata_sede' | 'chiusa'
@@ -165,6 +179,11 @@ export interface Goal {
   unit: 'EUR' | 'numero'
   target: number
   current: number
+  /**
+   * Periodo a cui si riferisce `current`: "YYYY-MM" per gli obiettivi mensili, "YYYY" per quelli annuali.
+   * Se non coincide con il periodo attuale, i valori sono del periodo precedente (da azzerare).
+   */
+  periodKey?: string
 }
 
 export interface Training {

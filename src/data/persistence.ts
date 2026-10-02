@@ -2,8 +2,19 @@
  * Salvataggio nel browser (localStorage) con schema versionato.
  * I dati restano SOLO su questo dispositivo/browser: nessun server, nessun invio in rete.
  */
+import {
+  APPOINTMENT_STATUS_LABEL,
+  APPOINTMENT_TYPE_LABEL,
+  CASE_STATUS_LABEL,
+  CASE_TYPE_LABEL,
+  LOCATION_LABEL,
+  POLICY_KIND_LABEL,
+  PRIORITY_LABEL,
+  TASK_CATEGORY_LABEL,
+  TASK_STATUS_LABEL,
+} from '../domain/labels'
 import type { AppData, Instrument, Settings } from '../domain/types'
-import { isDateKey } from '../lib/dates'
+import { isDateKey, isTimeKey, minutesToTime, nowInRome, timeToMinutes } from '../lib/dates'
 import { DEFAULT_SETTINGS } from './demoSeed'
 
 export const STORAGE_PREFIX = 'advisor-desk:'
@@ -28,6 +39,13 @@ const isString = (v: unknown): v is string => typeof v === 'string'
 function arrayOf<T>(value: unknown, valid: (item: Record<string, unknown>) => boolean): T[] {
   return Array.isArray(value) ? (value.filter((x) => isObject(x) && valid(x)) as T[]) : []
 }
+
+/** Valore ammesso di un'enumerazione, altrimenti il default. */
+function oneOf<T extends string>(labels: Record<T, string>, value: unknown, fallback: T): T {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(labels, value) ? (value as T) : fallback
+}
+
+const optDate = (v: unknown) => (isDateKey(v) ? v : undefined)
 
 function normalizeSettings(raw: unknown): Settings {
   const s = isObject(raw) ? raw : {}
@@ -57,17 +75,57 @@ export function normalizeAppData(raw: unknown): AppData | null {
     isDemo: raw.isDemo === true,
     demoGeneratedOn: isDateKey(raw.demoGeneratedOn) ? raw.demoGeneratedOn : undefined,
     settings: normalizeSettings(raw.settings),
-    tasks: arrayOf(raw.tasks, (t) => hasId(t) && isString(t.title) && isDateKey(t.dueDate)),
-    appointments: arrayOf(raw.appointments, (a) => hasId(a) && isString(a.title) && isDateKey(a.date) && isString(a.start) && isString(a.end)),
+    tasks: arrayOf<Record<string, unknown>>(raw.tasks, (t) => hasId(t) && isString(t.title) && isDateKey(t.dueDate)).map(
+      (t) => ({
+        ...t,
+        category: oneOf(TASK_CATEGORY_LABEL, t.category, 'altro'),
+        priority: oneOf(PRIORITY_LABEL, t.priority, 'media'),
+        status: oneOf(TASK_STATUS_LABEL, t.status, 'da_fare'),
+        dueTime: isTimeKey(t.dueTime) ? t.dueTime : undefined,
+        createdAt: isString(t.createdAt) ? t.createdAt : new Date(0).toISOString(),
+      }),
+    ) as unknown as AppData['tasks'],
+    appointments: arrayOf<Record<string, unknown>>(
+      raw.appointments,
+      (a) => hasId(a) && isString(a.title) && isDateKey(a.date),
+    ).map((a) => {
+      const start = isTimeKey(a.start) ? a.start : '09:00'
+      const end = isTimeKey(a.end) && timeToMinutes(a.end) > timeToMinutes(start) ? a.end : minutesToTime(timeToMinutes(start) + 60)
+      return {
+        ...a,
+        start,
+        end,
+        type: oneOf(APPOINTMENT_TYPE_LABEL, a.type, 'altro'),
+        location: oneOf(LOCATION_LABEL, a.location, 'ufficio'),
+        status: oneOf(APPOINTMENT_STATUS_LABEL, a.status, 'confermato'),
+      }
+    }) as unknown as AppData['appointments'],
     clients: arrayOf<Record<string, unknown>>(raw.clients, (c) => hasId(c) && isString(c.lastName)).map((c) => ({
       ...c,
       firstName: isString(c.firstName) ? c.firstName : '',
-      policies: Array.isArray(c.policies) ? c.policies : [],
+      birthDate: optDate(c.birthDate),
+      docExpiry: optDate(c.docExpiry),
+      amlReviewDue: optDate(c.amlReviewDue),
+      iddQuestionnaireDate: optDate(c.iddQuestionnaireDate),
+      lastContact: optDate(c.lastContact),
+      policies: arrayOf<Record<string, unknown>>(c.policies, (p) => hasId(p) && isDateKey(p.startDate)).map((p) => ({
+        ...p,
+        kind: oneOf(POLICY_KIND_LABEL, p.kind, 'altro'),
+        ref: isString(p.ref) ? p.ref : '',
+        maturityDate: optDate(p.maturityDate),
+      })),
     })) as unknown as AppData['clients'],
-    cases: arrayOf(raw.cases, (k) => hasId(k) && isString(k.title) && isDateKey(k.openedOn)),
+    cases: arrayOf<Record<string, unknown>>(raw.cases, (k) => hasId(k) && isString(k.title) && isDateKey(k.openedOn)).map(
+      (k) => ({
+        ...k,
+        type: oneOf(CASE_TYPE_LABEL, k.type, 'riscatto'),
+        status: oneOf(CASE_STATUS_LABEL, k.status, 'aperta'),
+        dueDate: optDate(k.dueDate),
+      }),
+    ) as unknown as AppData['cases'],
     goals: arrayOf(raw.goals, (g) => hasId(g) && typeof g.target === 'number' && typeof g.current === 'number'),
     training: {
-      year: typeof training.year === 'number' ? training.year : new Date().getFullYear(),
+      year: typeof training.year === 'number' ? training.year : nowInRome().year,
       hoursRequired: typeof training.hoursRequired === 'number' ? training.hoursRequired : 30,
       courses: arrayOf(training.courses, (c) => hasId(c) && isString(c.title) && typeof c.hours === 'number'),
     },
@@ -132,10 +190,22 @@ export function saveMarketImports(list: Instrument[], storage: KeyValueStorage |
   }
 }
 
-/** Cancella tutti i dati dell'app da questo browser. */
+/** Cancella tutti i dati dell'app da questo browser (ogni chiave con il prefisso dell'app). */
 export function clearAllStorage(storage: KeyValueStorage | null = browserStorage()): void {
   if (!storage) return
-  for (const key of [DATA_KEY, IMPORTS_KEY, BACKUP_KEY]) {
+  const keys = new Set([DATA_KEY, IMPORTS_KEY, BACKUP_KEY])
+  try {
+    const ls = storage as Partial<Storage>
+    if (typeof ls.length === 'number' && typeof ls.key === 'function') {
+      for (let i = 0; i < ls.length; i++) {
+        const k = ls.key(i)
+        if (k?.startsWith(STORAGE_PREFIX)) keys.add(k)
+      }
+    }
+  } catch {
+    /* ignora */
+  }
+  for (const key of keys) {
     try {
       storage.removeItem(key)
     } catch {

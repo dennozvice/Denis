@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ErrorBoundary } from './ErrorBoundary'
 import type { PageId } from '../../router/router'
 import { MobileNav } from './MobileNav'
 import { PrivacyNotice } from './PrivacyNotice'
@@ -9,10 +10,14 @@ import { Topbar } from './Topbar'
 export function AppShell({ page, children }: { page: PageId; children: ReactNode }) {
   return (
     <div className="app">
-      <a className="visually-hidden" href="#contenuto" onClick={(e) => {
-        e.preventDefault()
-        document.getElementById('contenuto')?.focus()
-      }}>
+      <a
+        className="skip-link"
+        href="#contenuto"
+        onClick={(e) => {
+          e.preventDefault()
+          document.getElementById('contenuto')?.focus()
+        }}
+      >
         Vai al contenuto
       </a>
       <Sidebar page={page} />
@@ -23,7 +28,7 @@ export function AppShell({ page, children }: { page: PageId; children: ReactNode
             <SaveWarning />
             <PrivacyNotice />
           </div>
-          {children}
+          <ErrorBoundary key={page}>{children}</ErrorBoundary>
         </main>
       </div>
       <MobileNav page={page} />

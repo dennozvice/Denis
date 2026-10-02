@@ -18,6 +18,9 @@ interface ModalProps {
 export function Modal({ open, title, onClose, children, footer, wide }: ModalProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const titleId = useId()
+  // true solo se il clic è iniziato sullo sfondo: trascinare per selezionare testo
+  // e rilasciare fuori dalla finestra non deve chiuderla (e perdere i dati del form)
+  const pressedOnBackdrop = useRef(false)
 
   useEffect(() => {
     const dialog = ref.current
@@ -35,9 +38,13 @@ export function Modal({ open, title, onClose, children, footer, wide }: ModalPro
         e.preventDefault()
         onClose()
       }}
+      onPointerDown={(e) => {
+        pressedOnBackdrop.current = e.target === ref.current
+      }}
       onClick={(e) => {
-        // click sullo sfondo (fuori dal contenuto) = chiudi
-        if (e.target === ref.current) onClose()
+        // clic sullo sfondo (fuori dal contenuto) = chiudi
+        if (e.target === ref.current && pressedOnBackdrop.current) onClose()
+        pressedOnBackdrop.current = false
       }}
     >
       {open && (
