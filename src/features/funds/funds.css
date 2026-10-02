@@ -6,7 +6,7 @@
 }
 
 .fd-card .segmented button {
-  min-height: 34px;
+  min-height: 36px;
 }
 
 .fd-more {
@@ -223,7 +223,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 32px;
+  min-height: 40px;
   padding: 0 4px;
   margin: 0 -4px;
   border: none;
@@ -244,6 +244,11 @@
   flex-direction: row;
 }
 
+.fd-table thead th[aria-sort] {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
 .fd-sort-icon {
   font-size: 9px;
   opacity: 0.7;
@@ -255,7 +260,12 @@ th[aria-sort='descending'] .fd-sort {
 }
 
 th[aria-sort='ascending'] .fd-sort-icon,
-th[aria-sort='descending'] .fd-sort-icon {
+th[aria-sort='descending'] .fd-table thead th[aria-sort] {
+  padding-top: 2px;
+  padding-bottom: 2px;
+}
+
+.fd-sort-icon {
   opacity: 1;
 }
 
@@ -850,7 +860,11 @@ th[aria-sort='descending'] .fd-sort-icon {
   }
 
   .fd-card .segmented button {
-    min-height: 40px;
+    min-height: 44px;
+  }
+
+  .fd-sort {
+    min-height: 44px;
   }
 
   .fd-card .fd-only-wide {
