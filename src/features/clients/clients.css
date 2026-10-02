@@ -122,6 +122,19 @@
   padding: var(--sp-4);
 }
 
+/* Rubrica vuota: il riquadro "Aggiungi il primo cliente" occupa tutta la larghezza */
+.cl-layout[data-empty] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cl-layout[data-empty] .cl-list-panel {
+  padding: var(--sp-8) var(--sp-4);
+}
+
+.cl-detail-panel:empty {
+  display: none;
+}
+
 .cl-detail-panel {
   min-width: 0;
 }
@@ -132,7 +145,6 @@
     top: calc(var(--topbar-h) + var(--sp-4));
     max-height: calc(100dvh - var(--topbar-h) - var(--sp-8));
     overflow-y: auto;
-    overscroll-behavior: contain;
     /* spazio per l'anello di focus e l'ombra della card */
     padding: 3px;
     margin: -3px;

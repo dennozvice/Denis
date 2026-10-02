@@ -55,11 +55,10 @@ export function ClientsPage() {
     () => clientsToRecontact(clients, today, settings.recontactAfterDays).length,
     [clients, today, settings.recontactAfterDays],
   )
-  const urgentCount = useMemo(() => {
-    let n = 0
-    for (const d of nearest.values()) if (d.daysLeft <= 30) n += 1
-    return n
-  }, [nearest])
+  const urgentCount = useMemo(
+    () => clients.filter((c) => (nearest.get(c.id)?.daysLeft ?? Infinity) <= 30).length,
+    [clients, nearest],
+  )
 
   const visible = useMemo(() => {
     const filtered = clients.filter((c) => (!segment || c.segment === segment) && matchesClientSearch(c, query))
@@ -114,7 +113,11 @@ export function ClientsPage() {
         </button>
       </header>
 
-      <div className="cl-layout" data-selected={selectedId ? 'true' : undefined}>
+      <div
+        className="cl-layout"
+        data-selected={selectedId ? 'true' : undefined}
+        data-empty={clients.length === 0 ? 'true' : undefined}
+      >
         <section className="card cl-list-panel" aria-labelledby="cl-list-title">
           <h2 id="cl-list-title" className="visually-hidden">
             Elenco clienti
