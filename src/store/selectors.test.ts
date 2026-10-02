@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest'
+import { createDemoData } from '../data/demoSeed'
+import { nowInRome } from '../lib/dates'
+import {
+  appointmentsOn,
+  clientsToRecontact,
+  computeDeadlines,
+  computeKpis,
+  computeNotifications,
+  nextAppointment,
+  todayTasks,
+} from './selectors'
+
+const TODAY = '2026-10-02'
+const data = createDemoData(TODAY)
+// 08:00 di Roma = 06:00 UTC (ora legale)
+const morning = nowInRome(new Date(Date.UTC(2026, 9, 2, 6, 0)))
+
+describe('selettori', () => {
+  it('attività di oggi, in ritardo e completate', () => {
+    const t = todayTasks(data.tasks, TODAY)
+    expect(t.overdue.map((x) => x.id)).toEqual(['t02', 't05'])
+    expect(t.today[0].id).toBe('t01') // ha orario 09:00
+    expect(t.doneToday.map((x) => x.id).sort()).toEqual(['t09', 't10'])
+    expect(t.total).toBe(t.overdue.length + t.today.length + t.doneToday.length)
+  })
+
+  it('agenda di oggi ordinata e prossimo appuntamento', () => {
+    expect(appointmentsOn(data.appointments, TODAY).map((a) => a.start)).toEqual(['09:30', '11:30', '14:30', '16:00'])
+    expect(nextAppointment(data.appointments, morning)?.id).toBe('a01')
+  })
+
+  it('scadenze calcolate dai clienti', () => {
+    const list = computeDeadlines(data, TODAY, { horizonDays: 30 })
+    const kinds = new Set(list.map((d) => d.kind))
+    expect(kinds).toContain('documento')
+    expect(kinds).toContain('antiriciclaggio')
+    expect(kinds).toContain('adeguatezza')
+    expect(kinds).toContain('compleanno')
+    const doc = list.find((d) => d.id === 'doc-c02')!
+    expect(doc.daysLeft).toBe(-4)
+    expect(doc.severity).toBe('scaduta')
+    const idd = list.find((d) => d.id === 'idd-c04')!
+    expect(idd.daysLeft).toBe(-5)
+    const bday = list.find((d) => d.kind === 'compleanno' && d.clientId === 'c07')!
+    expect(bday.daysLeft).toBe(0)
+    expect(bday.title).toContain('67 anni')
+    expect(list.every((d, i) => i === 0 || list[i - 1].date <= d.date)).toBe(true)
+  })
+
+  it('clienti da ricontattare', () => {
+    const list = clientsToRecontact(data.clients, TODAY, 180)
+    expect(list[0].client.id).toBe('c11')
+    expect(list.some((x) => x.client.id === 'c08')).toBe(false) // prospect senza polizze
+  })
+
+  it('KPI e notifiche', () => {
+    const k = computeKpis(data, morning)
+    expect(k.appointmentsToday).toBe(4)
+    expect(k.tasksOverdue).toBe(2)
+    expect(k.productionMonth?.current).toBe(16200)
+    const n = computeNotifications(data, morning)
+    expect(n.some((x) => x.kind === 'attivita')).toBe(true)
+    expect(n.some((x) => x.kind === 'scadenza')).toBe(true)
+  })
+})

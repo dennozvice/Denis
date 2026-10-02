@@ -1,0 +1,151 @@
+/*
+ * Design tokens — "Advisor Desk".
+ * Tutti i colori dell'app passano da qui: per cambiare palette basta modificare questo file.
+ * Contrasti testo verificati WCAG AA (≥ 4.5:1) su --surface e --bg.
+ */
+:root {
+  color-scheme: light;
+
+  --bg: #f3f6fb;
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eef2f8;
+  --border: #e2e8f0;
+  --border-input: #7b8ba3;
+
+  --text-1: #0f1b2d;
+  --text-2: #475569;
+  --text-3: #5b6b80;
+  --text-on-primary: #ffffff;
+
+  --primary: #1e4fd8;
+  --primary-hover: #1a43b8;
+  --primary-bg: #e8effd;
+  --primary-text: #1e4fd8;
+
+  --navy: #0f2a5c;
+  --navy-2: #163672;
+  --nav-text: #c7d2e5;
+  --nav-text-active: #ffffff;
+  --nav-active-bg: rgb(255 255 255 / 0.1);
+
+  --accent: #0f766e;
+  --accent-bg: #e3f4f2;
+  --positive: #047857;
+  --positive-bg: #e7f6ef;
+  --negative: #c62828;
+  --negative-bg: #fdecec;
+  --warning: #b45309;
+  --warning-bg: #fef3e2;
+  --violet: #6d28d9;
+  --violet-bg: #f1ebfd;
+  --neutral: #475569;
+  --neutral-bg: #eef2f7;
+
+  --grid: #eef2f7;
+  --axis: #5b6b80;
+
+  /* Serie dei grafici: il colore è legato all'ID del fondo, non alla posizione */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #8b5cf6;
+  --series-6: #db2777;
+  --series-7: #0891b2;
+  --series-8: #65a30d;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-2xl: 28px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+
+  --r-chip: 6px;
+  --r-control: 10px;
+  --r-card: 14px;
+  --r-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgb(15 27 45 / 0.04), 0 4px 12px rgb(15 27 45 / 0.04);
+  --shadow-hover: 0 8px 24px rgb(15 27 45 / 0.08);
+  --shadow-pop: 0 12px 32px rgb(15 27 45 / 0.14);
+  --card-border: 1px solid transparent;
+
+  --sidebar-w: 248px;
+  --sidebar-rail-w: 72px;
+  --topbar-h: 64px;
+  --mobile-nav-h: 64px;
+
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur: 180ms;
+}
+
+/* Tema scuro: applicato se scelto esplicitamente, oppure se "Sistema" e l'OS è scuro */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --surface: #121a2b;
+  --surface-2: #18233a;
+  --surface-3: #1d2a44;
+  --border: #24314b;
+  --border-input: #5a6d93;
+
+  --text-1: #e6ecf5;
+  --text-2: #a7b3c7;
+  --text-3: #8593ab;
+  --text-on-primary: #ffffff;
+
+  --primary: #3b6fe0;
+  --primary-hover: #4b7cf0;
+  --primary-bg: #1a2a4f;
+  --primary-text: #6e9bff;
+
+  --navy: #0a1120;
+  --navy-2: #121b30;
+  --nav-text: #b4c0d6;
+  --nav-text-active: #ffffff;
+  --nav-active-bg: rgb(255 255 255 / 0.08);
+
+  --accent: #2dd4bf;
+  --accent-bg: #0f2e2b;
+  --positive: #34d399;
+  --positive-bg: #0f2e26;
+  --negative: #f87171;
+  --negative-bg: #3a1a1f;
+  --warning: #fbbf24;
+  --warning-bg: #3a2a0e;
+  --violet: #a78bfa;
+  --violet-bg: #261c45;
+  --neutral: #a7b3c7;
+  --neutral-bg: #1d2a44;
+
+  --grid: #1f2a40;
+  --axis: #8593ab;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #9f7aea;
+  --series-6: #e2508f;
+  --series-7: #22a6c5;
+  --series-8: #7cb518;
+
+  --shadow-card: none;
+  --shadow-hover: 0 8px 24px rgb(0 0 0 / 0.35);
+  --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.5);
+  --card-border: 1px solid var(--border);
+}
