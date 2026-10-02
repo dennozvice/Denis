@@ -19,6 +19,7 @@ import { KpiTiles } from './KpiTiles'
 import { MarketStrip } from './MarketStrip'
 import { QuickNoteWidget } from './QuickNoteWidget'
 import { TrainingWidget } from './TrainingWidget'
+import { WelcomeCard } from './WelcomeCard'
 import './home.css'
 
 type QuickModal = 'task' | 'appointment' | 'client'
@@ -55,6 +56,7 @@ export function HomePage() {
         </div>
       </header>
 
+      <WelcomeCard onAddClient={() => setModal('client')} />
       <MarketStrip />
       <KpiTiles />
 

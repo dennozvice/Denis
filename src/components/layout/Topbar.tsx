@@ -1,4 +1,4 @@
-import { FlaskConical } from 'lucide-react'
+import { FlaskConical, UserRound } from 'lucide-react'
 import { GlobalSearch } from '../../features/shell/GlobalSearch'
 import { NotificationsMenu } from '../../features/shell/NotificationsMenu'
 import { capitalize, formatDateLong, greeting, initials } from '../../lib/format'
@@ -34,7 +34,7 @@ export function Topbar() {
         <NotificationsMenu />
         <ThemeToggle />
         <a className="avatar" href={buildHref('impostazioni')} title={`${settings.advisorName} · Impostazioni`} aria-label="Profilo e impostazioni">
-          {initials(settings.advisorName || '?')}
+          {settings.advisorName.trim() ? initials(settings.advisorName) : <UserRound size={18} aria-hidden="true" />}
         </a>
       </div>
     </header>

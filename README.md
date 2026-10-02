@@ -12,12 +12,25 @@ Una dashboard personale per il consulente assicurativo-finanziario. In una sola 
 
 L'app funziona tutta nel browser. Non c'è un server, non serve un login e nessun dato viene inviato in rete.
 
+Al primo avvio la dashboard è **vuota**: niente clienti, attività o appuntamenti di esempio. Un riquadro di benvenuto ti guida nei primi passi. Se vuoi prima vedere come funziona, puoi caricare dei dati dimostrativi e cancellarli quando vuoi da **Impostazioni › Inizia da zero**.
+
+## Usarla come app sul Mac (o su iPhone, iPad, Android)
+
+La dashboard si può **installare come app**. Avrai un'icona nel Dock e nel Launchpad, una finestra senza barra del browser, e funziona **anche senza internet**. Gli aggiornamenti arrivano da soli.
+
+- **Mac con Chrome:** apri https://dennozvice.github.io/Denis/ e clicca l'icona di installazione nella barra degli indirizzi (uno schermo con una freccia). In alternativa usa **Impostazioni › Installa l'app**.
+- **Mac con Safari:** menu **File › Aggiungi al Dock**.
+- **iPhone e iPad:** apri il sito con Safari e tocca **Condividi › Aggiungi alla schermata Home**.
+- **Android:** con Chrome, menu ⋮ › **Installa app**.
+
+Ogni dispositivo conserva i propri dati. Su Safari anche il browser e l'app nel Dock hanno dati separati. Per spostarli usa **Esporta backup** e **Importa backup**.
+
 > **Avvertenze**
 >
 > - È un progetto personale e non ufficiale. Non è affiliato né approvato da alcuna compagnia assicurativa, e non contiene loghi o marchi aziendali.
 > - **Fondi, valori quota e indici mostrati di default sono simulati** ("Dati dimostrativi") e non sono quotazioni reali. Per usare valori veri si importano da file CSV (vedi sotto).
 > - I valori dimostrativi sono fermi a una data fissa e non si aggiornano: non scambiarli per quotazioni correnti e non mostrarli ai clienti.
-> - Anche i clienti precaricati sono fittizi, con numeri di telefono non validi, e servono solo a mostrare il funzionamento.
+> - I dati dimostrativi di clienti, attività e appuntamenti (caricabili a richiesta) sono fittizi, con numeri di telefono non validi, e servono solo a mostrare il funzionamento.
 > - I nomi degli indici (FTSE MIB, Euro Stoxx 50, MSCI World…) sono marchi dei rispettivi proprietari e qui sono citati solo come riferimento.
 
 ## Avvio rapido
@@ -79,7 +92,7 @@ Il sito pubblicato è pubblico ma **contiene solo il codice**. I dati che inseri
 | **Clienti** | Anagrafica essenziale, contatti, stato degli adempimenti (documento, adeguata verifica, questionario), polizze con PAC, attività, appuntamenti e pratiche collegate |
 | **Fondi e mercati** | Dettaglio di ogni fondo (grafico, confronto con il benchmark, volatilità, massimo ribasso), confronto tra fondi, indici, tassi e cambi. Import dei valori reali |
 | **Pratiche** | Gestione delle pratiche, più lo scadenzario completo a 30, 60, 90 o 180 giorni |
-| **Impostazioni** | Nome, nome dell'app, tema chiaro o scuro, regole dei promemoria, backup, ripristino della demo, cancellazione dei dati e informazioni sulla privacy |
+| **Impostazioni** | Nome, nome dell'app, tema chiaro o scuro, regole dei promemoria, backup, dati dimostrativi a richiesta, installazione come app, cancellazione dei dati e informazioni sulla privacy |
 
 Scorciatoie da tastiera:
 
@@ -130,8 +143,8 @@ Con **Esporta .ics** porti gli appuntamenti nel tuo calendario. Puoi scegliere s
 - Fai backup regolari da **Impostazioni › Esporta backup** e conserva il file in un luogo sicuro, perché contiene i dati dei clienti.
 - **Impostazioni › Cancella tutti i dati** rimuove ogni informazione da questo browser.
 - L'app non contatta server esterni, nemmeno per i caratteri: il font Inter è incluso nell'app.
-- Se un giorno i dati salvati risultassero illeggibili, l'app non li sovrascrive. Ne conserva una copia e ti propone di scaricarla, importare un backup o ripartire dalla demo.
-- La demo si aggiorna da sola ogni giorno, così le scadenze restano realistiche. Smette di farlo appena modifichi un cliente, un'attività, un appuntamento o una pratica.
+- Se un giorno i dati salvati risultassero illeggibili, l'app non li sovrascrive. Ne conserva una copia e ti propone di scaricarla, importare un backup o ripartire da zero.
+- Se carichi i dati dimostrativi, si aggiornano da soli ogni giorno così le scadenze restano realistiche. Smettono di farlo appena modifichi un cliente, un'attività, un appuntamento o una pratica.
 
 ## Personalizzazione
 

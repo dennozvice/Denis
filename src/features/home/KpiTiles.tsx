@@ -168,7 +168,7 @@ export function KpiTiles() {
               ) : (
                 <Pill tone="positive">
                   <CircleCheck size={12} aria-hidden="true" />
-                  Nessuna scaduta o urgente
+                  Nessuna urgente
                 </Pill>
               )}
               <span className="hm-kpi-note">fino al {formatDayMonth(addDays(now.date, 30))}</span>
