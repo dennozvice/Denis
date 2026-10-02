@@ -22,6 +22,7 @@ import {
   premiumTypeOf,
   sensitiveDataHint,
   sortClients,
+  yearsAtAnniversary,
 } from './clientUtils'
 
 const client = (patch: Partial<Client> & Pick<Client, 'id' | 'lastName'>): Client => ({
@@ -287,5 +288,13 @@ describe('validazioni del form', () => {
     expect(sensitiveDataHint('Polizza n. 0012345678')).toMatch(/numero lungo/)
     expect(sensitiveDataHint('Polizza 123456789')).toMatch(/numero lungo/)
     expect(sensitiveDataHint('IBAN IT60 X054 2811 1010 0000 0123 456')).toMatch(/numero lungo/)
+  })
+})
+
+describe('yearsAtAnniversary', () => {
+  it('29 febbraio negli anni non bisestili', () => {
+    expect(yearsAtAnniversary('1980-02-29', '2027-02-28')).toBe(47)
+    expect(yearsAtAnniversary('2016-02-29', '2027-02-28')).toBe(11)
+    expect(yearsAtAnniversary('1980-02-29', '2028-02-29')).toBe(48)
   })
 })

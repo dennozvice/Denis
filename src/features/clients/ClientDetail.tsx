@@ -72,6 +72,7 @@ import {
   policyTotals,
   premiumTypeOf,
   tagTone,
+  yearsAtAnniversary,
   type ComplianceState,
 } from './clientUtils'
 import './clients.css'
@@ -244,7 +245,7 @@ export function ClientDetail({ client, onBack, onDeleted }: ClientDetailProps) {
                 </Pill>
               )}
               {client.tags?.map((tag) => (
-                <Pill key={tag} tone={tagTone(tag)}>
+                <Pill key={tag} tone={tagTone(tag)} title={tag}>
                   {tag}
                 </Pill>
               ))}
@@ -589,7 +590,7 @@ function PolicyItem({ policy: p, today }: { policy: Policy; today: DateKey }) {
     candidate !== undefined && candidate !== p.startDate && (!p.maturityDate || candidate < p.maturityDate)
       ? candidate
       : undefined
-  const years = anniversary ? ageOn(p.startDate, anniversary) : undefined
+  const years = anniversary ? yearsAtAnniversary(p.startDate, anniversary) : undefined
   const premiumType = premiumTypeOf(p)
 
   return (

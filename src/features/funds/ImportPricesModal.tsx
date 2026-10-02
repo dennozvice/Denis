@@ -9,7 +9,7 @@ import { lastPoint } from '../../lib/finance'
 import { formatDateShort, formatInstrumentValue, formatNumber, plural } from '../../lib/format'
 import { useMarket } from '../../store/MarketContext'
 import { useNow } from '../../store/NowContext'
-import { buildImports, groupImportRows, isFundGroup, looksOffScale, replacesDemo, type ImportGroup } from './fundsLogic'
+import { buildImports, groupImportRows, isFundGroup, looksOffScale, replacesDemo, requiresPositiveValue, type ImportGroup } from './fundsLogic'
 import './funds.css'
 
 const FORM_ID = 'fd-import-form'
@@ -69,8 +69,13 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
 
   const deferredText = useDeferredValue(text)
   const parsed = useMemo(
-    () => parsePriceCsv(deferredText, { defaultKey: defaultKey || undefined, maxDate: today }),
-    [deferredText, defaultKey, today],
+    () =>
+      parsePriceCsv(deferredText, {
+        defaultKey: defaultKey || undefined,
+        maxDate: today,
+        requirePositive: (key) => requiresPositiveValue(key, instruments),
+      }),
+    [deferredText, defaultKey, today, instruments],
   )
   const groups = useMemo(
     () => groupImportRows(rowsToImport(parsed, allowFuture), instruments),
@@ -138,7 +143,11 @@ export function ImportPricesModal({ open, onClose }: { open: boolean; onClose():
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     // si usa sempre il testo attuale, anche se l'anteprima differita non è ancora aggiornata
-    const current = parsePriceCsv(text, { defaultKey: defaultKey || undefined, maxDate: today })
+    const current = parsePriceCsv(text, {
+      defaultKey: defaultKey || undefined,
+      maxDate: today,
+      requirePositive: (key) => requiresPositiveValue(key, instruments),
+    })
     const toImport = groupImportRows(rowsToImport(current, allowFuture), instruments)
     if (toImport.length === 0) return
     // si parte dalle serie salvate più recenti: non si perdono import fatti in un'altra scheda

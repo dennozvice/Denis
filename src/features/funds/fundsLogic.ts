@@ -447,8 +447,17 @@ export function restoreImports(current: Instrument[], removed: RemovedImport[]):
 }
 
 /** Rapporto tra nuovo e vecchio valore molto lontano da 1: probabile errore di separatore decimale. */
+/**
+ * true se per questa chiave il valore deve essere > 0: valori quota in euro di fondi esistenti
+ * o nuovi fondi (le chiavi sconosciute diventano fondi in EUR). Tassi e cambi possono essere ≤ 0.
+ */
+export function requiresPositiveValue(key: string, instruments: Instrument[]): boolean {
+  return (matchKey(key, instruments).existing?.unit ?? 'EUR') === 'EUR'
+}
+
 export function looksOffScale(newValue: number, reference: number | undefined): boolean {
-  if (reference === undefined || reference === 0 || newValue === 0) return false
+  if (newValue === 0) return reference !== undefined && reference !== 0
+  if (reference === undefined || reference === 0) return false
   const ratio = Math.abs(newValue / reference)
   return ratio > 5 || ratio < 0.2
 }

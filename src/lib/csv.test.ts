@@ -252,4 +252,12 @@ describe('parsePriceCsv', () => {
     const r = parsePriceCsv('f-a;01/10/2027;1\nf-a;2027-10-01;2', { maxDate: '2026-10-01' })
     expect(r.future).toEqual([{ key: 'f-a', date: '2027-10-01', value: 2, line: 2 }])
   })
+
+  it('valori quota pari a zero o negativi: errori solo per le chiavi indicate', () => {
+    const text = 'id;data;valore\nf-bil-prud;30/09/2026;11,80\nf-bil-prud;01/10/2026;0\nf-bil-prud;02/10/2026;-5\nrate-btp10;01/10/2026;-0,10'
+    const r = parsePriceCsv(text, { requirePositive: (k) => k === 'f-bil-prud' })
+    expect(r.rows.map((x) => x.value)).toEqual([11.8, -0.1])
+    expect(r.errors.map((e) => e.line)).toEqual([3, 4])
+    expect(r.errors[0].message).toContain('maggiore di zero')
+  })
 })

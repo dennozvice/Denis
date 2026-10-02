@@ -150,6 +150,11 @@ export interface PriceCsvOptions {
   defaultKey?: string
   /** Ultima data ammessa (di solito oggi): le righe successive finiscono in `future`. */
   maxDate?: DateKey
+  /**
+   * Per quali chiavi il valore deve essere maggiore di zero (es. valori quota in euro).
+   * Le righe con valore ≤ 0 di queste chiavi diventano errori invece di essere importate.
+   */
+  requirePositive?: (key: string) => boolean
 }
 
 type Delimiter = PriceCsvResult['delimiter']
@@ -384,7 +389,12 @@ export function parsePriceCsv(text: string, options: PriceCsvOptions = {}): Pric
   const future: FutureRow[] = []
   for (const [key, points] of byKey) {
     const sorted = [...points.entries()].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    const positiveOnly = options.requirePositive?.(key) ?? false
     for (const [date, { value, line }] of sorted) {
+      if (positiveOnly && value <= 0) {
+        errors.push({ line, message: 'Valore quota non valido: deve essere maggiore di zero' })
+        continue
+      }
       if (options.maxDate && date > options.maxDate) future.push({ key, date, value, line })
       else rows.push({ key, date, value })
     }

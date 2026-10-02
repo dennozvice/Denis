@@ -361,3 +361,11 @@ export function sensitiveDataHint(text: string): string | undefined {
   }
   return undefined
 }
+
+/**
+ * Anni compiuti a una ricorrenza annuale (compleanno, anniversario di polizza): differenza tra gli anni.
+ * Corretto anche per il 29 febbraio, che negli anni non bisestili si festeggia il 28.
+ */
+export function yearsAtAnniversary(original: DateKey, anniversary: DateKey): number {
+  return Number(anniversary.slice(0, 4)) - Number(original.slice(0, 4))
+}

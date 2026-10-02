@@ -1423,3 +1423,19 @@
     grid-column: auto;
   }
 }
+
+/* Etichette, nomi ed email molto lunghi (senza spazi) non devono allargare la pagina */
+.cl-tags .pill {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cl-detail h2,
+.cl-detail a,
+.cl-name {
+  overflow-wrap: anywhere;
+}

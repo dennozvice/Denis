@@ -6,7 +6,7 @@ import { Pill } from '../../components/ui/Pill'
 import { Segmented } from '../../components/ui/Segmented'
 import { POLICY_KIND_LABEL } from '../../domain/labels'
 import type { Client, Deadline, Task } from '../../domain/types'
-import { ageOn, diffDays, timeToMinutes } from '../../lib/dates'
+import { diffDays, timeToMinutes } from '../../lib/dates'
 import { capitalize, formatDateLong, formatNumber, formatRelativeDays, formatRelativeDaysChip } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { useNow } from '../../store/NowContext'
@@ -22,6 +22,7 @@ import {
 } from '../../store/selectors'
 import { AppointmentFormModal } from '../agenda/AppointmentFormModal'
 import { TaskFormModal } from '../tasks/TaskFormModal'
+import { yearsAtAnniversary } from './clientUtils'
 import './clients.css'
 
 type Tab = 'ricorrenze' | 'ricontatti'
@@ -228,11 +229,11 @@ function RecurrenceRow({
   let title: string
   let detail: string | undefined
   if (birthday) {
-    const age = client.birthDate ? ageOn(client.birthDate, d.date) : undefined
+    const age = client.birthDate ? yearsAtAnniversary(client.birthDate, d.date) : undefined
     title = age !== undefined ? `Compie ${age} anni` : 'Compleanno'
     detail = d.detail
   } else {
-    const years = policy ? ageOn(policy.startDate, d.date) : undefined
+    const years = policy ? yearsAtAnniversary(policy.startDate, d.date) : undefined
     title = years ? `Anniversario · ${years} ${years === 1 ? 'anno' : 'anni'}` : 'Anniversario polizza'
     detail = policy ? `${POLICY_KIND_LABEL[policy.kind]} ${policy.ref}` : d.detail
   }
