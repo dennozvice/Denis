@@ -1,0 +1,865 @@
+/* Panoramica (home). Tutte le classi hanno il prefisso hm-. Solo variabili di tokens.css per i colori. */
+
+.hm-page {
+  --hm-gap: var(--sp-6);
+}
+
+/* Bottoni piccoli con area di tocco adeguata (40px, 44px su mobile) */
+.btn.hm-tap {
+  min-height: 40px;
+}
+
+/* ---------- Intestazione e azioni rapide ---------- */
+.hm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3) var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.hm-title {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.hm-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.hm-qa:not(.btn-primary) svg {
+  color: var(--primary-text);
+}
+
+.hm-qa-short {
+  display: none;
+}
+
+/* ---------- Striscia mercati ---------- */
+.card.hm-market {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  padding: var(--sp-2);
+}
+
+.hm-market-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(max-content, 1fr);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+
+.hm-market-item {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.hm-market-item + .hm-market-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: var(--border);
+}
+
+.hm-market-cell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-height: 56px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-control);
+  color: var(--text-1);
+  text-decoration: none;
+}
+
+a.hm-market-cell:hover {
+  background: var(--surface-2);
+  text-decoration: none;
+}
+
+a.hm-market-cell:focus-visible {
+  outline-offset: -2px;
+}
+
+.hm-market-name {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.hm-market-value {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.hm-market-change {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.hm-market-meta {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  margin-left: var(--sp-1);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border-left: 1px solid var(--border);
+}
+
+.hm-market-meta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+.hm-market-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 40px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.hm-market-error {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  min-height: 56px;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+
+.hm-market-error > svg {
+  flex: none;
+  color: var(--warning);
+}
+
+.hm-skel-name,
+.hm-skel-value,
+.hm-skel-change {
+  display: block;
+}
+
+.hm-skel-name {
+  width: 84px;
+  height: 10px;
+}
+
+.hm-skel-value {
+  width: 72px;
+  height: 16px;
+  margin-top: 6px;
+}
+
+.hm-skel-change {
+  width: 56px;
+  height: 10px;
+  margin-top: 6px;
+}
+
+/* ---------- KPI ---------- */
+.hm-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--hm-gap);
+}
+
+.hm-kpi-grid > li {
+  display: flex;
+  min-width: 0;
+}
+
+.hm-kpi {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  border: var(--card-border);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text-1);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  transition:
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.hm-kpi:hover {
+  box-shadow: var(--shadow-hover);
+  text-decoration: none;
+  transform: translateY(-1px);
+}
+
+:root[data-theme='dark'] .hm-kpi:hover {
+  border-color: var(--border-input);
+}
+
+.hm-kpi-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.hm-kpi-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-bg);
+  color: var(--primary-text);
+}
+
+.hm-kpi-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+
+.hm-kpi-arrow {
+  flex: none;
+  align-self: flex-start;
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.hm-kpi:hover .hm-kpi-arrow,
+.hm-kpi:focus-visible .hm-kpi-arrow {
+  color: var(--primary-text);
+}
+
+.hm-kpi-value {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hm-kpi-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px var(--sp-2);
+  min-width: 0;
+  min-height: 22px;
+  margin-top: auto;
+}
+
+.hm-kpi-meta-stack {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.hm-kpi-meter {
+  display: block;
+}
+
+.hm-kpi-note {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.hm-kpi-note.truncate {
+  display: block;
+  flex: 1 1 auto;
+}
+
+.hm-kpi-note .strong {
+  color: var(--text-1);
+}
+
+.hm-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--positive);
+  box-shadow: 0 0 0 3px var(--positive-bg);
+  vertical-align: 1px;
+}
+
+/* ---------- Griglia dei widget ---------- */
+.grid-12.hm-grid {
+  align-items: stretch;
+}
+
+.hm-cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--hm-gap);
+}
+
+/* L'ultima card di ogni colonna si allunga: le card della stessa riga finiscono alla stessa altezza */
+.hm-cell > :last-child {
+  flex: 1 1 auto;
+}
+
+/* ---------- Obiettivi ---------- */
+.hm-goals {
+  scroll-margin-top: calc(var(--topbar-h) + var(--sp-4));
+}
+
+.hm-goals:focus {
+  outline: none;
+}
+
+.hm-goals:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.hm-goal-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hm-group-title {
+  padding: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.hm-goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hm-goal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hm-goal-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.hm-goal-label {
+  min-width: 0;
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.hm-goal-track {
+  position: relative;
+  margin: 2px 0;
+}
+
+.hm-goal-tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-2);
+}
+
+.hm-goal-nums {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.hm-goal-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.hm-goal-legend-tick {
+  flex: none;
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--text-2);
+}
+
+.hm-goal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.hm-goal-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.hm-goal-fieldset > legend {
+  margin-bottom: var(--sp-3);
+}
+
+.hm-goal-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hm-goal-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+
+.hm-goal-form .input[aria-invalid='true'],
+.hm-course-form .input[aria-invalid='true'] {
+  border-color: var(--negative);
+  box-shadow: 0 0 0 1px var(--negative);
+}
+
+.hm-field-error {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--negative);
+}
+
+.hm-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* ---------- Formazione ---------- */
+.banner.hm-training-banner {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hm-train-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hm-train-hours {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hm-train-big {
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.hm-train-pct {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.hm-courses {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.hm-course-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.hm-course-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: 0 var(--sp-1);
+  margin: 0 calc(var(--sp-1) * -1);
+  border-radius: var(--r-chip);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  list-style: none;
+}
+
+.hm-course-summary::-webkit-details-marker {
+  display: none;
+}
+
+.hm-course-summary:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+}
+
+.hm-course-chevron {
+  flex: none;
+  color: var(--text-3);
+  transition: transform var(--dur) var(--ease);
+}
+
+.hm-course-done[open] .hm-course-chevron {
+  transform: rotate(90deg);
+}
+
+.hm-course-done[open] .hm-course-summary {
+  margin-bottom: var(--sp-1);
+}
+
+.hm-course-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+}
+
+.hm-course {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 48px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.hm-course .checkbox {
+  margin: 0;
+}
+
+.hm-course-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.hm-course-title {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.hm-course[data-done] .hm-course-title {
+  color: var(--text-2);
+}
+
+.hm-course-meta {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+
+.icon-btn.hm-course-remove {
+  color: var(--text-3);
+}
+
+.icon-btn.hm-course-remove:hover {
+  color: var(--negative);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hm-course-remove {
+    opacity: 0;
+    transition: opacity var(--dur) var(--ease);
+  }
+
+  .hm-course:hover .hm-course-remove,
+  .hm-course:focus-within .hm-course-remove {
+    opacity: 1;
+  }
+}
+
+.hm-warning-text {
+  color: var(--warning);
+}
+
+.btn.hm-add-btn {
+  align-self: flex-start;
+  margin-left: calc(var(--sp-3) * -1);
+  color: var(--primary-text);
+}
+
+.btn.hm-add-btn:hover {
+  color: var(--primary-text);
+}
+
+.hm-course-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.hm-course-form-fields {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.hm-course-hours {
+  flex: none;
+  width: 96px;
+}
+
+/* ---------- Note rapide ---------- */
+.textarea.hm-note-area {
+  flex: 1 1 auto;
+  min-height: 132px;
+  line-height: 1.55;
+}
+
+.hm-note-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hm-note-hint svg {
+  flex: none;
+  color: var(--positive);
+}
+
+/* Desktop stretto: celle dei mercati più compatte per farle stare tutte */
+@media (min-width: 1200px) and (max-width: 1299px) {
+  .hm-market-cell {
+    padding: var(--sp-2) var(--sp-3);
+  }
+}
+
+/* ---------- Tablet (768–1199px) ---------- */
+@media (max-width: 1199px) {
+  .hm-page {
+    --hm-gap: var(--sp-4);
+  }
+
+  .hm-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Striscia mercati: elenco scorrevole a tutta larghezza, informazioni sotto */
+  .card.hm-market {
+    flex-direction: column;
+    padding: var(--sp-2) 0 0;
+  }
+
+  .hm-market-list {
+    padding: 0 var(--sp-2);
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--sp-2);
+    scrollbar-width: none;
+  }
+
+  .hm-market-list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .hm-market-item {
+    scroll-snap-align: start;
+  }
+
+  .hm-market-meta {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    margin: var(--sp-2) 0 0;
+    padding: 0 var(--sp-3) 0 var(--sp-4);
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+
+  .hm-market-meta-row {
+    margin-left: auto;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  /* Coppie di widget affiancate (scadenze + obiettivi, formazione + note) */
+  .hm-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+}
+
+/* ---------- Mobile (≤767px) ---------- */
+@media (max-width: 767px) {
+  .hm-page {
+    --hm-gap: var(--sp-3);
+  }
+
+  .btn.hm-tap,
+  .hm-form-actions .btn {
+    min-height: 44px;
+  }
+
+  .hm-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .hm-header {
+    display: block;
+  }
+
+  .hm-quick {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .btn.hm-qa {
+    flex-direction: column;
+    gap: 4px;
+    min-height: 60px;
+    padding: var(--sp-2) var(--sp-1);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.2;
+  }
+
+  .hm-qa-long {
+    display: none;
+  }
+
+  .hm-qa-short {
+    display: inline;
+  }
+
+  .card.hm-market {
+    padding: var(--sp-2) 0 0;
+  }
+
+  .hm-market-cell {
+    min-height: 52px;
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .hm-market-more {
+    min-height: 44px;
+  }
+
+  .hm-kpi {
+    gap: 6px;
+    padding: var(--sp-4);
+  }
+
+  .hm-kpi-head {
+    gap: var(--sp-2);
+    align-items: flex-start;
+  }
+
+  .hm-kpi-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+  }
+
+  .hm-kpi-label {
+    align-self: center;
+  }
+
+  .hm-kpi-arrow {
+    display: none;
+  }
+
+  /* Su mobile il titolo dell'appuntamento può andare su due righe invece di essere troncato */
+  .hm-kpi-note.truncate {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    white-space: normal;
+  }
+
+  .hm-kpi-value {
+    margin-top: var(--sp-1);
+    font-size: 24px;
+  }
+
+  .hm-course {
+    min-height: 52px;
+  }
+
+  .hm-course-summary {
+    min-height: 44px;
+  }
+
+  .icon-btn.hm-course-remove {
+    width: 44px;
+    height: 44px;
+  }
+}
