@@ -1106,6 +1106,10 @@
   .cl-list {
     margin: 0 calc(var(--sp-2) * -1);
   }
+
+  .cl-back-bar + .cl-detail-head {
+    padding-top: var(--sp-3);
+  }
 }
 
 @media (max-width: 767px) {
