@@ -1,7 +1,7 @@
 /** Funzioni pure condivise dal widget "Attività di oggi" e dalla pagina Attività. */
 import type { Client, DateKey, Task, TaskCategory } from '../../domain/types'
 import { addDays, weekdayIndex } from '../../lib/dates'
-import { formatDayMonth, formatWeekdayShort } from '../../lib/format'
+import { formatDayMonth, formatNumber, formatWeekdayShort } from '../../lib/format'
 import { isOpen, sortTasks, todayTasks } from '../../store/selectors'
 
 // ---------------------------------------------------------------- filtri per area (widget)
@@ -171,6 +171,26 @@ export function groupForPage(tasks: Task[], today: DateKey): PageGroup[] {
       tasks: id === 'completate' ? sortByCompletion(buckets[id]) : sortTasks(buckets[id]),
     }))
     .filter((g) => g.tasks.length > 0)
+}
+
+// ---------------------------------------------------------------- liste lunghe e doppio clic
+
+/** Righe per gruppo mostrate prima di "Mostra altre": con migliaia di attività il DOM resta leggero. */
+export const OPEN_PAGE_SIZE = 30
+
+/** "Mostra altre 30 di 120": quante ne compariranno e quante sono nascoste. */
+export function showMoreLabel(hidden: number, step: number): string {
+  return `Mostra altre ${formatNumber(Math.min(hidden, step))} di ${formatNumber(hidden)}`
+}
+
+/**
+ * Secondo (o terzo) clic di un doppio clic: `detail` conta i clic ravvicinati nello stesso punto.
+ * Dopo il primo clic la riga si sposta o sparisce e il secondo cadrebbe sul controllo della riga che
+ * ne ha preso il posto, completando o eliminando l'attività sbagliata: va ignorato.
+ * Tastiera e clic inoltrati da un'etichetta hanno `detail` 0.
+ */
+export function isRepeatClick(event: object): boolean {
+  return 'detail' in event && typeof event.detail === 'number' && event.detail > 1
 }
 
 // ---------------------------------------------------------------- clienti

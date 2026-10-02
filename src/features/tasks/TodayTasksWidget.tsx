@@ -1,5 +1,5 @@
 import { ChevronRight, CircleCheckBig, ListTodo, Plus } from 'lucide-react'
-import { useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useMemo, useState, type FormEvent } from 'react'
 import { Card } from '../../components/ui/Card'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Meter } from '../../components/ui/Meter'
@@ -12,11 +12,19 @@ import { useActions, useAppData } from '../../store/StoreContext'
 import { clientNameById, indexById } from '../../store/selectors'
 import { TaskFormModal } from './TaskFormModal'
 import { TaskRow } from './TaskRow'
-import { CATEGORY_GROUP_OPTIONS, groupToday, matchesCategoryGroup, type CategoryGroup } from './taskUtils'
+import {
+  CATEGORY_GROUP_OPTIONS,
+  groupToday,
+  matchesCategoryGroup,
+  OPEN_PAGE_SIZE,
+  showMoreLabel,
+  type CategoryGroup,
+} from './taskUtils'
 import { useTaskCommands } from './useTaskCommands'
 import './tasks.css'
 
 type ModalState = { mode: 'new' } | { mode: 'edit'; id: string } | null
+type WidgetGroupId = 'overdue' | 'today' | 'done'
 
 /** Widget della home: attività in ritardo, di oggi e completate oggi, con aggiunta rapida. */
 export function TodayTasksWidget() {
@@ -30,21 +38,24 @@ export function TodayTasksWidget() {
   const [showDone, setShowDone] = useState(false)
   const [modal, setModal] = useState<ModalState>(null)
   const [quickTitle, setQuickTitle] = useState('')
+  /** Righe visibili per gruppo, dopo i clic su "Mostra altre" (assente = prima pagina). */
+  const [limits, setLimits] = useState<Partial<Record<WidgetGroupId, number>>>({})
 
   const clientIndex = useMemo(() => indexById(clients), [clients])
   const groups = useMemo(() => groupToday(tasks, today), [tasks, today])
 
   const total = groups.overdue.length + groups.today.length + groups.done.length
   const doneCount = groups.done.length
-  const visible = (list: Task[]) => list.filter((t) => matchesCategoryGroup(t, filter))
-  const overdue = visible(groups.overdue)
-  const todayOpen = visible(groups.today)
-  const done = visible(groups.done)
+  const { overdue, todayOpen, done } = useMemo(() => {
+    const visible = (list: Task[]) => list.filter((t) => matchesCategoryGroup(t, filter))
+    return { overdue: visible(groups.overdue), todayOpen: visible(groups.today), done: visible(groups.done) }
+  }, [groups, filter])
 
   const editing = modal?.mode === 'edit' ? tasks.find((t) => t.id === modal.id) : undefined
   const modalOpen = modal?.mode === 'new' || editing !== undefined
 
-  const openEdit = (task: Task) => setModal({ mode: 'edit', id: task.id })
+  // Stabile: le righe (memo) non si ridisegnano a ogni modifica del widget
+  const openEdit = useCallback((task: Task) => setModal({ mode: 'edit', id: task.id }), [])
 
   const quickAdd = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -57,8 +68,10 @@ export function TodayTasksWidget() {
     toast({ message: 'Attività aggiunta per oggi' })
   }
 
-  const renderRows = (list: Task[]) =>
-    list.map((t) => (
+  // Liste a pagine: con centinaia di attività in ritardo il widget (e la home) resta reattivo
+  const limitOf = (id: WidgetGroupId) => limits[id] ?? OPEN_PAGE_SIZE
+  const renderRows = (id: WidgetGroupId, list: Task[]) =>
+    list.slice(0, limitOf(id)).map((t) => (
       <TaskRow
         key={t.id}
         task={t}
@@ -69,6 +82,19 @@ export function TodayTasksWidget() {
         commands={commands}
       />
     ))
+  const renderMore = (id: WidgetGroupId, list: Task[]) => {
+    const hidden = list.length - limitOf(id)
+    if (hidden <= 0) return null
+    return (
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm tk-more"
+        onClick={() => setLimits((prev) => ({ ...prev, [id]: (prev[id] ?? OPEN_PAGE_SIZE) + OPEN_PAGE_SIZE }))}
+      >
+        {showMoreLabel(hidden, OPEN_PAGE_SIZE)}
+      </button>
+    )
+  }
 
   const subtitle =
     total === 0 ? 'Nessuna attività in programma' : `${formatNumber(doneCount)} di ${formatNumber(total)} completate`
@@ -157,7 +183,8 @@ export function TodayTasksWidget() {
               <h3 id="tk-oggi-ritardo" className="tk-group-title" data-tone="late">
                 In ritardo <span className="tk-count num">{overdue.length}</span>
               </h3>
-              <ul className="tk-list">{renderRows(overdue)}</ul>
+              <ul className="tk-list">{renderRows('overdue', overdue)}</ul>
+              {renderMore('overdue', overdue)}
             </section>
           )}
 
@@ -166,7 +193,8 @@ export function TodayTasksWidget() {
               <h3 id="tk-oggi-oggi" className="tk-group-title">
                 Oggi <span className="tk-count num">{todayOpen.length}</span>
               </h3>
-              <ul className="tk-list">{renderRows(todayOpen)}</ul>
+              <ul className="tk-list">{renderRows('today', todayOpen)}</ul>
+              {renderMore('today', todayOpen)}
             </section>
           )}
 
@@ -192,8 +220,10 @@ export function TodayTasksWidget() {
                 </button>
               </h3>
               <ul id="tk-oggi-completate" className="tk-list" hidden={!showDone}>
-                {renderRows(done)}
+                {/* Chiuse di default: le righe si disegnano solo quando l'elenco è aperto */}
+                {showDone && renderRows('done', done)}
               </ul>
+              {showDone && renderMore('done', done)}
             </section>
           )}
         </div>

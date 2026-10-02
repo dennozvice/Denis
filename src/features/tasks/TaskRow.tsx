@@ -1,12 +1,12 @@
 import { CalendarClock, Flag, Pencil, Trash2 } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import { memo, type CSSProperties } from 'react'
 import { PRIORITY_LABEL, PRIORITY_TONE, TASK_CATEGORY_LABEL, TONE_COLOR } from '../../domain/labels'
 import type { DateKey, Task } from '../../domain/types'
 import { diffDays } from '../../lib/dates'
 import { capitalize, formatRelativeDays } from '../../lib/format'
 import { buildHref } from '../../router/router'
 import { completedOn, daysOverdue } from '../../store/selectors'
-import { formatDueForMessage, formatDueShort, postponedDate } from './taskUtils'
+import { formatDueForMessage, formatDueShort, isRepeatClick, postponedDate } from './taskUtils'
 import type { TaskCommands } from './useTaskCommands'
 import './tasks.css'
 
@@ -20,23 +20,38 @@ interface TaskRowProps {
   commands: TaskCommands
 }
 
-/** Riga di un'attività: casella di completamento, titolo, cliente, categoria, ritardo, azioni rapide. */
-export function TaskRow({ task, today, clientName, variant, onEdit, commands }: TaskRowProps) {
+/**
+ * Riga di un'attività: casella di completamento, titolo, cliente, categoria, ritardo, azioni rapide.
+ * Memorizzata: completando un'attività si ridisegna solo la sua riga, non l'intero elenco
+ * (le liste passano `onEdit` e `commands` stabili).
+ */
+export const TaskRow = memo(function TaskRow({ task, today, clientName, variant, onEdit, commands }: TaskRowProps) {
   const done = task.status === 'completata'
   const late = daysOverdue(task, today)
   const style = { '--tk-prio': TONE_COLOR[PRIORITY_TONE[task.priority]] } as CSSProperties
   const doneOn = done ? completedOn(task) : undefined
   const priorityLabel = `Priorità ${PRIORITY_LABEL[task.priority].toLowerCase()}`
+  const hintDay = variant === 'full' && !done ? postponeHint(task, 1, today) : ''
+  const hintWeek = variant === 'full' && !done ? postponeHint(task, 7, today) : ''
 
   return (
     <li className={`tk-row tk-row-${variant}`} data-done={done || undefined} style={style}>
-      <label className="tk-check">
+      {/* Doppio clic: il secondo clic sul margine dell'etichetta viene annullato qui (il browser lo
+          inoltrerebbe alla casella con detail 0); quello sulla casella è ignorato in onChange, che per
+          le caselle React ricava dall'evento click. */}
+      <label
+        className="tk-check"
+        onClick={(e) => {
+          if (isRepeatClick(e.nativeEvent)) e.preventDefault()
+        }}
+      >
         <input
           type="checkbox"
           className="checkbox"
           checked={done}
           data-tk-action="toggle"
           onChange={(e) => {
+            if (isRepeatClick(e.nativeEvent)) return
             keepFocusNearby(e.currentTarget, 'toggle')
             commands.toggle(task)
           }}
@@ -59,7 +74,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
           <span className="tk-meta-clip">
             <span className="tk-meta-list">
               {task.clientId && clientName && (
-                <a className="tk-client tk-sep" href={buildHref('clienti', { id: task.clientId })}>
+                <a className="tk-client tk-sep" href={buildHref('clienti', { id: task.clientId })} title={clientName}>
                   {clientName}
                 </a>
               )}
@@ -89,6 +104,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
                 className="icon-btn tk-icon-btn"
                 data-tk-action="postpone-1"
                 onClick={(e) => {
+                  if (isRepeatClick(e.nativeEvent)) return
                   keepFocusNearby(e.currentTarget, 'postpone-1')
                   commands.postpone(task, 1)
                 }}
@@ -116,11 +132,12 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
                   className="tk-postpone"
                   data-tk-action="postpone-1"
                   onClick={(e) => {
+                    if (isRepeatClick(e.nativeEvent)) return
                     keepFocusNearby(e.currentTarget, 'postpone-1')
                     commands.postpone(task, 1)
                   }}
-                  aria-label={`+1 g: ${postponeHint(task, 1, today)}, ${task.title}`}
-                  title={capitalize(postponeHint(task, 1, today))}
+                  aria-label={`+1 g: ${hintDay}, ${task.title}`}
+                  title={capitalize(hintDay)}
                 >
                   +1 g
                 </button>
@@ -129,11 +146,12 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
                   className="tk-postpone"
                   data-tk-action="postpone-7"
                   onClick={(e) => {
+                    if (isRepeatClick(e.nativeEvent)) return
                     keepFocusNearby(e.currentTarget, 'postpone-7')
                     commands.postpone(task, 7)
                   }}
-                  aria-label={`+1 sett.: ${postponeHint(task, 7, today)}, ${task.title}`}
-                  title={capitalize(postponeHint(task, 7, today))}
+                  aria-label={`+1 sett.: ${hintWeek}, ${task.title}`}
+                  title={capitalize(hintWeek)}
                 >
                   +1 sett.
                 </button>
@@ -153,6 +171,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
               className="icon-btn tk-icon-btn tk-delete"
               data-tk-action="delete"
               onClick={(e) => {
+                if (isRepeatClick(e.nativeEvent)) return
                 keepFocusNearby(e.currentTarget, 'delete')
                 commands.remove(task)
               }}
@@ -166,7 +185,7 @@ export function TaskRow({ task, today, clientName, variant, onEdit, commands }: 
       )}
     </li>
   )
-}
+})
 
 /** "rimanda a domani", "rimanda a ven 9 ott": la data che si otterrà rimandando. */
 function postponeHint(task: Task, days: number, today: DateKey): string {

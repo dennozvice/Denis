@@ -1,5 +1,5 @@
 import { CircleCheckBig, ListTodo, Plus, Search, SearchX, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useMemo, useState } from 'react'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Segmented } from '../../components/ui/Segmented'
 import { PRIORITY_LABEL, TASK_CATEGORY_LABEL } from '../../domain/labels'
@@ -16,6 +16,8 @@ import {
   countTasks,
   groupForPage,
   matchesSearch,
+  OPEN_PAGE_SIZE,
+  showMoreLabel,
   sortClientsByLastName,
   type PageGroupId,
 } from './taskUtils'
@@ -33,8 +35,9 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
 const CATEGORY_OPTIONS = Object.entries(TASK_CATEGORY_LABEL) as [TaskCategory, string][]
 const PRIORITY_OPTIONS = Object.entries(PRIORITY_LABEL) as [Priority, string][]
 const NO_CLIENT = '__nessuno'
-/** Quante attività completate mostrare prima del pulsante "Mostra altre". */
+/** Quante attività completate mostrare prima del pulsante "Mostra altre" (per le aperte: OPEN_PAGE_SIZE). */
 const DONE_PAGE = 20
+const pageSize = (id: PageGroupId) => (id === 'completate' ? DONE_PAGE : OPEN_PAGE_SIZE)
 
 /** Pagina Attività: elenco completo con ricerca, filtri e raggruppamento per scadenza. */
 export function TasksPage() {
@@ -48,8 +51,13 @@ export function TasksPage() {
   const [category, setCategory] = useState<TaskCategory | ''>('')
   const [priority, setPriority] = useState<Priority | ''>('')
   const [clientFilter, setClientFilter] = useState('')
-  const [doneLimit, setDoneLimit] = useState(DONE_PAGE)
+  /** Righe visibili per gruppo, dopo i clic su "Mostra altre" (assente = prima pagina). */
+  const [limits, setLimits] = useState<Partial<Record<PageGroupId, number>>>({})
   const [modal, setModal] = useState<ModalState>(null)
+
+  // Con migliaia di attività filtrare a ogni tasto blocca la digitazione: il campo si aggiorna subito,
+  // l'elenco filtrato appena possibile (rendering interrompibile).
+  const deferredQuery = useDeferredValue(query)
 
   const clientIndex = useMemo(() => indexById(clients), [clients])
 
@@ -71,9 +79,9 @@ export function TasksPage() {
         if (priority && t.priority !== priority) return false
         if (clientFilter === NO_CLIENT && t.clientId) return false
         if (clientFilter && clientFilter !== NO_CLIENT && t.clientId !== clientFilter) return false
-        return matchesSearch(t, query, clientNameById(clientIndex, t.clientId))
+        return matchesSearch(t, deferredQuery, clientNameById(clientIndex, t.clientId))
       }),
-    [tasks, status, category, priority, clientFilter, query, clientIndex],
+    [tasks, status, category, priority, clientFilter, deferredQuery, clientIndex],
   )
   const groups = useMemo(() => groupForPage(filtered, today), [filtered, today])
 
@@ -95,7 +103,10 @@ export function TasksPage() {
     setModal(null)
     if (routeId) navigate('attivita', {}, true)
   }
-  const openEdit = (task: Task) => setModal({ mode: 'edit', id: task.id })
+  // Stabile: le righe (memo) non si ridisegnano a ogni modifica della pagina
+  const openEdit = useCallback((task: Task) => setModal({ mode: 'edit', id: task.id }), [])
+  const showMore = (id: PageGroupId) =>
+    setLimits((prev) => ({ ...prev, [id]: (prev[id] ?? pageSize(id)) + pageSize(id) }))
 
   const subtitleParts = [
     `${formatNumber(counts.open)} aperte`,
@@ -200,7 +211,8 @@ export function TasksPage() {
       ) : (
         <div className="card tk-list-card" data-tk-container>
           {groups.map((g) => {
-            const limited = g.id === 'completate' ? g.tasks.slice(0, doneLimit) : g.tasks
+            // Anche i gruppi delle aperte sono a pagine: con migliaia di attività il DOM resta leggero
+            const limited = g.tasks.slice(0, limits[g.id] ?? pageSize(g.id))
             const hidden = g.tasks.length - limited.length
             return (
               <section key={g.id} className="tk-group tk-page-group" aria-labelledby={`tk-g-${g.id}`}>
@@ -221,8 +233,8 @@ export function TasksPage() {
                   ))}
                 </ul>
                 {hidden > 0 && (
-                  <button type="button" className="btn btn-ghost btn-sm tk-more" onClick={() => setDoneLimit((n) => n + DONE_PAGE)}>
-                    Mostra altre {formatNumber(Math.min(hidden, DONE_PAGE))} di {formatNumber(hidden)}
+                  <button type="button" className="btn btn-ghost btn-sm tk-more" onClick={() => showMore(g.id)}>
+                    {showMoreLabel(hidden, pageSize(g.id))}
                   </button>
                 )}
               </section>

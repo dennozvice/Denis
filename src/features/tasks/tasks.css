@@ -132,6 +132,12 @@
   margin: -3px 0;
   color: var(--text-2);
   font-weight: 500;
+  /* Nomi lunghi senza spazi: puntini di sospensione invece di allargare la riga (nome intero nel title) */
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tk-client:hover {
@@ -649,7 +655,8 @@
   }
 
   .input.tk-quickadd-input,
-  .btn.tk-quickadd-btn {
+  .btn.tk-quickadd-btn,
+  .btn.tk-more {
     min-height: 44px;
   }
 
