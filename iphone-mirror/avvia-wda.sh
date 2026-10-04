@@ -53,6 +53,12 @@ xcodebuild test \
         echo "✅ WebDriverAgent è pronto. Indirizzo Wi‑Fi: $url"
         echo "   In Specchio iPhone usa http://localhost:8100 (cavo + iproxy) oppure l'indirizzo Wi‑Fi."
         ;;
+      *"requires a development team"*)
+        echo "$line"
+        echo
+        echo "👉 Manca la firma: apri WebDriverAgent/WebDriverAgent.xcodeproj in Xcode e scegli il tuo Team"
+        echo "   in Signing & Capabilities per WebDriverAgentRunner e WebDriverAgentLib (passo 3 del LEGGIMI)."
+        ;;
       *error:*|*"Testing failed"*|*"** TEST FAILED **"*)
         echo "$line"
         ;;
