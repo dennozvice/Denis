@@ -1,0 +1,2477 @@
+#import <Foundation/Foundation.h>
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
+#import <CoreImage/CoreImage.h>
+#import <objc/runtime.h>
+#import <AppKit/AppKit.h>
+#import <AVFoundation/AVFoundation.h>
+#import <Carbon/Carbon.h> // kVK_* virtual key codes, KBGetLayoutType/LMGetKbdType (keyboard forwarding)
+#include <xpc/xpc.h>
+#include <uuid/uuid.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <string.h>
+#include <errno.h>
+#include <dlfcn.h>
+#include <sqlite3.h>
+#include <pthread.h>
+#include <signal.h>
+#include <math.h>
+#include <unistd.h>
+
+// One stdio lock around both writes: the app reads stderr line by line, so a line from another
+// thread must not land between a message and its newline.
+#define LOGE(...) do{ flockfile(stderr); fprintf(stderr, "ipb-mirror: " __VA_ARGS__); fprintf(stderr,"\n"); funlockfile(stderr); }while(0)
+#define DIE(code, ...) do{ fail((code), [NSString stringWithFormat:@"" __VA_ARGS__]); return (code); }while(0)
+
+extern void _coredevice_xpc_add_bundle(NSBundle*);
+extern void _coredevice_xpc_init_services(void);
+typedef void *xrc_t;
+extern xrc_t xpc_remote_connection_create_with_connected_fd(int,dispatch_queue_t,uint64_t,uint64_t);
+extern void xpc_remote_connection_set_event_handler(xrc_t,xpc_handler_t);
+extern void xpc_remote_connection_activate(xrc_t);
+extern xpc_object_t xpc_remote_connection_send_message_with_reply_sync(xrc_t,xpc_object_t);
+
+@interface AVCMediaStreamNegotiator : NSObject
+- (instancetype)initWithMode:(long)mode options:(NSDictionary*)o error:(NSError**)e;
+- (BOOL)createOffer; - (NSData*)offer;
+- (BOOL)setAnswer:(NSData*)a withError:(NSError**)e;
+- (id)generateMediaStreamConfigurationWithError:(NSError**)e;
+- (id)generateMediaStreamInitOptionsWithError:(NSError**)e;
+@end
+@interface AVCVideoStream : NSObject
+- (instancetype)initWithNetworkSockets:(id)socks options:(id)opts error:(NSError**)e;
+- (BOOL)configure:(id)cfg error:(NSError**)e;
+- (void)setDelegate:(id)d;
+- (void)start;
+- (void)stop;
+- (void)requestLastDecodedFrame;
+@end
+@interface VCImageQueue : NSObject
+- (long long)streamToken;
+- (id)streamOutput;
+- (void)setStreamOutput:(id)o;
+@end
+@interface VCStreamOutput : NSObject
+- (instancetype)initWithStreamToken:(long long)t clientProcessID:(int)pid delegate:(id)d delegateQueue:(dispatch_queue_t)q;
+@end
+
+
+#include <stdatomic.h>
+#include <fcntl.h>
+#include <poll.h>
+// Evidence: docs/video-stream.md and docs/verification.md (2026-09-08), and
+// Sources/video_stream.m: mode-5 negotiation and VCImageQueue installation copied below.
+// HID evidence: docs/protocol.md Wire Format and Sources/action_sender.m:625,
+// using the existing Xcode 27 oracle glue unchanged.
+extern int uhid_make_digitizer_hid_report(double,double,int,int,void*);
+extern int uhid_make_scroll_hid_report(int64_t,int64_t,uint32_t,uint32_t,uint32_t,double,double,void*);
+extern int uhid_make_scroll_wire_hid_report(int32_t,int32_t,uint32_t,uint32_t,double,double,void*);
+extern int uhid_make_absolute_pointer_hid_report(double,double,uint32_t,void*);
+// Full keyboard state: every listed usage (1...0xE7) pressed in one KeyboardReport (ID 1, 0x138 bits).
+extern int uhid_make_keyboard_state_hid_report(const uint32_t*,int32_t,void*);
+extern int coredevice_print_connected_descriptors_async_raw(xrc_t);
+extern int coredevice_send_universalhid_hid_report(xrc_t,const void*,uint64_t);
+extern int coredevice_send_universalhid_barrier(xrc_t);
+extern void xpc_remote_connection_cancel(xrc_t);
+extern int coredevice_send_hid_button_custom(xrc_t,uint64_t,uint64_t,uint8_t);
+extern int coredevice_send_hid_button_barrier(xrc_t);
+extern int coredevice_send_hid_digitizer_cgpoint(xrc_t,double,double,double,double,uint64_t,uint64_t,uint64_t,uint64_t,uint64_t);
+
+// Capacity bounds the diagnostics ring (gRecords, gFrameIntervals), never the session length.
+enum { Capacity=8192, PendingLimit=64 };
+// KeyboardHID is one full keyboard state (all pressed usages) for the UniversalHID keyboard service.
+// It sorts after KeyHome, so drainInput tests for it before its `kind>=KeyHome` button branch.
+typedef enum { Down, Move, Up, ScrollPrecise, ScrollWheel, ScrollEnd,
+               KeyHome, KeyRecents, KeyVolumeUp, KeyVolumeDown, KeyLock, KeyboardHID } Kind;
+typedef enum { Touch, BottomEdge, Scroll } InputMode;
+// Product choice: bottom 2% of the mapped content, NOT an Apple/protocol threshold.
+static const double BottomEdgeFraction=.02;
+typedef struct {
+    int64_t rawX,rawY;
+    double accelX,accelY;
+    uint32_t phase,momentum,flags;
+    BOOL starts,ends;
+} ScrollReport;
+typedef enum { Pending, Running, Sent, Rejected, Overload, BuildFailed, SendFailed, BarrierFailed, SendTimedOut, Interrupted, ScrollUnsupported, ScrollStationary, InputConflict, ScrollUnavailable, ScrollOrphan, ScrollOffTarget } Result;
+// A set of HID Keyboard usages (page 7, 1...0xE7) as a bitmap: usage u is bit u%32 of w[u/32].
+// The modifiers 0xE0...0xE7 are exactly bits 0...7 of w[7], and nothing else lives in w[7].
+typedef struct { uint32_t w[8]; } UsageSet;
+typedef struct { uint64_t seq, generation, gesture; Kind kind; double x,y,submit;
+                 InputMode mode; ScrollReport scroll;
+                 // Where the pointer was when a scroll arrived. For scroll events
+                 // x/y are the deltas, so the position needs its own field: the
+                 // device routes a scroll to the view under the cursor, and
+                 // without one a list scroll has no target. See pointerValid.
+                 double pointerX,pointerY; BOOL pointerValid;
+                 NSUInteger appPhase,appMomentum;
+                 UsageSet keys;  // KeyboardHID only: the complete pressed state
+                 BOOL flush; } Event; // KeyboardHID only: the release from releaseKeys, followed by a barrier
+typedef struct { Event event; unsigned depth; Result result; int reportCode,barrierCode;
+                 double received,reportReturn,barrierReturn; } Record;
+static pthread_mutex_t gLock=PTHREAD_MUTEX_INITIALIZER;
+// Ring of the most recent Capacity events, indexed by (seq-1) % Capacity, so a session can run for
+// hours. The indices held in gPending (at most PendingLimit) and by the running worker stay valid:
+// submitEvent never reuses a slot whose record is still Pending or Running. Summary statistics and
+// the CSV cover only the most recent Capacity events.
+static Record gRecords[Capacity];
+static unsigned gPending[PendingLimit],gHead,gCount,gMaxDepth;
+static uint64_t gSubmitted; // total events ever submitted (main thread writes, under gLock)
+static BOOL gWorker,gStopping,gCollect;
+static _Atomic uint64_t gGeneration=1;
+static _Atomic int gFailure=0;
+static _Atomic bool gFinished=false;
+static _Atomic uint64_t gScrollRawClamps=0; // number of axes saturated during conversion
+// Deadline for a single synchronous HID send; see the sendBounded comment below.
+// 2.0 s, not 0.5 s: 0.5 s was justified against a synthetic probe's 3.5-5.3 ms median, but real
+// interactive use on localNetwork reaches a 346 ms p95 gesture tail and was measured overshooting
+// 505 ms, so 0.5 s killed live sessions on latency alone. Legitimate latency and a dead connection
+// overlap (744 ms has been seen from a dead one), so a deadline cannot be the thing that decides a
+// connection is dead -- it only stops one stuck call from owning the input queue. The async error
+// handler is what reports a dead connection.
+#define SendDeadlineSeconds 2.0
+#define SendTimedOutCode (-62)
+static _Atomic unsigned long long gAbandonedSends=0; // calls we stopped waiting for
+static NSString *gReason;
+static uint64_t gFrames,gDrops,gMediaErrors,gIntervals;
+static double gFrameIntervals[Capacity],gLastFrame;
+static CMTime gNewestPTS;
+static CMSampleBufferRef gLatest;
+static CVPixelBufferRef gScreenshotFrame; // latest accepted frame, independent of display consumption
+static _Atomic bool gScreenshotBusy=false;
+static BOOL gLocalShortcutPending; // at most one local action awaiting the input barrier
+static dispatch_group_t gScreenshotGroup;
+static uint64_t gDisplayDrops,gDisplayed,gBlackBars;
+static BOOL gReady,gClosing,gMousePressed;
+static uint64_t gServiceID,gGesture,gMouseGeneration;
+static double gMouseX,gMouseY;
+static InputMode gMouseMode; // main thread: frozen at Down, copied into every event
+static uint64_t gScrollServiceID,gScrollGesture,gScrollGeneration;
+// Last AbsolutePointer position accepted by the device, input queue only.
+static double lastPointerX=-1,lastPointerY=-1;
+static const double PointerEpsilon=0.001;
+static BOOL gScrollActive,gScrollPrecise,gScrollMomentum,gScrollMomentumAllowed; // main thread
+static BOOL isScroll(Kind kind){ return kind>=ScrollPrecise && kind<=ScrollEnd; }
+static BOOL usageSetEmpty(UsageSet set){ for(unsigned i=0;i<8;i++) if(set.w[i]) return NO; return YES; }
+static BOOL usageSetEqual(UsageSet a,UsageSet b){ return !memcmp(&a,&b,sizeof a); }
+static BOOL usageSetHas(UsageSet set,uint32_t usage){ return usage>=1 && usage<=0xE7 && (set.w[usage>>5]&(1u<<(usage&31))); }
+static void usageSetAdd(UsageSet *set,uint32_t usage){ if(usage>=1 && usage<=0xE7) set->w[usage>>5]|=1u<<(usage&31); }
+static void usageSetRemove(UsageSet *set,uint32_t usage){ if(usage>=1 && usage<=0xE7) set->w[usage>>5]&=~(1u<<(usage&31)); }
+// An all-released keyboard report is idempotent and always safe to send, so it is never rejected:
+// not after a failure (it is an end like UP, see isEnd) and not for an older generation either
+// (drainInput, sendKeyboardState). An unrelated error must never strand a key held -- and
+// autorepeating -- on the iPhone.
+static BOOL isKeyboardRelease(Event event){ return event.kind==KeyboardHID && usageSetEmpty(event.keys); }
+static BOOL isEnd(Event event){
+    return event.kind==Up || (isScroll(event.kind) && event.scroll.ends) || isKeyboardRelease(event);
+}
+static const char *inputResults[]={"pending","running","sent","rejected","overload","build_failed",
+    "send_failed","barrier_failed","send_timed_out","interrupted","scroll_unsupported","scroll_stationary",
+    "input_conflict","scroll_unavailable","scroll_orphan","scroll_off_target"};
+// Detector and accepted frames are protected by gLock. Display geometry is main-thread-only.
+static struct {
+    CGSize size;
+    CGRect seen, rect; // pixel coordinates, top-left origin
+    unsigned frames;
+    double started;
+    BOOL frozen;
+} gCrop;
+static CGSize gVideoSize; // content size used by every UI geometry consumer
+static CGSize gFrameSize;
+static CGRect gContentRect;
+static CALayer *gContentClip;
+static AVSampleBufferDisplayLayer *gDisplay;
+static NSWindow *gWindow;
+static int gOutputFD=-1; // saved stdout for descriptor discovery
+static int gCSVFD=-1;
+static dispatch_source_t gWatchdog;
+static _Atomic bool gWatchdogExpired=false;
+static xrc_t gMediaRemote;
+static xpc_connection_t gMediaService;
+static int gMediaFD=-1,gRTP=-1;
+static void requestClose(NSString *reason);
+static void shutdownMirror(void);
+static void presentLatest(void);
+static AVCVideoStream *gStream;
+static dispatch_queue_t gDelegateQueue,gInputQueue;
+static dispatch_group_t gInputGroup;
+static xrc_t gInput; // only input queue reads/writes this connection and gesture state
+static int gInputFD=-1;
+static xrc_t gButton,gDigitizer;
+static int gButtonFD=-1,gDigitizerFD=-1;
+static BOOL gInputLive;
+// Keyboard: UniversalHID keyboard service on gInput (discovered like the touchscreen, see
+// discoverService). Set to YES on the input queue when the service refused its first few reports and
+// accepted none (see sendKeyboardState).
+static uint64_t gKeyboardServiceID;
+static _Atomic bool gKeyboardDisabled=false;
+// Main thread only. gKeysDown is what is physically held on the Mac; gKeysChord holds synthesized
+// presses (Command chords, Spotlight, paste) for their short tap; gKeysSent is the last state queued.
+static UsageSet gKeysDown,gKeysChord,gKeysSent;
+// Main thread only. gKeysDirty: a non-empty state was queued since the last focus-loss/close release.
+// gKeysResync: the device's keyboard state is not known (a state was dropped because the pending
+// queue was full, or a release is being forced), so the next commit sends the whole wanted state as
+// one report; the presentation timer retries it until the queue takes it.
+// gKeysFlush: releaseKeys wants its all-released state followed by a barrier (Event.flush).
+static BOOL gKeysDirty,gKeysResync,gKeysFlush;
+static uint8_t gPressedUsage[128]; // macOS key code -> usage it was pressed as, so its release matches
+// Main thread only. While a Cmd-V is waiting for devicectl to put the Mac's text on the iPhone
+// (gPastesPending), key events are held in arrival order and replayed after the paste chord, so text
+// typed right after Cmd-V lands after the pasted text (see holdKey). gHeldKeyDown: macOS key codes whose
+// key-down is held, so that their key-up is held too. gChordsInFlight: synthesized chords not yet
+// released (keyboardChordThen); the replay waits for them.
+static unsigned gPastesPending,gChordsInFlight;
+static NSMutableArray<NSEvent*> *gHeldKeys;
+static uint32_t gHeldKeyDown[4];
+static void replayHeldKeys(void);
+// Contract with the Specchio iPhone app: exit 0 means the user closed the mirror, and only that.
+static _Atomic bool gUserClosed=false;
+static _Atomic bool gAnnouncedLocked=false;
+static BOOL gAnnouncedReady; // main thread
+static NSString *gTitle=@"iPhone",*gDeviceUUID;
+static id gKeyUpMonitor,gActivity; // kept for the process lifetime
+static double nowSec(void){ struct timespec ts; clock_gettime(CLOCK_MONOTONIC,&ts); return ts.tv_sec+ts.tv_nsec/1e9; }
+static void fail(int code,NSString *reason){
+    pthread_mutex_lock(&gLock);
+    if(!atomic_load(&gFailure)){ gReason=reason; atomic_store(&gFailure,code); }
+    pthread_mutex_unlock(&gLock);
+}
+static void inputError(NSString *reason){
+    // Invalidate before taking the metrics lock, including while a sender is blocked.
+    atomic_fetch_add(&gGeneration,1);
+    fail(1,[reason stringByAppendingString:@"; gesture abandoned; device release is NOT guaranteed after disconnect/failure"]);
+}
+static void mediaError(NSString *reason){
+    pthread_mutex_lock(&gLock); BOOL active=!gStopping; if(active) gMediaErrors++; pthread_mutex_unlock(&gLock);
+    if(active) fail(6,reason);
+}
+// Status lines for the Specchio iPhone app, which reads stderr line by line: one whole line in a
+// single write(2), under the stdio lock so it can never land inside a LOGE line.
+static void announceStatus(const char *line){
+    char text[64]; int length=snprintf(text,sizeof text,"%s\n",line);
+    if(length<=0 || length>=(int)sizeof text) return;
+    flockfile(stderr); fflush(stderr);
+    ssize_t wrote;
+    do wrote=write(STDERR_FILENO,text,(size_t)length); while(wrote<0 && errno==EINTR);
+    funlockfile(stderr);
+}
+// A locked device refuses service sockets and the media stream with RemotePairing error 1016
+// (unlockRequired). Any thread; the caller still logs the underlying error text itself.
+static void noteDeviceError(const char *text){
+    if(!text) return;
+    if(strcasestr(text,"unlockrequired") || (strcasestr(text,"remotepairing") && strstr(text,"1016")))
+        if(!atomic_exchange(&gAnnouncedLocked,true)) announceStatus("SPECCHIO: locked");
+}
+static int compareDouble(const void*a,const void*b){ double x=*(const double*)a,y=*(const double*)b; return (x>y)-(x<y); }
+static void percentiles(NSMutableString *s,const char *label,double *v,unsigned n){
+    if(!n){ [s appendFormat:@"%s p50=NA p95=NA p99=NA n=0\n",label]; return; }
+    qsort(v,n,sizeof *v,compareDouble);
+    [s appendFormat:@"%s p50=%.3f p95=%.3f p99=%.3f n=%u (ms)\n",label,
+        v[(unsigned)ceil(n*.50)-1]*1000,v[(unsigned)ceil(n*.95)-1]*1000,v[(unsigned)ceil(n*.99)-1]*1000,n];
+}
+static BOOL writeOutput(int fd,NSString *text){
+    // Bound output too: a pipe whose reader stopped must not defeat the watchdog.
+    NSData *data=[text dataUsingEncoding:NSUTF8StringEncoding];
+    int flags=fcntl(fd,F_GETFL); fcntl(fd,F_SETFL,flags|O_NONBLOCK);
+    size_t offset=0; double deadline=nowSec()+3;
+    while(offset<data.length && nowSec()<deadline){
+        ssize_t wrote=write(fd,(const char*)data.bytes+offset,data.length-offset);
+        if(wrote>0) offset+=(size_t)wrote;
+        else if(errno==EAGAIN || errno==EINTR){ struct pollfd p={fd,POLLOUT,0}; poll(&p,1,50); }
+        else break;
+    }
+    fcntl(fd,F_SETFL,flags);
+    return offset==data.length;
+}
+// One top-level finalizer for normal completion, setup failures, signals and watchdog.
+// Never calls private APIs or waits for the input queue. No lock is held across a sender.
+static void finish(int code,NSString *reason) __attribute__((noreturn));
+static void finish(int code,NSString *reason){
+    // A losing finalizer must not return from main and preempt the winner's output, so it parks until
+    // the winner's _Exit (bounded: writeOutput has 3 s deadlines). Never pthread_exit: the second-stage
+    // watchdog calls finish on a GCD worker thread, where libpthread aborts pthread_exit ("called from a
+    // thread not created by pthread_create()") -- a crash the app would read as a failure and relaunch
+    // the mirror after the user closed it. pause() works on main and GCD threads alike; SIGINT/SIGTERM
+    // are SIG_IGN (dispatch sources handle them), so nothing ends the wait but the winner.
+    if(atomic_exchange(&gFinished,true)) for(;;) pause();
+    static Record records[Capacity]; static double intervals[Capacity];
+    pthread_mutex_lock(&gLock);
+    gStopping=YES; gCollect=NO; atomic_fetch_add(&gGeneration,1);
+    // gRecords is a ring: the last n events, the oldest at index `first` once it has wrapped.
+    uint64_t submitted=gSubmitted;
+    unsigned n=(unsigned)MIN(submitted,(uint64_t)Capacity),first=submitted>Capacity?(unsigned)(submitted%Capacity):0;
+    memcpy(records,gRecords,sizeof records);
+    uint64_t frames=gFrames,drops=gDrops,errors=gMediaErrors,intervalCount=gIntervals;
+    memcpy(intervals,gFrameIntervals,sizeof intervals);
+    unsigned maxDepth=gMaxDepth;
+    if(atomic_load(&gFailure)){ code=atomic_load(&gFailure); reason=gReason; }
+    else if(gReason) reason=gReason;
+    uint64_t displayDrops=gDisplayDrops,displayed=gDisplayed,blackBars=gBlackBars;
+    pthread_mutex_unlock(&gLock);
+    NSMutableString *s=[NSMutableString string];
+    [s appendFormat:@"enqueued=%llu display_backpressure_drops=%llu black_bar_rejections=%llu\n",
+        (unsigned long long)displayed,(unsigned long long)displayDrops,(unsigned long long)blackBars];
+    [s appendFormat:@"scroll_raw_clamped_axes=%llu abandoned_sends=%llu (deadline %.2fs)\n",
+        (unsigned long long)atomic_load(&gScrollRawClamps),
+        (unsigned long long)atomic_load(&gAbandonedSends),(double)SendDeadlineSeconds];
+    static double values[4][Capacity]; unsigned counts[4]={0};
+    unsigned executed=0,rejected=0,overload=0,inflight=0;
+    const char *kinds[]={"DOWN","MOVE","UP","SCROLL_PRECISE","SCROLL_WHEEL","SCROLL_END","KEY_HOME","KEY_RECENTS","KEY_VOLUME_UP","KEY_VOLUME_DOWN","KEY_LOCK","KEYBOARD"};
+    // KEY_LOCK was added to Kind without a string here, so kinds[KeyLock] read past the end and
+    // %s ran strlen on whatever followed: any session using Cmd-L with --csv crashed in finish.
+    // These asserts make the next such omission a build error instead of a SIGSEGV at exit.
+    _Static_assert(sizeof kinds / sizeof *kinds == KeyboardHID + 1,
+                   "kinds[] must have one string per Kind");
+    _Static_assert(sizeof inputResults / sizeof *inputResults == ScrollOffTarget + 1,
+                   "inputResults[] must have one string per Result");
+    unsigned skipCounts[ScrollOffTarget+1]={0};
+    for(unsigned i=0;i<n;i++){
+        Record *r=&records[i];
+        if(r->result==Pending){ r->result=Rejected; }
+        if(r->reportReturn) executed++;
+        else if(r->result==Running) inflight++;
+        else rejected++;
+        if(r->result==Overload) overload++;
+        if(r->result>=ScrollUnsupported) skipCounts[r->result]++;
+        if(r->received) values[0][counts[0]++]=r->received-r->event.submit;
+        if(r->reportReturn){ values[1][counts[1]++]=r->reportReturn-r->received; values[2][counts[2]++]=r->reportReturn-r->event.submit; }
+        if(r->barrierReturn) values[3][counts[3]++]=r->barrierReturn-r->reportReturn;
+    }
+    percentiles(s,"input queue+entry",values[0],counts[0]);
+    percentiles(s,"input exec",values[1],counts[1]);
+    percentiles(s,"input host total",values[2],counts[2]);
+    percentiles(s,"gesture tail",values[3],counts[3]);
+    [s appendFormat:@"submitted=%llu window=%u executed=%u rejected=%u overload=%u in_flight=%u max_queue_depth=%u (counts and CSV cover the last %u events)\n",
+        (unsigned long long)submitted,n,executed,rejected,overload,inflight,maxDepth,(unsigned)Capacity];
+    for(unsigned i=ScrollUnsupported;i<=ScrollOffTarget;i++) [s appendFormat:@"%s=%u\n",inputResults[i],skipCounts[i]];
+    unsigned intervalN=(unsigned)MIN(intervalCount,Capacity);
+    qsort(intervals,intervalN,sizeof *intervals,compareDouble);
+    [s appendFormat:@"media frames=%llu interval_p50=%@ interval_p95=%@ drops=%llu errors=%llu interval_n=%u interval_total=%llu (ms; last <=8192)\n",
+        (unsigned long long)frames,
+        intervalN?[NSString stringWithFormat:@"%.3f",intervals[(unsigned)ceil(intervalN*.50)-1]*1000]:@"NA",
+        intervalN?[NSString stringWithFormat:@"%.3f",intervals[(unsigned)ceil(intervalN*.95)-1]*1000]:@"NA",
+        (unsigned long long)drops,(unsigned long long)errors,intervalN,(unsigned long long)intervalCount];
+    [s appendString:@"KEY_* report_return=first send return; barrier_return=button barrier or RECENTS end return (digitizer has no barrier in the existing oracle).\n"];
+    [s appendString:@"BOTTOM_EDGE UP: end return only; no digitizer barrier exists in the oracle. Scroll x/y are relative AppKit deltas; scroll calibration is UNVERIFIED.\n"];
+    [s appendString:@"KEYBOARD: one full-state report per change of the pressed set; barrier_return only for the release at focus loss or close when no other input is queued. Which keys were pressed is never logged.\n"];
+    [s appendString:@"drops=local invalid/non-increasing PTS only; transport/decoder losses unknown. Times=CLOCK_MONOTONIC seconds; blank=not reached.\n"];
+    NSMutableString *csv=nil;
+    if(gCSVFD>=0) csv=[NSMutableString stringWithString:@"seq,type,generation,gesture,result,queue_depth,x,y,t_submit,t_received,t_report_return,t_barrier_return,report_code,barrier_code,mode,scroll_phase,scroll_momentum,scroll_flags,raw_x,raw_y,accel_x,accel_y,app_phase,app_momentum\n"];
+    for(unsigned i=0;gCSVFD>=0 && i<n;i++){
+        Record r=records[(first+i)%Capacity]; // oldest first
+        [csv appendFormat:@"%llu,%s,%llu,%llu,%s,%u,%.5f,%.5f,%.9f,%@,%@,%@,%d,%d,%s,%u,%u,%u,%lld,%lld,%.9f,%.9f,%lu,%lu\n",(unsigned long long)r.event.seq,kinds[r.event.kind],(unsigned long long)r.event.generation,(unsigned long long)r.event.gesture,inputResults[r.result],r.depth,r.event.x,r.event.y,r.event.submit,
+            r.received?[NSString stringWithFormat:@"%.9f",r.received]:@"",
+            r.reportReturn?[NSString stringWithFormat:@"%.9f",r.reportReturn]:@"",
+            r.barrierReturn?[NSString stringWithFormat:@"%.9f",r.barrierReturn]:@"",r.reportCode,r.barrierCode,
+            r.event.mode==BottomEdge?"BOTTOM_EDGE":r.event.mode==Scroll?"SCROLL":"TOUCH",
+            r.event.scroll.phase,r.event.scroll.momentum,r.event.scroll.flags,
+            (long long)r.event.scroll.rawX,(long long)r.event.scroll.rawY,r.event.scroll.accelX,r.event.scroll.accelY,(unsigned long)r.event.appPhase,(unsigned long)r.event.appMomentum];
+    }
+    if(gCSVFD>=0){
+        BOOL written=writeOutput(gCSVFD,csv);
+        int closed=close(gCSVFD);
+        if(!written || closed){ code=8; reason=[reason stringByAppendingString:@"; CSV output failed"]; }
+    }
+    // The app treats exit 0 as "the user closed the mirror" and every other code as a failure to
+    // recover from. gUserClosed is latched only when the user closes a healthy session (userClose),
+    // so anything going wrong afterwards -- shutdown timeouts, a slow summary pipe, a late
+    // connection error -- must not turn that close into a failure. The original code stays visible.
+    BOOL userClosed=atomic_load(&gUserClosed);
+    if(userClosed && code){
+        reason=[NSString stringWithFormat:@"%@ (closed by the user; shutdown would have exited %d)",reason,code];
+        code=0;
+    }
+    [s insertString:[NSString stringWithFormat:@"ipb-mirror: exit=%d reason=%@\n",code,reason] atIndex:0];
+    if(!writeOutput(STDERR_FILENO,s) && !userClosed) code=8;
+    _Exit(code);
+}
+
+// Generated 2026-09-09 from these Apple-shipped sources:
+// /Applications/Xcode-*.app/Contents/Developer/Platforms/iPhoneOS.platform/usr/standalone/device_traits.db
+//   Devices.ProductType -> Devices.ProductDescription
+// /Library/Developer/CoreSimulator/Profiles/DeviceTypes/<ProductDescription>.simdevicetype/Contents/Resources/capabilities.plist
+//   capabilities/displays[0]/width and height (NOT DeviceTraits.ArtworkDeviceSubtype).
+static const struct { const char *productType; unsigned width,height; } gScreenTable[]={
+    {"iPhone8,1", 750, 1334},   // iPhone 6s
+    {"iPhone8,2", 1242, 2208},   // iPhone 6s Plus
+    {"iPhone8,4", 640, 1136},   // iPhone SE (1st generation)
+    {"iPhone9,1", 750, 1334},   // iPhone 7
+    {"iPhone9,2", 1242, 2208},   // iPhone 7 Plus
+    {"iPhone9,3", 750, 1334},   // iPhone 7
+    {"iPhone9,4", 1242, 2208},   // iPhone 7 Plus
+    {"iPhone10,1", 750, 1334},   // iPhone 8
+    {"iPhone10,2", 1242, 2208},   // iPhone 8 Plus
+    {"iPhone10,3", 1125, 2436},   // iPhone X
+    {"iPhone10,4", 750, 1334},   // iPhone 8
+    {"iPhone10,5", 1242, 2208},   // iPhone 8 Plus
+    {"iPhone10,6", 1125, 2436},   // iPhone X
+    {"iPhone12,1", 828, 1792},   // iPhone 11
+    {"iPhone12,3", 1125, 2436},   // iPhone 11 Pro
+    {"iPhone12,5", 1242, 2688},   // iPhone 11 Pro Max
+    {"iPhone12,8", 750, 1334},   // iPhone SE (2nd generation)
+    {"iPhone13,1", 1080, 2340},   // iPhone 12 mini
+    {"iPhone13,2", 1170, 2532},   // iPhone 12
+    {"iPhone13,3", 1170, 2532},   // iPhone 12 Pro
+    {"iPhone13,4", 1284, 2778},   // iPhone 12 Pro Max
+    {"iPhone14,2", 1170, 2532},   // iPhone 13 Pro
+    {"iPhone14,3", 1284, 2778},   // iPhone 13 Pro Max
+    {"iPhone14,4", 1080, 2340},   // iPhone 13 mini
+    {"iPhone14,5", 1170, 2532},   // iPhone 13
+    {"iPhone14,6", 750, 1334},   // iPhone SE (3rd generation)
+    {"iPhone14,7", 1170, 2532},   // iPhone 14
+    {"iPhone14,8", 1284, 2778},   // iPhone 14 Plus
+    {"iPhone15,2", 1179, 2556},   // iPhone 14 Pro
+    {"iPhone15,3", 1290, 2796},   // iPhone 14 Pro Max
+    {"iPhone15,4", 1179, 2556},   // iPhone 15
+    {"iPhone15,5", 1290, 2796},   // iPhone 15 Plus
+    {"iPhone16,1", 1179, 2556},   // iPhone 15 Pro
+    {"iPhone16,2", 1290, 2796},   // iPhone 15 Pro Max
+    {"iPhone17,1", 1206, 2622},   // iPhone 16 Pro
+    {"iPhone17,2", 1320, 2868},   // iPhone 16 Pro Max
+    {"iPhone17,3", 1179, 2556},   // iPhone 16
+    {"iPhone17,4", 1290, 2796},   // iPhone 16 Plus
+    {"iPhone17,5", 1170, 2532},   // iPhone 16e
+    {"iPhone18,1", 1206, 2622},   // iPhone 17 Pro
+    {"iPhone18,2", 1320, 2868},   // iPhone 17 Pro Max
+    {"iPhone18,3", 1206, 2622},   // iPhone 17
+    {"iPhone18,4", 1260, 2736},   // iPhone Air
+    {"iPhone18,5", 1170, 2532},   // iPhone 17e
+};
+static const char *gProductType="";
+
+// Optional native SQLite lookup; dynamic loading keeps this confined to mirror.m
+// without a new link dependency or a devicectl/subprocess path in the helper.
+// Cache candidates once per process; orientation/frame validation stays per size.
+static NSArray<NSValue*> *xcodeScreenSizes(void){
+    static NSArray<NSValue*> *sizes;
+    if(sizes) return sizes;
+    NSMutableArray<NSValue*> *found=[NSMutableArray array];
+    sizes=found;
+    if(!*gProductType){ LOGE("xcode-lookup unavailable: empty productType; trying detection"); return sizes; }
+    void *library=dlopen("/usr/lib/libsqlite3.dylib",RTLD_NOW|RTLD_LOCAL);
+    if(!library){ LOGE("xcode-lookup unavailable: SQLite load failed: %s; trying detection",dlerror()); return sizes; }
+#define SQL_FUNCTION(name) __typeof__(&sqlite3_##name) sql_##name=dlsym(library,"sqlite3_" #name)
+    SQL_FUNCTION(open_v2); SQL_FUNCTION(prepare_v2); SQL_FUNCTION(bind_text);
+    SQL_FUNCTION(step); SQL_FUNCTION(column_text); SQL_FUNCTION(finalize); SQL_FUNCTION(close);
+#undef SQL_FUNCTION
+    if(!sql_open_v2 || !sql_prepare_v2 || !sql_bind_text || !sql_step || !sql_column_text || !sql_finalize || !sql_close){
+        LOGE("xcode-lookup unavailable: SQLite symbols missing; trying detection");
+        dlclose(library); return sizes;
+    }
+    NSFileManager *fm=NSFileManager.defaultManager;
+    NSArray<NSString*> *apps=[[fm contentsOfDirectoryAtPath:@"/Applications" error:nil] sortedArrayUsingSelector:@selector(compare:)];
+    for(NSString *app in apps){
+        if(![app hasPrefix:@"Xcode"] || ![app hasSuffix:@".app"]) continue;
+        NSString *path=[[@"/Applications" stringByAppendingPathComponent:app] stringByAppendingPathComponent:
+            @"Contents/Developer/Platforms/iPhoneOS.platform/usr/standalone/device_traits.db"];
+        if(![fm isReadableFileAtPath:path]) continue;
+        sqlite3 *db=NULL; sqlite3_stmt *query=NULL;
+        int result=sql_open_v2(path.fileSystemRepresentation,&db,SQLITE_OPEN_READONLY,NULL);
+        if(result==SQLITE_OK) result=sql_prepare_v2(db,
+            "SELECT DISTINCT ProductDescription FROM Devices WHERE ProductType = ? LIMIT 16",-1,&query,NULL);
+        if(result==SQLITE_OK) result=sql_bind_text(query,1,gProductType,-1,SQLITE_TRANSIENT);
+        if(result==SQLITE_OK){
+            while((result=sql_step(query))==SQLITE_ROW){
+                const unsigned char *text=sql_column_text(query,0);
+                NSString *description=text?[NSString stringWithUTF8String:(const char*)text]:nil;
+                if(!description.length || [description containsString:@"/"] || [description isEqualToString:@".."] ) continue;
+                NSString *profile=[NSString stringWithFormat:
+                    @"/Library/Developer/CoreSimulator/Profiles/DeviceTypes/%@.simdevicetype/Contents/Resources/capabilities.plist",description];
+                NSData *data=[NSData dataWithContentsOfFile:profile];
+                id plist=data?[NSPropertyListSerialization propertyListWithData:data options:NSPropertyListImmutable format:NULL error:nil]:nil;
+                id capabilities=[plist isKindOfClass:NSDictionary.class]?plist[@"capabilities"]:nil;
+                id displays=[capabilities isKindOfClass:NSDictionary.class]?capabilities[@"displays"]:nil;
+                id display=[displays isKindOfClass:NSArray.class] && [displays count]?[displays firstObject]:nil;
+                id width=[display isKindOfClass:NSDictionary.class]?display[@"width"]:nil;
+                id height=[display isKindOfClass:NSDictionary.class]?display[@"height"]:nil;
+                if(![width isKindOfClass:NSNumber.class] || ![height isKindOfClass:NSNumber.class]){
+                    LOGE("xcode-lookup: missing/invalid displays[0] in %s",profile.fileSystemRepresentation); continue;
+                }
+                NSValue *value=[NSValue valueWithSize:NSMakeSize([width doubleValue],[height doubleValue])];
+                if(![found containsObject:value]) [found addObject:value];
+            }
+        }
+        if(result!=SQLITE_DONE) LOGE("xcode-lookup: SQLite error %d reading %s",result,path.fileSystemRepresentation);
+        if(query) sql_finalize(query);
+        if(db) sql_close(db);
+    }
+    dlclose(library);
+    if(!found.count) LOGE("xcode-lookup: no readable display dimensions for productType=%s; trying detection",gProductType);
+    return sizes;
+}
+// Caller holds gLock. All four sources publish through this one geometry path.
+static void selectContentRect(CGRect rect,const char *source){
+    gCrop.rect=rect; gCrop.frozen=YES;
+    LOGE("content: frame=%.0fx%.0f rect=(%.0f,%.0f %.0fx%.0f) source=%s productType=%s",
+        gCrop.size.width,gCrop.size.height,rect.origin.x,rect.origin.y,rect.size.width,rect.size.height,
+        source,*gProductType?gProductType:"(unknown)");
+}
+static BOOL acceptScreenSize(CGSize size,const char *source){
+    // Profiles describe the native orientation; transpose dimensions on rotation.
+    // This does not change input coordinates or the flipped-view Y mapping.
+    if((size.width>size.height)!=(gCrop.size.width>gCrop.size.height))
+        size=CGSizeMake(size.height,size.width);
+    if(!isfinite(size.width) || !isfinite(size.height) || size.width<=0 || size.height<=0 ||
+       floor(size.width)!=size.width || floor(size.height)!=size.height ||
+       size.width>gCrop.size.width || size.height>gCrop.size.height ||
+       gCrop.size.width-size.width>64 || gCrop.size.height-size.height>64){
+        LOGE("%s rejected: productType=%s candidate=%.0fx%.0f frame=%.0fx%.0f; requires positive integral dimensions and padding in [0,64] per axis; trying next source",
+            source,gProductType,size.width,size.height,gCrop.size.width,gCrop.size.height);
+        return NO;
+    }
+    selectContentRect((CGRect){CGPointZero,size},source); return YES;
+}
+static BOOL selectTableContentRect(void){
+    BOOL matched=NO;
+    for(size_t i=0;i<sizeof gScreenTable/sizeof gScreenTable[0];i++){
+        if(strcmp(gProductType,gScreenTable[i].productType)) continue;
+        matched=YES;
+        if(acceptScreenSize(CGSizeMake(gScreenTable[i].width,gScreenTable[i].height),"builtin-table")) return YES;
+        break;
+    }
+    if(!matched) LOGE("builtin-table: no entry for productType=%s; trying xcode-lookup",*gProductType?gProductType:"(unknown)");
+    for(NSValue *value in xcodeScreenSizes()) if(acceptScreenSize(value.sizeValue,"xcode-lookup")) return YES;
+    return NO;
+}
+
+// Brief crop-brief.md: padding is <8; content is luminance >10. Scan every
+// row and column, sampling the other axis every 8 pixels (including its last
+// pixel). Unlike a 2D stride grid, this preserves single-pixel edge positions.
+static BOOL nonBlack(const uint8_t *base,size_t stride,size_t x,size_t y,OSType format){
+    const uint8_t *p=base+y*stride;
+    if(format==kCVPixelFormatType_32BGRA){
+        p+=4*x;
+        return (54u*p[2]+183u*p[1]+19u*p[0])>10u*256u;
+    }
+    unsigned value=p[x];
+    // Video-range black is 16, not 0. Compare in full-range luminance units.
+    return format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ?
+        value>16 && (value-16)*255u>10u*219u : value>10;
+}
+// Caller holds gLock; this is the sole decision/logging path for detection fallback.
+// A fixed 64 px allowance does not scale with frame size and is tighter than the padding some
+// devices actually carry. The 12 mini streams 1136x2464 and detection there removed 12 x 92 px,
+// which the fixed limit rejected -- dropping the mirror to full-frame and putting the black edge
+// back. Proportional instead: every padding measured so far passes (13 Pro 14x44, 12 mini 11x31 and
+// 12x92) while a detection that only found the lit part of a dark screen is still rejected.
+#define ContentDetectMaxShrink 0.08
+static void freezeContentRect(const char *reason){
+    CGRect r=gCrop.seen;
+    BOOL fallback=reason || CGRectIsEmpty(r) || CGRectIsNull(r) ||
+        r.size.width<gCrop.size.width*(1-ContentDetectMaxShrink) ||
+        r.size.height<gCrop.size.height*(1-ContentDetectMaxShrink);
+    selectContentRect(fallback?(CGRect){CGPointZero,gCrop.size}:r,fallback?"full-frame":"detected");
+    LOGE("content detection: frame=%.0fx%.0f detected=(%.0f,%.0f %.0fx%.0f) content=(%.0f,%.0f %.0fx%.0f) fallback=%s (%s)",
+         gCrop.size.width,gCrop.size.height,
+         CGRectIsNull(r)?0:r.origin.x,CGRectIsNull(r)?0:r.origin.y,r.size.width,r.size.height,
+         gCrop.rect.origin.x,gCrop.rect.origin.y,gCrop.rect.size.width,gCrop.rect.size.height,
+         fallback?"yes":"no",reason?:fallback?"empty or more than 8% removed in a dimension":"frozen");
+}
+static void detectContentRect(CVPixelBufferRef frame,double t){
+    CGSize size=CGSizeMake(CVPixelBufferGetWidth(frame),CVPixelBufferGetHeight(frame));
+    if(!CGSizeEqualToSize(size,gCrop.size)){
+        gCrop.size=size; gCrop.seen=CGRectNull; gCrop.rect=(CGRect){CGPointZero,size};
+        gCrop.frames=0; gCrop.started=t; gCrop.frozen=NO;
+        if(selectTableContentRect()) return;
+        gCrop.started=nowSec(); // lookup time is not part of the detection window
+        LOGE("content detection: collecting up to 30 frames / 2s at %.0fx%.0f; using full frame until frozen",size.width,size.height);
+    }
+    if(gCrop.frozen) return;
+    if(t-gCrop.started>=2){ freezeContentRect(NULL); return; }
+    OSType format=CVPixelBufferGetPixelFormatType(frame);
+    BOOL planar=format==kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
+                format==kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+    if(!planar && format!=kCVPixelFormatType_32BGRA){
+        freezeContentRect("unsupported pixel format"); return;
+    }
+    if(CVPixelBufferLockBaseAddress(frame,kCVPixelBufferLock_ReadOnly)!=kCVReturnSuccess){
+        freezeContentRect("pixel buffer read lock failed"); return;
+    }
+    const uint8_t *base=planar?CVPixelBufferGetBaseAddressOfPlane(frame,0):CVPixelBufferGetBaseAddress(frame);
+    size_t stride=planar?CVPixelBufferGetBytesPerRowOfPlane(frame,0):CVPixelBufferGetBytesPerRow(frame);
+    size_t w=(size_t)size.width,h=(size_t)size.height;
+    if(!base || !w || !h || stride<w*(planar?1:4)){
+        CVPixelBufferUnlockBaseAddress(frame,kCVPixelBufferLock_ReadOnly);
+        freezeContentRect("invalid pixel buffer storage"); return;
+    }
+    size_t left=w,top=h,right=0,bottom=0;
+    for(size_t x=0;x<w;x++){
+        for(size_t y=0;;y=MIN(y+8,h-1)){
+            if(nonBlack(base,stride,x,y,format)){ left=MIN(left,x); right=x+1; break; }
+            if(y==h-1) break;
+        }
+    }
+    for(size_t y=0;y<h;y++){
+        for(size_t x=0;;x=MIN(x+8,w-1)){
+            if(nonBlack(base,stride,x,y,format)){ top=MIN(top,y); bottom=y+1; break; }
+            if(x==w-1) break;
+        }
+    }
+    CVPixelBufferUnlockBaseAddress(frame,kCVPixelBufferLock_ReadOnly);
+    if(right>left && bottom>top){
+        CGRect found=CGRectMake(left,top,right-left,bottom-top);
+        gCrop.seen=CGRectIsNull(gCrop.seen)?found:CGRectUnion(gCrop.seen,found);
+    }
+    if(++gCrop.frames>=30 || nowSec()-gCrop.started>=2) freezeContentRect(NULL);
+}
+
+@interface InProcSink : NSObject @end
+@implementation InProcSink
+- (void)didReceiveSampleBuffer:(CMSampleBufferRef)sb {
+    if(!sb) return;
+    double t=nowSec(); CMTime pts=CMSampleBufferGetOutputPresentationTimeStamp(sb);
+    pthread_mutex_lock(&gLock);
+    if(gCollect && !gStopping){
+        if(!CMTIME_IS_NUMERIC(pts) || !CMSampleBufferGetImageBuffer(sb) ||
+           (CMTIME_IS_NUMERIC(gNewestPTS) && CMTimeCompare(pts,gNewestPTS)<=0)) gDrops++;
+        else {
+            detectContentRect(CMSampleBufferGetImageBuffer(sb),t);
+            gNewestPTS=pts; gFrames++;
+            if(gLastFrame) gFrameIntervals[gIntervals++%Capacity]=t-gLastFrame;
+            gLastFrame=t;
+            if(gLatest){ CFRelease(gLatest); gDisplayDrops++; }
+            gLatest=(CMSampleBufferRef)CFRetain(sb);
+            if(gScreenshotFrame) CVPixelBufferRelease(gScreenshotFrame);
+            gScreenshotFrame=CVPixelBufferRetain(CMSampleBufferGetImageBuffer(sb));
+        }
+    }
+    pthread_mutex_unlock(&gLock);
+}
+
+- (void)streamOutput:(id)o didReceiveSampleBuffer:(CMSampleBufferRef)sb { [self didReceiveSampleBuffer:sb]; }
+@end
+static id gImageQueue = nil;
+static IMP gOrigIQStart;
+static void swz_iq_start(id self, SEL _cmd){
+    gImageQueue = self;
+    if(![(VCImageQueue*)self streamOutput]){
+        Class SO=objc_getClass("VCStreamOutput");
+        if(SO){ static InProcSink *sink; if(!sink) sink=[InProcSink new];
+            id so=[[SO alloc] initWithStreamToken:[(VCImageQueue*)self streamToken] clientProcessID:getpid()
+                                          delegate:sink delegateQueue:gDelegateQueue];
+            if(so) [(VCImageQueue*)self setStreamOutput:so]; }
+    }
+    ((void(*)(id,SEL))gOrigIQStart)(self,_cmd);
+}
+static void installInProcessSink(void){
+    Class C=objc_getClass("VCImageQueue"); if(!C){ fail(6,@"no VCImageQueue class"); return; }
+    Method m=class_getInstanceMethod(C,sel_registerName("start"));
+    if(m){ gOrigIQStart=method_getImplementation(m); method_setImplementation(m,(IMP)swz_iq_start); }
+    else fail(6,@"no VCImageQueue start method");
+}
+
+
+@interface FrameSink : NSObject @end
+@implementation FrameSink
+- (void)stream:(id)s didStart:(BOOL)ok error:(NSError*)e {
+    if(!ok){ noteDeviceError(e.description.UTF8String); mediaError([NSString stringWithFormat:@"stream did not start: %@",e]); }
+}
+- (void)streamDidStop:(id)s { mediaError(@"unexpected stream stop"); }
+- (void)vcMediaStreamDidStop:(id)s { mediaError(@"unexpected media stream stop"); }
+- (void)streamDidServerDie:(id)s { mediaError(@"media server died"); }
+@end
+static xpc_object_t action_env(const char*action,const char*dev,xpc_object_t input){
+    uuid_t u; uuid_generate(u); char us[37]; uuid_unparse_upper(u,us);
+    xpc_object_t m=xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(m,"CoreDevice.actionIdentifier",action);
+    xpc_dictionary_set_string(m,"CoreDevice.deviceIdentifier",dev);
+    xpc_dictionary_set_string(m,"CoreDevice.invocationIdentifier",us);
+    xpc_object_t ver=xpc_dictionary_create_empty(); xpc_object_t comps=xpc_array_create_empty();
+    xpc_array_append_value(comps,xpc_uint64_create(642)); xpc_array_append_value(comps,xpc_uint64_create(15));
+    xpc_dictionary_set_value(ver,"components",comps); xpc_dictionary_set_int64(ver,"originalComponentsCount",2);
+    xpc_dictionary_set_string(ver,"stringValue","642.15");
+    xpc_dictionary_set_value(m,"CoreDevice.coreDeviceVersion",ver);
+    xpc_dictionary_set_int64(m,"CoreDevice.CoreDeviceDDIProtocolVersion",1);
+    xpc_dictionary_set_value(m,"CoreDevice.input",input);
+    return m;
+}
+
+
+static int openInput(const char *dev,const char *feature,xrc_t *remote,int *fd){ // called only on gInputQueue
+    dispatch_queue_t queue=dispatch_queue_create("ipb.mirror.hid.service",DISPATCH_QUEUE_SERIAL);
+    xpc_connection_t conn=xpc_connection_create("com.apple.CoreDevice.CoreDeviceService",queue);
+    xpc_connection_set_event_handler(conn,^(xpc_object_t event){});
+    xpc_connection_resume(conn);
+    xpc_object_t input=xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(input,"featureIdentifier",feature);
+    xpc_object_t reply=xpc_connection_send_message_with_reply_sync(conn,action_env("com.apple.coredevice.action.createservicesocket",dev,input));
+    xpc_object_t output=reply && xpc_get_type(reply)==XPC_TYPE_DICTIONARY ? xpc_dictionary_get_dictionary(reply,"CoreDevice.output") : NULL;
+    if(!output){
+        xpc_object_t error=reply && xpc_get_type(reply)==XPC_TYPE_DICTIONARY ? xpc_dictionary_get_dictionary(reply,"CoreDevice.error") : NULL;
+        int64_t code=error?xpc_dictionary_get_int64(error,"code"):0;
+        const char *domain=error?xpc_dictionary_get_string(error,"domain"):NULL;
+        char *description=reply?xpc_copy_description(reply):NULL;
+        int result=domain && !strcmp(domain,"com.apple.dt.CoreDeviceError") && code==4000?4:3;
+        LOGE("%s service socket refused: %s",feature,description?description:"null reply");
+        noteDeviceError(description);
+        fail(result,[NSString stringWithFormat:@"%s service socket refused: %s",feature,description?description:"null reply"]);
+        free(description); xpc_connection_cancel(conn); return result;
+    }
+    *fd=xpc_dictionary_dup_fd(output,"fileDescriptor");
+    uint64_t flags=xpc_dictionary_get_uint64(output,"remoteXPCVersionFlags");
+    xpc_connection_cancel(conn);
+    if(*fd<0) DIE(3,"%s service reply has no fd",feature);
+    // Separate error callback queue: a synchronous Swift sender must not delay invalidation.
+    *remote=xpc_remote_connection_create_with_connected_fd(*fd,dispatch_queue_create("ipb.mirror.hid.events",DISPATCH_QUEUE_SERIAL),flags,0);
+    if(!*remote) DIE(1,"%s RemoteXPC create failed",feature);
+    pthread_mutex_lock(&gLock); gInputLive=YES; pthread_mutex_unlock(&gLock);
+    xpc_remote_connection_set_event_handler(*remote,^(xpc_object_t event){
+        if(event && xpc_get_type(event)==XPC_TYPE_ERROR){
+            pthread_mutex_lock(&gLock); BOOL active=gInputLive && !gStopping; pthread_mutex_unlock(&gLock);
+            if(active){
+                const char *desc=xpc_dictionary_get_string(event,XPC_ERROR_KEY_DESCRIPTION);
+                noteDeviceError(desc);
+                inputError([NSString stringWithFormat:@"%s RemoteXPC error: %s",feature,desc?desc:"unknown"]);
+            }
+        }
+    });
+    xpc_remote_connection_activate(*remote);
+    return 0;
+}
+
+// Apple's HID senders are synchronous and cannot be cancelled. On a connection that has gone
+// invalid they block for hundreds of milliseconds to seconds -- measured 744 ms to 2846 ms, against
+// a 3.5-5.3 ms healthy median -- and then return 0, so a caller that waits on one strands every
+// event queued behind it (docs/verification.md, 2026-09-14). Run the call off the input queue and
+// stop waiting at a deadline. The abandoned call still runs to completion in the background; it
+// simply no longer owns the input queue. Expiry is a send failure, never a retry: nothing is re-sent.
+static int sendBounded(int (^call)(void)){
+    __block int result=0;
+    dispatch_semaphore_t done=dispatch_semaphore_create(0);
+    // Global concurrent queue: a stuck call must not hold up the next one behind it.
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        result=call();
+        dispatch_semaphore_signal(done);
+    });
+    if(dispatch_semaphore_wait(done,dispatch_time(DISPATCH_TIME_NOW,
+            (int64_t)(SendDeadlineSeconds*NSEC_PER_SEC)))){
+        // Timed out. `result` belongs to the still-running block from here on; never read it.
+        atomic_fetch_add(&gAbandonedSends,1);
+        return SendTimedOutCode;
+    }
+    return result;
+}
+
+// A C array cannot be captured by a block, and the report bytes must outlive an abandoned call,
+// so they are copied to the heap and the block owns the copy.
+static int sendReportBounded(xrc_t connection,const void *words,size_t length,uint64_t serviceID){
+    void *copy=malloc(length);
+    if(!copy) return SendTimedOutCode;
+    memcpy(copy,words,length);
+    return sendBounded(^{
+        int code=coredevice_send_universalhid_hid_report(connection,copy,serviceID);
+        free(copy);
+        return code;
+    });
+}
+
+// Distinguishes "the device refused it" from "we stopped waiting for it" in the CSV.
+static Result failureFor(int code,Result onFail){ return code==SendTimedOutCode?SendTimedOut:onFail; }
+
+// Input queue only. One KeyboardReport carrying the complete pressed state, on the same UniversalHID
+// connection as the touchscreen but addressed to the keyboard service. A barrier follows only the
+// release that releaseKeys queues (focus loss, close: a flush before the connection may be cancelled),
+// not every key-up as in `ipb key`, a CLI that exits right after. Independent of the touch state
+// machine: typing during a drag neither ends nor rejects the touch.
+//
+// Refusals: a service that has never accepted a report is the wrong or a missing one (the 0x200
+// fallback), so after a few refusals forwarding stops for the session. Once one has been accepted, a
+// refusal is transient: an all-released report goes out at once (best effort) so that no key pressed
+// by an earlier report stays held -- and autorepeating -- on the iPhone, and forwarding continues;
+// every report is the complete state, so the next one resynchronises the device.
+static BOOL gKeyboardAccepted;       // input queue only
+static unsigned gKeyboardRefusals;   // input queue only: refusals before any report was accepted
+static BOOL gKeyboardRefusalLogged;  // input queue only
+enum { KeyboardRefusalLimit=3 };
+static void sendKeyboardState(Record *r){
+    const Event *event=&r->event;
+    uint32_t usages[0xE8]; int32_t count=0;
+    for(uint32_t usage=1;usage<=0xE7;usage++) if(usageSetHas(event->keys,usage)) usages[count++]=usage;
+    uint64_t words[2]={0,0};
+    int built=uhid_make_keyboard_state_hid_report(usages,count,words);
+    if(built!=(int)sizeof words){
+        r->result=BuildFailed; r->reportCode=built; inputError(@"keyboard report construction failed"); return;
+    }
+    // A release goes out whatever the generation (isKeyboardRelease); a press from an old one does not.
+    if(count && event->generation!=atomic_load(&gGeneration)){ r->result=Rejected; return; }
+    r->reportCode=sendReportBounded(gInput,words,sizeof words,gKeyboardServiceID);
+    r->reportReturn=nowSec();
+    if(r->reportCode){
+        r->result=failureFor(r->reportCode,SendFailed);
+        // A timed-out send may have left a key held on the device (it autorepeats), so it is fatal,
+        // exactly like a shortcut press. The RemoteXPC error handler still reports a connection that
+        // is actually dead.
+        if(r->result==SendTimedOut){
+            inputError(@"keyboard sender exceeded the send deadline; a key may be held on the device"); return;
+        }
+        if(!gKeyboardAccepted){
+            // Nothing was ever pressed on the device, so stopping strands no key.
+            if(++gKeyboardRefusals>=KeyboardRefusalLimit && !atomic_exchange(&gKeyboardDisabled,true))
+                LOGE("keyboard: service 0x%llx refused %u reports and accepted none (last code %d); keyboard forwarding disabled for this session",
+                     (unsigned long long)gKeyboardServiceID,gKeyboardRefusals,r->reportCode);
+            return;
+        }
+        uint64_t none[2]={0,0};
+        int releaseCode=uhid_make_keyboard_state_hid_report(usages,0,none)==(int)sizeof none?
+            sendReportBounded(gInput,none,sizeof none,gKeyboardServiceID):-1;
+        if(!gKeyboardRefusalLogged){
+            gKeyboardRefusalLogged=YES;
+            LOGE("keyboard: service 0x%llx refused a report (code %d); all keys released (code %d), forwarding continues (later refusals: CSV only)",
+                 (unsigned long long)gKeyboardServiceID,r->reportCode,releaseCode);
+        }
+        if(releaseCode==SendTimedOutCode)
+            inputError(@"keyboard release after a refused report exceeded the send deadline; a key may be held on the device");
+        return;
+    }
+    gKeyboardAccepted=YES;
+    // Ordinary key-ups get no barrier: it carries no data (every report is the complete state, and a
+    // dead connection is reported by the RemoteXPC error handler), yet on localNetwork it holds the
+    // serial worker for up to 346 ms p95 -- after nearly every keystroke, since a key-up usually finds
+    // the queue idle -- so typed characters arrived in bursts.
+    if(count || !event->flush){ r->result=Sent; return; }
+    // Skipped when other input is queued behind it: that input follows on the same connection (and a
+    // touch/scroll end brings its own barrier), so it must not wait for a flush.
+    pthread_mutex_lock(&gLock); BOOL queued=gCount>0; pthread_mutex_unlock(&gLock);
+    if(queued){ r->result=Sent; return; }
+    r->barrierCode=sendBounded(^{ return coredevice_send_universalhid_barrier(gInput); });
+    r->barrierReturn=nowSec();
+    if(!r->barrierCode){ r->result=Sent; return; }
+    r->result=failureFor(r->barrierCode,BarrierFailed);
+    // Same policy as the touch barrier: a slow flush strands nothing, a failed one is reported.
+    if(r->result==SendTimedOut)
+        LOGE("keyboard barrier exceeded the %.1fs send deadline; input queue released, session continues",
+             (double)SendDeadlineSeconds);
+    else inputError(@"keyboard barrier failed (see barrier_code)");
+}
+
+// A key owns the drain until its final continuation. Exactly one delayed block
+// exists at a time; gWorker stays YES, and the group includes the entire sequence.
+// Sources/action_sender.m button_click and digitizer_swipe + bin/ipb recents are
+// the timing/argument oracle. No guessed digitizer barrier is sent.
+static void drainInput(void);
+static void keyStep(unsigned index,unsigned step){
+    pthread_mutex_lock(&gLock); Record r=gRecords[index]; pthread_mutex_unlock(&gLock);
+    BOOL done=NO;
+    double delay=0;
+    if(r.event.generation!=atomic_load(&gGeneration)){
+        r.result=Interrupted; done=YES;
+    }else{
+        int code;
+        {
+            // Every shortcut is a button click now, App Switcher included. It used to be a
+            // 14-step digitizer swipe costing 1.66 s (12 x 30 ms of motion, then a 1.05 s dwell,
+            // then a 0.25 s settle), which is why it felt like a slowly mocked drag.
+            // AppleVendorKeyboard page 0xff01 usage 0x10 opens the switcher directly, verified
+            // 4/4 by screenshot on a 12 mini (iOS 27.0). See docs/verification.md 2026-09-14.
+            //
+            // Home: docs/protocol.md. Volume: E9 showed a HUD on the 13 Pro (M3 brief,
+            // 2026-09-08); EA was rc=0-only until 2026-09-14, when both directions were
+            // exercised interactively on a 12 mini over localNetwork and confirmed working.
+            uint64_t page=r.event.kind==KeyRecents?0xff01:0x0c;
+            uint64_t usage=r.event.kind==KeyHome?0x40:r.event.kind==KeyRecents?0x10:
+                           r.event.kind==KeyVolumeUp?0xE9:r.event.kind==KeyVolumeDown?0xEA:0x30;
+            code=sendBounded(^{ return step==2?coredevice_send_hid_button_barrier(gButton):
+                coredevice_send_hid_button_custom(gButton,page,usage,(uint8_t)step); });
+            // Hold is per-shortcut, not shared. The side button is duration-gated: the boundary is
+            // 0.29 s (0.28 fails, 0.29 works -- user measurement 2026-09-15), identical on wired and
+            // localNetwork, so this is not a transport parameter. A 0.08 s press does nothing at
+            // all, which is why Cmd-L was a no-op; the old comment here claimed the button "locks
+            // on a short press" and that premise was simply wrong.
+            //
+            // 0.4 s, not 0.29 s: press and release are two separate sends with the network between
+            // them, and jitter shortens the interval the device actually observes (barrier tails of
+            // 346 ms have been measured on localNetwork). ~1.38x the boundary buys that margin
+            // while staying far below the 0.7 s that once opened Siri.
+            done=step==2; delay=step==0?(r.event.kind==KeyLock?.4:.08):.12;
+        }
+        double returned=nowSec();
+        if(step==0){ r.reportCode=code; r.reportReturn=returned; }
+        if(done){ r.barrierCode=code; r.barrierReturn=returned; }
+        if(code){
+            if(!done) r.reportCode=code;
+            // Capture this BEFORE done is forced: only the barrier step (done already YES here)
+            // is a flush whose deadline expiry is safe to survive. A press/release that timed out
+            // may have left the button held, so that stays fatal.
+            BOOL wasBarrier=done;
+            r.result=failureFor(code,wasBarrier?BarrierFailed:SendFailed); done=YES;
+            if(r.result==SendTimedOut && wasBarrier)
+                LOGE("shortcut barrier exceeded the %.1fs send deadline; session continues",
+                     (double)SendDeadlineSeconds);
+            else inputError(r.result==SendTimedOut?
+                @"shortcut sender exceeded the send deadline; input queue released":
+                @"shortcut sender failed (see CSV codes)");
+        }else if(r.event.generation!=atomic_load(&gGeneration)){
+            r.result=Interrupted; done=YES;
+        }else if(done) r.result=Sent;
+    }
+    pthread_mutex_lock(&gLock); gRecords[index]=r; pthread_mutex_unlock(&gLock);
+    if(done){
+        // The digitizer swipe needed a post-END settle; a button click does not.
+        double settle=0;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(settle*NSEC_PER_SEC)),gInputQueue,^{
+            drainInput(); dispatch_group_leave(gInputGroup);
+        });
+    }else dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(delay*NSEC_PER_SEC)),gInputQueue,^{ keyStep(index,step+1); });
+}
+
+// Only this worker owns the HID state and active gesture.
+// One drain block, not one dispatch block per event. Queue capacity excludes the
+// one executing event. No coalescing, replay, sleep, or per-event output.
+static void drainInput(void){
+    static enum { Idle, Pressed, Ending } state=Idle;
+    static uint64_t activeGesture,activeGeneration;
+    static InputMode activeMode;
+    for(;;){ @autoreleasepool {
+        pthread_mutex_lock(&gLock);
+        if(!gCount){ gWorker=NO; pthread_mutex_unlock(&gLock); return; }
+        unsigned index=gPending[gHead]; gHead=(gHead+1)%PendingLimit; gCount--;
+        Record r=gRecords[index];
+        r.received=nowSec(); r.result=Running; gRecords[index]=r;
+        pthread_mutex_unlock(&gLock);
+        const Event event=r.event; // immutable main-thread-produced value
+        uint64_t generation=atomic_load(&gGeneration);
+        if(activeGeneration!=generation){ state=Idle; activeGesture=0; }
+        if((event.generation!=generation && !isKeyboardRelease(event)) || (atomic_load(&gFailure) && !isEnd(event))) r.result=Rejected;
+        else if(event.kind==KeyboardHID) sendKeyboardState(&r); // before the Key* range below
+        else if(event.kind>=KeyHome){
+            if(state!=Idle){ r.result=Rejected; inputError(@"shortcut reached active touch; release required"); }
+            else { dispatch_group_enter(gInputGroup); keyStep(index,0); return; }
+        }
+        else {
+            BOOL scrolling=isScroll(event.kind);
+            BOOL starts=scrolling?event.scroll.starts:event.kind==Down;
+            BOOL ends=isEnd(event);
+            if((starts && state!=Idle) || (!starts &&
+               (state!=Pressed || activeGesture!=event.gesture || activeMode!=event.mode))){
+                r.result=Rejected; inputError(@"invalid input state transition");
+            }else{
+                if(starts){
+                    state=Pressed; activeGesture=event.gesture; activeGeneration=event.generation;
+                    activeMode=event.mode;
+                }
+                if(ends) state=Ending;
+                uint64_t words[2]={0,0};
+                int count=sizeof words;
+                if(activeMode!=BottomEdge){
+                    ScrollReport scroll=event.scroll;
+                    // The wire builder, not uhid_make_scroll_hid_report: it stamps
+                    // remoteTimestamp, which Device Hub sets on every report and
+                    // the shim path leaves zero. Byte 1 carries the phase
+                    // directly (0x80/0x01/0x02/0x04) and byte 2 the momentum,
+                    // which is exactly what scroll.phase and scroll.momentum
+                    // already hold.
+                    count=scrolling?uhid_make_scroll_wire_hid_report((int32_t)scroll.rawX,(int32_t)scroll.rawY,
+                        scroll.phase,scroll.momentum,scroll.accelX,scroll.accelY,words):
+                        uhid_make_digitizer_hid_report(event.x,event.y,!ends,!ends,words);
+                }
+                if(count!=sizeof words){ r.result=BuildFailed; r.reportCode=count; inputError(@"HID report construction failed"); }
+                else if(event.generation!=atomic_load(&gGeneration)) r.result=Rejected;
+                else {
+                    // gesture-impl.md task 1: one IndigoDigitizerEvent per real mouse
+                    // event, optional second point absent, edge=bottom, mainScreen=(0,0).
+                    // Never use the 320-bit swipe-contact report or shortcut interpolation.
+                    // Place the cursor before opening a scroll gesture. The
+                    // device routes a scroll to the view under the pointer, and
+                    // Device Hub keeps an AbsolutePointer stream running as the
+                    // mouse moves. Without it, a Home-screen page gesture still
+                    // works (it needs no target) but a list scroll has nothing
+                    // to act on -- which is exactly the reported symptom of
+                    // horizontal working while vertical did nothing.
+                    // Keep the device's cursor current, not merely opened.
+                    //
+                    // Sending only on `starts` was wrong: `starts` means "no
+                    // scroll session is active" (see scrollWheel:), and a
+                    // phase-less wheel has no AppKit end and no idle timeout, so
+                    // one session can span the user scrolling one list, moving
+                    // the mouse to another, and scrolling again -- all against
+                    // the first position. Resend whenever the mapped position
+                    // has actually moved.
+                    //
+                    // Failures here are not cosmetic. If the pointer is what
+                    // gives the scroll a target, a dropped pointer means the
+                    // scroll lands on whatever the device still had, so a build
+                    // or send failure fails the event rather than being ignored.
+                    if(scrolling && event.pointerValid &&
+                       (starts || fabs(event.pointerX-lastPointerX)>PointerEpsilon
+                               || fabs(event.pointerY-lastPointerY)>PointerEpsilon)){
+                        uint64_t pointerWords[2]={0,0};
+                        int pointerCount=uhid_make_absolute_pointer_hid_report(event.pointerX,event.pointerY,0,pointerWords);
+                        if(pointerCount!=(int)sizeof pointerWords){
+                            r.result=BuildFailed; r.reportCode=pointerCount;
+                            inputError(@"AbsolutePointer report construction failed");
+                        }else{
+                            int pointerCode=sendReportBounded(gInput,pointerWords,sizeof pointerWords,gScrollServiceID);
+                            if(pointerCode){
+                                r.result=failureFor(pointerCode,SendFailed); r.reportCode=pointerCode;
+                                r.reportReturn=nowSec();
+                                inputError(@"AbsolutePointer send failed; not scrolling a stale target");
+                            }else{ lastPointerX=event.pointerX; lastPointerY=event.pointerY; }
+                        }
+                    }
+                    // A failed pointer placement ends the event here: sending
+                    // the scroll anyway would act on whatever target the device
+                    // still holds. r.result and r.reportCode are already set.
+                    BOOL pointerFailed=(r.result==BuildFailed || r.result==SendFailed || r.result==SendTimedOut);
+                    if(!pointerFailed){
+                        r.reportCode=activeMode==BottomEdge?
+                            sendBounded(^{ return coredevice_send_hid_digitizer_cgpoint(gDigitizer,
+                                event.x,event.y,0,0,1,starts?0:ends?2:1,3,0,0); }):
+                            sendReportBounded(gInput,words,sizeof words,scrolling?gScrollServiceID:gServiceID);
+                        r.reportReturn=nowSec();
+                        r.result=r.reportCode?failureFor(r.reportCode,SendFailed):Sent;
+                    }
+                    pthread_mutex_lock(&gLock); gRecords[index]=r; pthread_mutex_unlock(&gLock);
+                    if(pointerFailed){ /* already reported by the pointer branch */ }
+                    else if(r.reportCode) inputError(@"HID report sender failed (see report_code)");
+                    else if(event.generation!=atomic_load(&gGeneration)) r.result=Interrupted;
+                    else if(ends){
+                        // No digitizer barrier in the existing oracle. Its END return is
+                        // the fourth point, just as for RECENTS; not device acknowledgement.
+                        r.barrierCode=activeMode==BottomEdge?0:
+                            sendBounded(^{ return coredevice_send_universalhid_barrier(gInput); });
+                        r.barrierReturn=nowSec();
+                        if(r.barrierCode){
+                            r.result=failureFor(r.barrierCode,BarrierFailed);
+                            if(r.result==SendTimedOut)
+                                // Not fatal: the barrier only flushes, so a slow one strands no
+                                // contact. If the connection is actually dead the error handler
+                                // says so and ends the run; a deadline must not end it on latency.
+                                LOGE("UHID barrier exceeded the %.1fs send deadline; input queue released, session continues",
+                                     (double)SendDeadlineSeconds);
+                            else inputError(@"UHID barrier failed (see barrier_code)");
+                        }
+                        else if(event.generation!=atomic_load(&gGeneration)) r.result=Interrupted;
+                        state=Idle; activeGesture=0;
+                    }
+                }
+            }
+        }
+        if(event.generation!=atomic_load(&gGeneration)){ state=Idle; activeGesture=0; }
+        pthread_mutex_lock(&gLock); gRecords[index]=r; pthread_mutex_unlock(&gLock);
+    }}
+}
+// Returns how the event was recorded: Pending when queued, otherwise why it was not.
+static Result submitEvent(Event event,Result disposition){
+    NSCAssert([NSThread isMainThread],@"producer must run on main thread");
+    // gRecords is a ring, so a session is no longer capped at Capacity events. A slot is reused only
+    // once its event is finished: a Pending record is still referenced from gPending and a Running
+    // one by the worker (or keyStep), which writes it back. Hitting such a slot takes Capacity
+    // submissions while one event is still in flight -- far beyond PendingLimit -- and if it ever
+    // happens the new event is treated as an overload instead of corrupting the in-flight one.
+    pthread_mutex_lock(&gLock);
+    unsigned index=(unsigned)(gSubmitted%Capacity);
+    if(gSubmitted>=Capacity && (gRecords[index].result==Pending || gRecords[index].result==Running)){
+        pthread_mutex_unlock(&gLock);
+        inputError(@"input record ring exhausted while an event was still in flight");
+        return Rejected;
+    }
+    event.seq=++gSubmitted;
+    BOOL overloaded=NO;
+    Record r={.event=event,.depth=gCount,.result=Pending};
+    if(disposition!=Pending) r.result=disposition; // dropped now, never queued/replayed
+    else if(gStopping || event.generation!=atomic_load(&gGeneration) || (atomic_load(&gFailure) && !isEnd(event))) r.result=Rejected;
+    else if(gCount==PendingLimit){ r.result=Overload; overloaded=YES; }
+    else {
+        gPending[(gHead+gCount)%PendingLimit]=index; gCount++;
+        if(gCount>gMaxDepth) gMaxDepth=gCount;
+        if(!gWorker){ gWorker=YES; dispatch_group_async(gInputGroup,gInputQueue,^{ drainInput(); }); }
+    }
+    gRecords[index]=r;
+    pthread_mutex_unlock(&gLock);
+    // Losing DOWN/UP/MOVE invalidates the entire gesture, never sends a partial replay. A keyboard
+    // state is different: each one carries the complete pressed set, so a dropped one is recovered
+    // by resending the current state (queueKeyboardState) instead of ending the session.
+    if(overloaded && event.kind!=KeyboardHID) inputError(@"pending input queue overloaded");
+    return r.result;
+}
+// Main thread: whether the next submitEvent would be queued rather than dropped as an overload.
+static BOOL inputQueueHasRoom(void){
+    pthread_mutex_lock(&gLock); BOOL room=gCount<PendingLimit; pthread_mutex_unlock(&gLock);
+    return room;
+}
+static void submit(Kind kind,uint64_t gesture,uint64_t generation,double x,double y,double submitted){
+    submitEvent((Event){.generation=generation,.gesture=gesture,.kind=kind,.x=x,.y=y,.submit=submitted,
+        .mode=kind<=Up?gMouseMode:Touch},Pending);
+}
+// Single conversion boundary, gesture-impl.md task 2, UniversalHID 90.1 enums.
+// UNVERIFIED: units, sign, gain and flags=0 need real-device calibration. These
+// signed gains preserve AppKit's delivered direction (including natural scrolling).
+// Both event types populate raw and accelerated fields (fix-reports.md).
+static const double ScrollPreciseGain=1.0,ScrollWheelGain=1.0;
+static const uint32_t ScrollFlags=0;
+static int64_t scrollRawValue(double value){
+    // UniversalHID 90.1 ScrollReport.init(scrollEvent:) uses frinta: nearest,
+    // ties away from zero. The brief requests symmetric signed-byte limits.
+    double rounded=round(value);
+    if(rounded<-127 || rounded>127){
+        atomic_fetch_add(&gScrollRawClamps,1);
+        rounded=MAX(-127,MIN(127,rounded));
+    }
+    return (int64_t)rounded;
+}
+static Result convertScroll(NSEvent *event,ScrollReport *out){
+    *out=(ScrollReport){.flags=ScrollFlags};
+    if((event.phase|event.momentumPhase)&NSEventPhaseStationary) return ScrollStationary;
+    switch(event.phase){
+        case NSEventPhaseNone: break;
+        case NSEventPhaseBegan: out->phase=1; break;
+        case NSEventPhaseChanged: out->phase=2; break;
+        case NSEventPhaseEnded: out->phase=4; break;
+        case NSEventPhaseCancelled: out->phase=8; break;
+        case NSEventPhaseMayBegin: out->phase=128; break;
+        default: return ScrollUnsupported; // unknown/combined phases have no supported mapping
+    }
+    switch(event.momentumPhase){
+        case NSEventPhaseNone: break;
+        case NSEventPhaseBegan: out->momentum=2; break;
+        case NSEventPhaseChanged: out->momentum=1; break;
+        case NSEventPhaseEnded: out->momentum=4; break;
+        // Cancelled -> interrupted is not established by the brief; do not guess.
+        default: return ScrollUnsupported;
+    }
+    if(out->phase && out->momentum) return ScrollUnsupported;
+    BOOL precise=event.hasPreciseScrollingDeltas;
+    if(precise?(!out->phase && !out->momentum):(out->phase || out->momentum)) return ScrollUnsupported;
+    // Device Hub negates AppKit's delivered delta on both axes. Established
+    // two ways: a captured two-finger scroll DOWN put y = -5..-8 on the wire
+    // (docs/protocol.md), and the mirror, which passed AppKit's sign straight
+    // through, scrolled the device the opposite way from Device Hub for the
+    // same physical gesture. Passing the sign through also made vertical scroll
+    // look dead rather than reversed, because an inverted downward scroll runs
+    // straight into the top of the list on Settings, and the Home screen does
+    // not scroll vertically at all.
+    double gain=precise?-ScrollPreciseGain:-ScrollWheelGain;
+    double x=event.scrollingDeltaX*gain,y=event.scrollingDeltaY*gain;
+    // Signed 16.16 capacity; glue accepts Double and performs fixed-point encoding.
+    if(!isfinite(x) || !isfinite(y) || x<-32768 || y<-32768 ||
+       x>32767+65535.0/65536 || y>32767+65535.0/65536) return ScrollUnsupported;
+    out->rawX=scrollRawValue(x); out->rawY=scrollRawValue(y);
+    out->accelX=x; out->accelY=y;
+    out->ends=out->phase==4 || out->phase==8 || out->momentum==4;
+    return Pending;
+}
+static void rejectScroll(Event event,Result result){
+    static unsigned warned; // main thread; one diagnostic per reason, every event counted in CSV
+    if(!(warned&(1u<<result))){
+        warned|=1u<<result;
+        LOGE("scroll dropped: %s type=%s AppKit phase=0x%lx momentum=0x%lx delta=(%g,%g); unsupported mappings/ranges are not coerced (subsequent occurrences counted in summary/CSV)",
+            inputResults[result],event.kind==ScrollPrecise?"precise":"wheel",
+            (unsigned long)event.appPhase,(unsigned long)event.appMomentum,event.x,event.y);
+    }
+    submitEvent(event,result);
+}
+static void releaseScroll(double submitted){
+    gScrollMomentumAllowed=NO;
+    if(!gScrollActive) return;
+    ScrollReport end={.flags=ScrollFlags,.ends=YES};
+    if(gScrollMomentum) end.momentum=4;
+    else if(gScrollPrecise) end.phase=4;
+    // Phase-less wheels have no AppKit end. Close their local session with a zero
+    // report + barrier on ownership/focus change; no invented phase or idle timer.
+    submitEvent((Event){.generation=gScrollGeneration,.gesture=gScrollGesture,
+        .kind=ScrollEnd,.submit=submitted,.mode=Scroll,.scroll=end},Pending);
+    gScrollActive=NO; // end is queued before another producer can take ownership
+}
+static void pumpUntil(double deadline){
+    while(nowSec()<deadline && !atomic_load(&gFailure))
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:MIN(.005,MAX(0,deadline-nowSec()))]];
+}
+static void armWatchdog(dispatch_source_t timer,double seconds){
+    if(atomic_load(&gWatchdogExpired) && seconds>5) return;
+    dispatch_source_set_timer(timer,dispatch_time(DISPATCH_TIME_NOW,(int64_t)(seconds*NSEC_PER_SEC)),DISPATCH_TIME_FOREVER,0);
+}
+// Discovery reuses the existing printer oracle and bin/ipb's touchscreen match.
+// Redirect only during startup, before AppKit input; finalizer uses a separate fd.
+static void discoverService(void){
+    FILE *capture=tmpfile();
+    if(!capture){ fail(8,@"descriptor capture tmpfile failed"); return; }
+    fflush(stdout);
+    if(dup2(fileno(capture),STDOUT_FILENO)<0){ fclose(capture); fail(8,@"descriptor capture redirect failed"); return; }
+    int result=coredevice_print_connected_descriptors_async_raw(gInput);
+    fflush(stdout);
+    int restored=dup2(gOutputFD,STDOUT_FILENO);
+    long length=ftell(capture);
+    if(result || restored<0 || length<0 || length>1024*1024){
+        fclose(capture); fail(3,@"touchscreen descriptor discovery failed or output exceeded 1MiB"); return;
+    }
+    rewind(capture);
+    char *line=NULL; size_t capacity=0;
+    while(getline(&line,&capacity,capture)>0){
+        if(strncmp(line,"connectedDescriptor[",20)) continue;
+        BOOL touch=strstr(line,"string:\"CoreDevice touchscreen(")!=NULL;
+        BOOL scroll=strstr(line,"string:\"CoreDevice touchscreenGesture\"")!=NULL;
+        // bin/ipb's "keyboard" role pattern; the closing quote keeps it exact.
+        BOOL keyboard=strstr(line,"string:\"CoreDevice keyboard\"")!=NULL;
+        if(!touch && !scroll && !keyboard) continue;
+        char *id=strstr(line,"serviceID:");
+        if(id){ char *end=NULL; errno=0; uint64_t value=strtoull(id+10,&end,0);
+            if(!errno && end!=id+10 && (*end==' ' || *end=='\n') && value){
+                if(touch && !gServiceID) gServiceID=value; // preserve explicit touchscreen override
+                if(scroll) gScrollServiceID=value;
+                if(keyboard && !gKeyboardServiceID) gKeyboardServiceID=value; // first keyboard = main keyboard
+            }
+        }
+    }
+    free(line); fclose(capture);
+    if(!gScrollServiceID) LOGE("scroll disabled: no CoreDevice touchscreenGesture descriptor; no fallback ID or second socket");
+    else LOGE("scroll service=0x%llx on existing universalhidservice; units/direction/gains/flags UNVERIFIED",(unsigned long long)gScrollServiceID);
+    if(gKeyboardServiceID) LOGE("keyboard service=0x%llx (descriptor) on existing universalhidservice",(unsigned long long)gKeyboardServiceID);
+    else {
+        // HIDServiceID.mainKeyboard, the value bin/ipb falls back to (docs/protocol.md). A wrong id
+        // is not fatal: a few refused reports with none accepted disable keyboard forwarding (sendKeyboardState).
+        gKeyboardServiceID=0x200;
+        LOGE("keyboard service: no CoreDevice keyboard descriptor; falling back to mainKeyboard 0x200");
+    }
+    if(!gServiceID) fail(3,@"no touchscreen descriptor; use --service-id only with a known touchscreen ID");
+}
+
+// ---- Keyboard: the Mac keyboard as a hardware keyboard of the iPhone (main thread) ----------------
+//
+// macOS virtual key code (Carbon kVK_*, HIToolbox/Events.h) -> USB HID Keyboard/Keypad usage (page 7).
+// Positions, not characters: the iPhone's own hardware-keyboard layout setting turns positions into
+// characters exactly as it does for a physical keyboard, so the Mac's input source is never consulted.
+// Not in the table: modifiers and Caps Lock (flagsChanged), Fn/Globe (stays on the Mac), and
+// kVK_ANSI_Grave / kVK_ISO_Section, which depend on the keyboard type (hidUsageForEvent).
+static const uint8_t gKeyUsage[128]={
+    [kVK_ANSI_A]=0x04,[kVK_ANSI_B]=0x05,[kVK_ANSI_C]=0x06,[kVK_ANSI_D]=0x07,[kVK_ANSI_E]=0x08,
+    [kVK_ANSI_F]=0x09,[kVK_ANSI_G]=0x0A,[kVK_ANSI_H]=0x0B,[kVK_ANSI_I]=0x0C,[kVK_ANSI_J]=0x0D,
+    [kVK_ANSI_K]=0x0E,[kVK_ANSI_L]=0x0F,[kVK_ANSI_M]=0x10,[kVK_ANSI_N]=0x11,[kVK_ANSI_O]=0x12,
+    [kVK_ANSI_P]=0x13,[kVK_ANSI_Q]=0x14,[kVK_ANSI_R]=0x15,[kVK_ANSI_S]=0x16,[kVK_ANSI_T]=0x17,
+    [kVK_ANSI_U]=0x18,[kVK_ANSI_V]=0x19,[kVK_ANSI_W]=0x1A,[kVK_ANSI_X]=0x1B,[kVK_ANSI_Y]=0x1C,
+    [kVK_ANSI_Z]=0x1D,
+    [kVK_ANSI_1]=0x1E,[kVK_ANSI_2]=0x1F,[kVK_ANSI_3]=0x20,[kVK_ANSI_4]=0x21,[kVK_ANSI_5]=0x22,
+    [kVK_ANSI_6]=0x23,[kVK_ANSI_7]=0x24,[kVK_ANSI_8]=0x25,[kVK_ANSI_9]=0x26,[kVK_ANSI_0]=0x27,
+    [kVK_Return]=0x28,[kVK_Escape]=0x29,[kVK_Delete]=0x2A,[kVK_Tab]=0x2B,[kVK_Space]=0x2C,
+    [kVK_ANSI_Minus]=0x2D,[kVK_ANSI_Equal]=0x2E,[kVK_ANSI_LeftBracket]=0x2F,[kVK_ANSI_RightBracket]=0x30,
+    // Apple keyboards report the ISO key left of Return as kVK_ANSI_Backslash too; 0x31 is what
+    // Apple's own ISO keyboards send for it.
+    [kVK_ANSI_Backslash]=0x31,[kVK_ANSI_Semicolon]=0x33,[kVK_ANSI_Quote]=0x34,
+    [kVK_ANSI_Comma]=0x36,[kVK_ANSI_Period]=0x37,[kVK_ANSI_Slash]=0x38,
+    [kVK_F1]=0x3A,[kVK_F2]=0x3B,[kVK_F3]=0x3C,[kVK_F4]=0x3D,[kVK_F5]=0x3E,[kVK_F6]=0x3F,
+    [kVK_F7]=0x40,[kVK_F8]=0x41,[kVK_F9]=0x42,[kVK_F10]=0x43,[kVK_F11]=0x44,[kVK_F12]=0x45,
+    [kVK_Help]=0x49 /* Insert position */,[kVK_Home]=0x4A,[kVK_PageUp]=0x4B,[kVK_ForwardDelete]=0x4C,
+    [kVK_End]=0x4D,[kVK_PageDown]=0x4E,
+    [kVK_RightArrow]=0x4F,[kVK_LeftArrow]=0x50,[kVK_DownArrow]=0x51,[kVK_UpArrow]=0x52,
+    [kVK_ANSI_KeypadClear]=0x53,[kVK_ANSI_KeypadDivide]=0x54,[kVK_ANSI_KeypadMultiply]=0x55,
+    [kVK_ANSI_KeypadMinus]=0x56,[kVK_ANSI_KeypadPlus]=0x57,[kVK_ANSI_KeypadEnter]=0x58,
+    [kVK_ANSI_Keypad1]=0x59,[kVK_ANSI_Keypad2]=0x5A,[kVK_ANSI_Keypad3]=0x5B,[kVK_ANSI_Keypad4]=0x5C,
+    [kVK_ANSI_Keypad5]=0x5D,[kVK_ANSI_Keypad6]=0x5E,[kVK_ANSI_Keypad7]=0x5F,[kVK_ANSI_Keypad8]=0x60,
+    [kVK_ANSI_Keypad9]=0x61,[kVK_ANSI_Keypad0]=0x62,[kVK_ANSI_KeypadDecimal]=0x63,
+    [0x6E /* kVK_ContextualMenu */]=0x65,[kVK_ANSI_KeypadEquals]=0x67,
+    [kVK_F13]=0x68,[kVK_F14]=0x69,[kVK_F15]=0x6A,[kVK_F16]=0x6B,
+    [kVK_F17]=0x6C,[kVK_F18]=0x6D,[kVK_F19]=0x6E,[kVK_F20]=0x6F,
+    [kVK_JIS_KeypadComma]=0x85,[kVK_JIS_Underscore]=0x87,[kVK_JIS_Yen]=0x89,
+    [kVK_JIS_Kana]=0x90,[kVK_JIS_Eisu]=0x91,
+};
+// On ISO keyboards (KBGetLayoutType()==kKeyboardISO) macOS reports the key left of "1" as
+// kVK_ISO_Section and the extra key next to left Shift as kVK_ANSI_Grave: swapped relative to the
+// physical HID usages (Chromium's key-code conversion corrects the same swap). On the HID side the
+// key left of "1" is 0x35 (Grave Accent and Tilde) and the key next to left Shift is 0x64 (Non-US
+// Backslash), so on an Italian ISO MacBook those two keys land where the iPhone's Italian layout
+// expects them. The type comes from the event itself, so a built-in ISO keyboard and an external ANSI one
+// can be used side by side; LMGetKbdType() (last keyboard event) is the fallback.
+static BOOL keyboardIsISO(NSEvent *event){
+    CGEventRef cgEvent=event.CGEvent;
+    int64_t type=cgEvent?CGEventGetIntegerValueField(cgEvent,kCGKeyboardEventKeyboardType):0;
+    if(type<=0 || type>0x7FFF) type=LMGetKbdType();
+    return KBGetLayoutType((short)type)==kKeyboardISO;
+}
+static uint32_t hidUsageForEvent(NSEvent *event){ // key events only (keyCode)
+    unsigned short code=event.keyCode;
+    if(code==kVK_ISO_Section || code==kVK_ANSI_Grave)
+        return (code==kVK_ISO_Section)==(keyboardIsISO(event)?1:0)?0x35:0x64;
+    return code<sizeof gKeyUsage?gKeyUsage[code]:0;
+}
+static void noteUnmappedKey(unsigned short code){
+    static uint32_t warned[4]; // one line per key code; the code, never a character
+    if(code>=128 || (warned[code>>5]&(1u<<(code&31)))) return;
+    warned[code>>5]|=1u<<(code&31);
+    LOGE("keyboard: macOS key code 0x%02x has no HID usage; ignored",code);
+}
+static void noteKeyboardInUse(NSEvent *event){
+    static BOOL logged;
+    if(logged) return;
+    logged=YES;
+    LOGE("keyboard: forwarding to service 0x%llx, %s keyboard, positional mapping (keys are never logged)",
+         (unsigned long long)gKeyboardServiceID,keyboardIsISO(event)?"ISO":"non-ISO");
+}
+static BOOL keyboardUsable(void){
+    return gReady && !gClosing && !atomic_load(&gFailure) && !atomic_load(&gKeyboardDisabled);
+}
+// NO when the pending queue was full and the state was dropped. That is not fatal for the keyboard
+// (see submitEvent): the device's state is then unknown, and commitKeys resends the complete state.
+static BOOL queueKeyboardState(UsageSet keys,double t){
+    BOOL flush=gKeysFlush && usageSetEmpty(keys);
+    Result result=submitEvent((Event){.generation=atomic_load(&gGeneration),.kind=KeyboardHID,.submit=t,.mode=Touch,.keys=keys,.flush=flush},Pending);
+    if(!usageSetEmpty(keys)) gKeysDirty=YES;
+    if(result==Overload){
+        if(!gKeysResync) LOGE("keyboard: pending input queue full; a keyboard state was dropped, resending the full state");
+        gKeysResync=YES; return NO;
+    }
+    if(flush) gKeysFlush=NO;
+    gKeysSent=keys; return YES;
+}
+// Brings the device to gKeysDown | gKeysChord. Each report is the complete state, so nothing can stay
+// pressed because one report was missed. A change is staged the way a real keyboard produces it --
+// key releases, then modifier changes, then key presses -- because in this report the modifier bits
+// come last (usage order) and a device applying one report's changes in that order would type "v"
+// before Command went down. While keyboard forwarding is disabled the state is only tracked.
+static void commitKeys(double t){
+    UsageSet want;
+    for(unsigned i=0;i<8;i++) want.w[i]=gKeysDown.w[i]|gKeysChord.w[i];
+    if(atomic_load(&gKeyboardDisabled) || !gKeyboardServiceID){ gKeysSent=want; gKeysResync=NO; return; }
+    if(gKeysResync){
+        // Device state unknown: the whole wanted state as one report (unstaged; recovery only), once
+        // the queue has room (the presentation timer calls back here until it does, so a dropped
+        // release does not wait for the next keystroke).
+        if(inputQueueHasRoom() && queueKeyboardState(want,t)) gKeysResync=NO;
+        return;
+    }
+    if(usageSetEqual(want,gKeysSent)) return;
+    UsageSet step=gKeysSent;
+    for(unsigned i=0;i<7;i++) step.w[i]&=want.w[i];                 // 1. keys released
+    if(!usageSetEqual(step,gKeysSent) && !queueKeyboardState(step,t)) return;
+    step.w[7]=want.w[7];                                             // 2. modifiers (w[7] only)
+    if(!usageSetEqual(step,gKeysSent) && !queueKeyboardState(step,t)) return;
+    if(!usageSetEqual(want,gKeysSent)) queueKeyboardState(want,t);  // 3. keys pressed
+}
+// Window resigns key, app deactivates, mirror closes: nothing may stay pressed on the iPhone.
+// If anything was pressed since the last such release, a fresh all-released report goes out even
+// when gKeysSent is already empty: the release queued earlier may have been rejected or dropped, and
+// a redundant empty report is harmless.
+static void releaseKeys(double t){
+    memset(&gKeysDown,0,sizeof gKeysDown); memset(&gKeysChord,0,sizeof gKeysChord);
+    memset(gPressedUsage,0,sizeof gPressedUsage);
+    // Keys held behind a pending paste are dropped with the rest: focus went elsewhere, or the mirror closes.
+    [gHeldKeys removeAllObjects]; memset(gHeldKeyDown,0,sizeof gHeldKeyDown);
+    if(gKeysDirty){ gKeysDirty=NO; gKeysResync=YES; gKeysFlush=YES; }
+    commitKeys(t);
+}
+// Device-dependent modifier bits (IOKit NX_DEVICE*KEYMASK), carried in NSEvent.modifierFlags next
+// to the device-independent ones: they tell left and right apart.
+enum { DeviceLeftControl=0x1, DeviceLeftShift=0x2, DeviceRightShift=0x4, DeviceLeftCommand=0x8,
+       DeviceRightCommand=0x10, DeviceLeftOption=0x20, DeviceRightOption=0x40, DeviceRightControl=0x2000 };
+// The eight modifier usages (Left/Right Control 0xE0/0xE4, Shift 0xE1/0xE5, Option 0xE2/0xE6,
+// Command 0xE3/0xE7) recomputed from the event's flags rather than toggled per flagsChanged, so a
+// modifier pressed before the window became key, or released while it was not key, cannot stick.
+static void syncModifiers(NSEvent *event){
+    static const struct { NSEventModifierFlags flag; NSUInteger left,right; unsigned short rightKey; unsigned bit; } classes[]={
+        {NSEventModifierFlagControl,DeviceLeftControl,DeviceRightControl,kVK_RightControl,0},
+        {NSEventModifierFlagShift,DeviceLeftShift,DeviceRightShift,kVK_RightShift,1},
+        {NSEventModifierFlagOption,DeviceLeftOption,DeviceRightOption,kVK_RightOption,2},
+        {NSEventModifierFlagCommand,DeviceLeftCommand,DeviceRightCommand,0x36 /* kVK_RightCommand */,3},
+    };
+    NSUInteger flags=event.modifierFlags;
+    uint32_t mods=gKeysDown.w[7];
+    for(unsigned i=0;i<sizeof classes/sizeof classes[0];i++){
+        uint32_t left=1u<<classes[i].bit,right=left<<4; // 0xE0+bit and 0xE4+bit
+        BOOL leftDown=NO,rightDown=NO; // class flag clear: both sides up
+        if(flags&classes[i].flag){
+            if(flags&(classes[i].left|classes[i].right)){
+                leftDown=(flags&classes[i].left)!=0; rightDown=(flags&classes[i].right)!=0;
+            }else{
+                // No side information (e.g. a virtual keyboard): keep a side already down,
+                // otherwise the side of the key that changed, defaulting to left.
+                leftDown=(mods&left)!=0; rightDown=(mods&right)!=0;
+                if(!leftDown && !rightDown){
+                    if(event.type==NSEventTypeFlagsChanged && event.keyCode==classes[i].rightKey) rightDown=YES;
+                    else leftDown=YES;
+                }
+            }
+        }
+        mods=(mods&~(left|right))|(leftDown?left:0)|(rightDown?right:0);
+    }
+    gKeysDown.w[7]=mods;
+}
+// Presses `usages` on top of the physical state, releasing them ChordHoldSeconds later: a tap, not a
+// hold. Used for every Command combination forwarded to the iPhone (AppKit delivers no key-up for a
+// key released while Command is down, so holding it until key-up could leave it stuck) and for the
+// synthesized chords (Spotlight, paste, Caps Lock).
+static const double ChordHoldSeconds=.05;
+// `after` (optional) runs on the main thread once the chord's release is queued -- or right away when
+// the keyboard is not usable and no chord goes out -- so input queued by it follows the whole chord.
+// Held keys resume after a chord's release too: replayed at once, they would otherwise be pressed
+// together with the chord (a replayed Cmd-3 followed by letters would send Command-letters).
+static void keyboardChordThen(const uint32_t *usages,unsigned count,dispatch_block_t after){
+    if(!keyboardUsable()){ if(after) after(); return; }
+    UsageSet added={{0}};
+    for(unsigned i=0;i<count;i++) usageSetAdd(&added,usages[i]);
+    for(unsigned i=0;i<8;i++) gKeysChord.w[i]|=added.w[i];
+    commitKeys(nowSec());
+    gChordsInFlight++;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(ChordHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        for(unsigned i=0;i<8;i++) gKeysChord.w[i]&=~added.w[i];
+        commitKeys(nowSec());
+        gChordsInFlight--;
+        if(after) after();
+        replayHeldKeys(); // nothing to do unless keys are held
+    });
+}
+static void keyboardChord(const uint32_t *usages,unsigned count){ keyboardChordThen(usages,count,nil); }
+static void commandChord(uint32_t usage){ uint32_t chord[2]={0xE3,usage}; keyboardChord(chord,2); }
+// keyDown: without Command. Key repeat is ignored: the iPhone repeats a held key by itself.
+static void keyboardKeyDown(NSEvent *event){
+    if(!keyboardUsable() || event.isARepeat) return;
+    uint32_t usage=hidUsageForEvent(event);
+    if(!usage){ noteUnmappedKey(event.keyCode); return; }
+    noteKeyboardInUse(event);
+    syncModifiers(event);
+    if(event.keyCode<sizeof gPressedUsage) gPressedUsage[event.keyCode]=(uint8_t)usage;
+    usageSetAdd(&gKeysDown,usage);
+    commitKeys(nowSec());
+}
+// Idempotent, and deliberately not gated on keyboardUsable(): a release must always go out. It is
+// reached from both keyUp: and a local key-up monitor (see createWindow). The usage recorded at
+// key-down is released, so the release always matches the press.
+static void keyboardKeyUp(NSEvent *event){
+    unsigned short code=event.keyCode;
+    uint32_t usage=code<sizeof gPressedUsage && gPressedUsage[code]?gPressedUsage[code]:hidUsageForEvent(event);
+    if(code<sizeof gPressedUsage) gPressedUsage[code]=0;
+    if(!usageSetHas(gKeysDown,usage)) return;
+    usageSetRemove(&gKeysDown,usage);
+    commitKeys(nowSec());
+}
+static void keyboardFlagsChanged(NSEvent *event){
+    if(!keyboardUsable()) return;
+    unsigned short code=event.keyCode;
+    if(code==kVK_Function) return; // Fn/Globe stays on the Mac
+    // macOS reports Caps Lock as a toggle (one event per press), so the iPhone gets one press+release
+    // per toggle and keeps its own Caps Lock state.
+    if(code==kVK_CapsLock){ uint32_t caps=0x39; keyboardChord(&caps,1); return; }
+    syncModifiers(event);
+    commitKeys(nowSec());
+}
+
+// ---- Keys typed while a Cmd-V is pending (main thread) ---------------------------------------------
+//
+// pasteFromMac sends the iPhone's Cmd-V only once devicectl has put the Mac's text on the iPhone, a
+// separate process that takes a second or more. Keys sent meanwhile would reach the iPhone BEFORE the
+// pasted text: paste a URL and press Return, and Safari would navigate first; in a chat the message
+// would go out empty. So while a paste is pending -- and after it, until everything held has been
+// replayed -- key events are held in arrival order and replayed after the paste chord (replayHeldKeys).
+// What is not held, because it cannot reorder anything typed: the key-up of a key pressed before the
+// paste (so it does not autorepeat on the iPhone meanwhile), and a modifier change that only releases
+// modifiers while nothing is held yet (Command let go after Cmd-V: the chord carries its own Command).
+// Cmd-Q/W/M/H are never held (handleCommandKey).
+static BOOL holdingKeys(void){ return gPastesPending || gHeldKeys.count; }
+static void holdKey(NSEvent *event){
+    if(!gHeldKeys) gHeldKeys=[NSMutableArray array];
+    // keyboardKeyUpEvent sees each key-up twice (the local monitor, then keyUp:): hold it once.
+    if([gHeldKeys indexOfObjectIdenticalTo:event]!=NSNotFound) return;
+    [gHeldKeys addObject:event];
+    if(event.type==NSEventTypeKeyDown && event.keyCode<128) gHeldKeyDown[event.keyCode>>5]|=1u<<(event.keyCode&31);
+}
+static BOOL keyDownHeld(unsigned short code){ return code<128 && (gHeldKeyDown[code>>5]&(1u<<(code&31))); }
+// MirrorView keyDown: without Command.
+static void keyboardKeyDownEvent(NSEvent *event){
+    if(holdingKeys()){ if(!event.isARepeat) holdKey(event); return; } // a repeat is ignored anyway
+    keyboardKeyDown(event);
+}
+// keyUp: and the local key-up monitor.
+static void keyboardKeyUpEvent(NSEvent *event){
+    if(holdingKeys() && keyDownHeld(event.keyCode)){ holdKey(event); return; }
+    keyboardKeyUp(event);
+}
+// flagsChanged:.
+static void keyboardFlagsChangedEvent(NSEvent *event){
+    if(holdingKeys()){
+        BOOL releaseOnly=NO;
+        if(!gHeldKeys.count && event.keyCode!=kVK_CapsLock){
+            uint32_t before=gKeysDown.w[7];
+            syncModifiers(event);                          // dry run: what this event would leave pressed
+            releaseOnly=!(gKeysDown.w[7]&~before);
+            gKeysDown.w[7]=before;
+        }
+        if(!releaseOnly){ holdKey(event); return; }
+    }
+    keyboardFlagsChanged(event);
+}
+
+static void releaseMouse(double submitted){
+    if(!gMousePressed) return;
+    gMousePressed=NO;
+    submit(Up,gGesture,gMouseGeneration,gMouseX,gMouseY,submitted);
+}
+static void requestClose(NSString *reason){
+    if(gClosing) return;
+    releaseMouse(nowSec()); releaseScroll(nowSec()); releaseKeys(nowSec());
+    gReady=NO; gClosing=YES;
+    // First failure keeps its precise reason; successful close records its event.
+    pthread_mutex_lock(&gLock);
+    if(!gReason) gReason=reason;
+    pthread_mutex_unlock(&gLock);
+    armWatchdog(gWatchdog,10);
+}
+// The user closed the mirror: window close button, Cmd-W, Cmd-Q, the app menu's or the Dock's Quit,
+// or a logout/restart/shutdown (see applicationShouldTerminate:).
+// Exit 0 is latched only for a healthy session; a close after a failure keeps that failure's code.
+static void userClose(NSString *reason){
+    if(!gClosing && !atomic_load(&gFailure)) atomic_store(&gUserClosed,true);
+    requestClose(reason);
+}
+
+// Before the first frame use a screen-fitting placeholder; afterwards lock to
+// presentation dimensions. Reapply on format/screen changes, never per frame.
+static void fitWindow(CGSize ratio,BOOL lockAspect){
+    NSScreen *screen=gWindow.screen ?: NSScreen.mainScreen;
+    if(!screen) return;
+    NSRect visible=screen.visibleFrame;
+    NSSize available=[gWindow contentRectForFrameRect:visible].size;
+    double height=MIN(gWindow.contentView.bounds.size.height,available.height);
+    height=MIN(height,available.width*ratio.height/ratio.width);
+    if(height<=0) return;
+    NSSize content=NSMakeSize(height*ratio.width/ratio.height,height);
+    if(lockAspect) gWindow.contentAspectRatio=ratio;
+    [gWindow setContentSize:content];
+    NSRect frame=gWindow.frame;
+    frame.origin.x=MAX(NSMinX(visible),MIN(frame.origin.x,NSMaxX(visible)-frame.size.width));
+    frame.origin.y=MAX(NSMinY(visible),MIN(frame.origin.y,NSMaxY(visible)-frame.size.height));
+    [gWindow setFrame:frame display:YES];
+    [gWindow.contentView setNeedsLayout:YES];
+    [gWindow.contentView layoutSubtreeIfNeeded];
+}
+
+// Local shortcuts retain the existing aspect-ratio policy; only the requested size changes.
+static void resizeMirror(BOOL actualSize){
+    if(gVideoSize.width<=0 || gVideoSize.height<=0){ LOGE("resize: no video frame yet"); return; }
+    NSScreen *screen=gWindow.screen ?: NSScreen.mainScreen;
+    if(!screen) return;
+    NSRect visible=screen.visibleFrame;
+    NSSize available=[gWindow contentRectForFrameRect:visible].size;
+    double scale=MIN(available.width/gVideoSize.width,available.height/gVideoSize.height);
+    if(scale<=0) return;
+    if(actualSize){
+        double oneToOne=1.0/gWindow.backingScaleFactor;
+        if(oneToOne<=scale) scale=oneToOne;
+        else LOGE("Actual Size exceeds the visible screen; using Zoom to Fit.");
+    }
+    [gWindow setContentSize:NSMakeSize(gVideoSize.width*scale,gVideoSize.height*scale)];
+    fitWindow(gVideoSize,YES);
+}
+
+static void saveScreenshot(void){
+    if(atomic_exchange(&gScreenshotBusy,true)){ LOGE("screenshot: save already in progress; ignored"); return; }
+    pthread_mutex_lock(&gLock);
+    CVPixelBufferRef frame=gScreenshotFrame?CVPixelBufferRetain(gScreenshotFrame):NULL;
+    CGRect crop=gCrop.rect; // retain image and matching geometry in the same critical section
+    pthread_mutex_unlock(&gLock);
+    if(!frame){ atomic_store(&gScreenshotBusy,false); LOGE("screenshot: no video frame yet"); return; }
+    if(!gScreenshotGroup) gScreenshotGroup=dispatch_group_create();
+    dispatch_group_async(gScreenshotGroup,dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{ @autoreleasepool {
+        @try {
+            CIImage *image=[CIImage imageWithCVPixelBuffer:frame];
+            CIContext *context=[CIContext contextWithOptions:nil];
+            // Core Image uses a bottom-left origin; this conversion only affects
+            // pixel extraction, never the existing flipped-view HID mapping.
+            CGRect region=CGRectMake(image.extent.origin.x+crop.origin.x,
+                CGRectGetMaxY(image.extent)-CGRectGetMaxY(crop),crop.size.width,crop.size.height);
+            CGImageRef rendered=[context createCGImage:image fromRect:region];
+            NSBitmapImageRep *bitmap=rendered?[[NSBitmapImageRep alloc] initWithCGImage:rendered]:nil;
+            if(rendered) CGImageRelease(rendered);
+            NSData *png=[bitmap representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+            NSString *name=[NSString stringWithFormat:@"ipb-mirror-%@.png",NSUUID.UUID.UUIDString];
+            NSURL *directory=[[NSFileManager defaultManager] URLsForDirectory:NSPicturesDirectory inDomains:NSUserDomainMask].firstObject;
+            NSError *error=nil;
+            NSURL *destination=[directory URLByAppendingPathComponent:name];
+            if(!png || !destination) LOGE("screenshot: PNG encoding or Pictures directory lookup failed");
+            else if(![[NSFileManager defaultManager] createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:&error] ||
+                    ![png writeToURL:destination options:NSDataWritingAtomic error:&error])
+                LOGE("screenshot: save failed: %s",error.description.UTF8String);
+            else LOGE("screenshot saved: %s",destination.path.UTF8String);
+        } @catch(NSException *exception){ LOGE("screenshot failed: %s",exception.description.UTF8String); }
+        @finally { CVPixelBufferRelease(frame); atomic_store(&gScreenshotBusy,false); }
+    }});
+}
+
+// ---- Clipboard: Mac <-> iPhone through devicectl's pasteboard verbs (as `ipb clipboard`) ---------
+//
+// devicectl is run like bin/ipb and the app run it: the copy inside the CoreDevice package when it is
+// executable, otherwise through xcrun. Calls run one at a time, in order, on a private serial queue --
+// never on the main thread or the input queue. A call still running after DevicectlTimeoutSeconds is
+// terminated (killed 2 s later). The completion always runs on the main queue, with the exit status
+// (-1: did not run, or did not exit normally) and whatever stdout produced.
+#define DevicectlTimeoutSeconds 5.0
+static void runDevicectl(NSArray<NSString*> *arguments,NSData *input,void (^completion)(int status,NSData *output)){
+    static dispatch_queue_t queue;
+    if(!queue) queue=dispatch_queue_create("specchio.mirror.devicectl",DISPATCH_QUEUE_SERIAL); // main thread only
+    dispatch_async(queue,^{ @autoreleasepool {
+        int status=-1; NSData *output=nil;
+        NSString *verb=arguments.count>2?arguments[2]:@"?"; // "copy" / "paste", for diagnostics
+        @try {
+            NSString *tool=@"/Library/Developer/PrivateFrameworks/CoreDevice.framework/Resources/bin/devicectl";
+            NSTask *task=[NSTask new];
+            if([[NSFileManager defaultManager] isExecutableFileAtPath:tool]){
+                task.executableURL=[NSURL fileURLWithPath:tool]; task.arguments=arguments;
+            }else{
+                task.executableURL=[NSURL fileURLWithPath:@"/usr/bin/xcrun"];
+                task.arguments=[@[@"devicectl"] arrayByAddingObjectsFromArray:arguments];
+            }
+            // NSPipe objects, not their handles: launching closes our copy of the child's end, so
+            // the stdout read below ends at EOF when devicectl exits (NSTask documentation).
+            NSPipe *outputPipe=[NSPipe pipe],*inputPipe=input?[NSPipe pipe]:nil;
+            task.standardOutput=outputPipe;
+            task.standardError=[NSFileHandle fileHandleWithNullDevice];
+            if(inputPipe) task.standardInput=inputPipe;
+            else task.standardInput=[NSFileHandle fileHandleWithNullDevice];
+            dispatch_semaphore_t exited=dispatch_semaphore_create(0);
+            task.terminationHandler=^(NSTask *finished){ dispatch_semaphore_signal(exited); };
+            NSError *error=nil;
+            if(![task launchAndReturnError:&error])
+                LOGE("pasteboard: cannot run devicectl %s: %s",verb.UTF8String,error.description.UTF8String);
+            else {
+                dispatch_queue_t timers=dispatch_get_global_queue(QOS_CLASS_UTILITY,0);
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(DevicectlTimeoutSeconds*NSEC_PER_SEC)),timers,^{
+                    if(!task.running) return;
+                    LOGE("pasteboard: devicectl %s exceeded %.0fs; terminating it",verb.UTF8String,(double)DevicectlTimeoutSeconds);
+                    @try { [task terminate]; } @catch(NSException *ignored){}
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*NSEC_PER_SEC)),timers,^{
+                        if(task.running) kill(task.processIdentifier,SIGKILL);
+                    });
+                });
+                if(inputPipe){
+                    // Its own block: a large text must not wait for stdout to be drained. SIGPIPE is
+                    // ignored (main), so a devicectl that exits early only fails this write.
+                    NSFileHandle *writer=inputPipe.fileHandleForWriting;
+                    dispatch_async(timers,^{ [writer writeData:input error:nil]; [writer closeAndReturnError:nil]; });
+                }
+                output=[outputPipe.fileHandleForReading readDataToEndOfFileAndReturnError:nil];
+                dispatch_semaphore_wait(exited,dispatch_time(DISPATCH_TIME_NOW,(int64_t)((DevicectlTimeoutSeconds+5)*NSEC_PER_SEC)));
+                if(!task.running && task.terminationReason==NSTaskTerminationReasonExit) status=task.terminationStatus;
+            }
+        } @catch(NSException *exception){
+            LOGE("pasteboard: devicectl %s failed: %s",verb.UTF8String,exception.description.UTF8String);
+        }
+        dispatch_async(dispatch_get_main_queue(),^{ completion(status,output); });
+    }});
+}
+// Main thread only. The text last exchanged with the iPhone's pasteboard -- pushed by Cmd-V or pulled
+// by Cmd-C/X -- and the Mac pasteboard's changeCount at that moment; and the changeCount right after our
+// own last write to the Mac pasteboard.
+static NSString *gExchangedText;
+static NSInteger gExchangedChange=-1,gOwnPasteboardChange=-1;
+// Main thread only. gPullsPending: Cmd-C/X reads of the iPhone's pasteboard, counted from the key press
+// until the read has ended (Mac clipboard written or not) or PullHoldSeconds have passed (see
+// commandKeyAction); gPullChange: the Mac pasteboard's changeCount at the latest such key press.
+static unsigned gPullsPending;
+static NSInteger gPullChange=-1;
+// A paste whose devicectl has not answered after this long is given up: the held keys go out, and a
+// late answer no longer sends Cmd-V (it would paste into whatever has focus by then). devicectl itself
+// is terminated after DevicectlTimeoutSeconds and killed 2 s later, so this only bounds a call that
+// never returns at all.
+#define PasteHoldSeconds (DevicectlTimeoutSeconds+3)
+// A Cmd-C/X read stops counting as pending this long after the key press at the latest: its devicectl
+// may wait behind one earlier call, and each is terminated after DevicectlTimeoutSeconds and killed
+// 2 s later. Like PasteHoldSeconds, this only bounds a call that never returns at all.
+#define PullHoldSeconds (2*(DevicectlTimeoutSeconds+2)+1)
+// Cmd-V: put the Mac clipboard's text on the iPhone's pasteboard, then send Cmd-V to the iPhone --
+// after devicectl finishes, successful or not (on failure the iPhone pastes what it already holds).
+// Keys typed meanwhile are held and follow the paste (holdKey).
+static void pasteFromMac(uint32_t usage){
+    NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
+    NSInteger change=pasteboard.changeCount;
+    // Cmd-V soon after Cmd-C/X, before the iPhone's text has reached the Mac clipboard (the read starts
+    // about half a second after the key and devicectl takes a second or more): the Mac clipboard still
+    // holds older text, and pushing it would replace the copy just made on the iPhone -- and a cut text
+    // would end up on neither clipboard. The newest content is the iPhone's own, so it pastes that, with
+    // no push; the pending read then brings it to the Mac clipboard as usual. Unless the user copied
+    // something on the Mac after that key press (our own write does not count, as in
+    // storeDeviceClipboard): that copy is newer and is pushed as usual (the read then keeps it).
+    if(gPullsPending && (change==gPullChange || change==gOwnPasteboardChange)){
+        LOGE("pasteboard: Cmd-V before the iPhone's Cmd-C/X reached the Mac clipboard; the iPhone pastes its own clipboard");
+        commandChord(usage); return;
+    }
+    NSString *text=[pasteboard stringForType:NSPasteboardTypeString];
+    NSData *data=[text dataUsingEncoding:NSUTF8StringEncoding];
+    if(!data.length || !gDeviceUUID){ commandChord(usage); return; }
+    NSUInteger characters=text.length;
+    gPastesPending++;
+    __block BOOL settled=NO; // main thread: the answer or the time limit, whichever comes first
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(PasteHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        if(settled) return;
+        settled=YES;
+        LOGE("pasteboard: devicectl copy gave no answer within %.0fs; Cmd-V not sent, held keys released",(double)PasteHoldSeconds);
+        gPastesPending--; replayHeldKeys();
+    });
+    runDevicectl(@[@"device",@"pasteboard",@"copy",@"--device",gDeviceUUID],data,^(int status,NSData *output){
+        if(settled){ LOGE("pasteboard: devicectl copy answered after the paste was given up (exit %d); not pasting",status); return; }
+        settled=YES;
+        if(status) LOGE("pasteboard: devicectl copy exited %d; pasting the iPhone's own clipboard",status);
+        else {
+            LOGE("pasteboard: %lu characters from the Mac clipboard copied to the iPhone",(unsigned long)characters);
+            gExchangedText=text; gExchangedChange=change;
+        }
+        // Command is sent explicitly: the user may have released it by now. The held keys follow the
+        // chord's release, so none of them is combined with Command-V.
+        uint32_t chord[2]={0xE3,usage};
+        keyboardChordThen(chord,2,^{ gPastesPending--; replayHeldKeys(); });
+    });
+}
+// The answer of devicectl's pasteboard paste after Cmd-C / Cmd-X: put the text on the Mac clipboard.
+// `change` is the Mac pasteboard's changeCount when the user pressed Cmd-C/X.
+static void storeDeviceClipboard(int status,NSData *output,NSInteger change){
+    NSString *text=!status && output.length?[[NSString alloc] initWithData:output encoding:NSUTF8StringEncoding]:nil;
+    if([text hasSuffix:@"\n"]) text=[text substringToIndex:text.length-1]; // devicectl's own newline
+    if(!text.length){
+        LOGE("pasteboard: devicectl paste exited %d with %lu bytes of text; Mac clipboard unchanged",
+             status,(unsigned long)output.length);
+        return;
+    }
+    NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
+    NSInteger now=pasteboard.changeCount;
+    // The user copied something on the Mac after pressing Cmd-C here: that copy is newer. Our own
+    // write since then does not count (two quick Cmd-Cs).
+    if(now!=change && now!=gOwnPasteboardChange){
+        LOGE("pasteboard: the Mac clipboard changed after Cmd-C; the iPhone's text was not copied");
+        return;
+    }
+    // Cmd-C that copied nothing (no selection, or an app without a hardware Cmd-C) leaves the
+    // iPhone's old clipboard in place. If that is exactly the text last exchanged with the Mac, and
+    // the Mac clipboard has changed since, it would replace a newer Mac copy with old text: keep the
+    // Mac clipboard. Identical text copied again on purpose cannot be told apart, so a second Cmd-C
+    // (with no Mac copy in between) copies it anyway.
+    if(gExchangedText && [text isEqualToString:gExchangedText] && now!=gExchangedChange){
+        gExchangedChange=now;
+        LOGE("pasteboard: the iPhone's clipboard still holds the text last exchanged with the Mac, and the Mac clipboard changed since; Mac clipboard kept (Cmd-C again copies it)");
+        return;
+    }
+    if([[pasteboard stringForType:NSPasteboardTypeString] isEqualToString:text]){
+        gExchangedText=text; gExchangedChange=now;
+        LOGE("pasteboard: the Mac clipboard already holds the iPhone's text");
+        return;
+    }
+    [pasteboard clearContents];
+    if([pasteboard setString:text forType:NSPasteboardTypeString]){
+        gOwnPasteboardChange=pasteboard.changeCount;
+        gExchangedText=text; gExchangedChange=gOwnPasteboardChange;
+        LOGE("pasteboard: %lu characters from the iPhone copied to the Mac clipboard",(unsigned long)text.length);
+    }else LOGE("pasteboard: writing the Mac clipboard failed");
+}
+// After Cmd-C / Cmd-X on the iPhone: read its pasteboard and put the text on the Mac clipboard.
+// `finished` (main thread, idempotent) ends the read's gPullsPending count; it runs on every outcome.
+static void pullDeviceClipboard(NSInteger change,dispatch_block_t finished){
+    if(gClosing || !gDeviceUUID){ finished(); return; }
+    runDevicectl(@[@"device",@"pasteboard",@"paste",@"--device",gDeviceUUID],nil,^(int status,NSData *output){
+        storeDeviceClipboard(status,output,change);
+        finished();
+    });
+}
+
+// A key-down with Command other than Cmd-Q/W/M/H (handleCommandKey, or replayHeldKeys after a paste).
+static void commandKeyAction(NSEvent *event){
+    NSEventModifierFlags flags=event.modifierFlags &
+        (NSEventModifierFlagCommand|NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption);
+    NSString *key=event.charactersIgnoringModifiers.lowercaseString;
+    unichar c=key.length==1?[key characterAtIndex:0]:0;
+    unsigned short code=event.keyCode;
+    NSEventModifierFlags command=NSEventModifierFlagCommand,shiftCommand=command|NSEventModifierFlagShift;
+    Kind kind=KeyHome;
+    enum { DeviceKey, Screenshot, ZoomToFit, ActualSize, Spotlight, PasteFromMac, CopyToMac, Forward } action=Forward;
+    // Device Hub bindings captured in the M4 brief (Xcode 27 beta 6).
+    if(flags==shiftCommand && c=='h'){ action=DeviceKey; kind=KeyHome; }
+    else if(flags==(shiftCommand|NSEventModifierFlagControl) && c=='h'){ action=DeviceKey; kind=KeyRecents; }
+    else if(flags==command && c==NSUpArrowFunctionKey){ action=DeviceKey; kind=KeyVolumeUp; }
+    else if(flags==command && c==NSDownArrowFunctionKey){ action=DeviceKey; kind=KeyVolumeDown; }
+    // Device Hub uses Cmd-L to lock. Its own Cmd-L never reaches UniversalHID
+    // (only the Command modifier does; see docs/protocol.md), so this sends the
+    // Consumer Power usage ipb established instead.
+    //
+    // Held 0.4 s, unlike the other shortcuts: the side button's duration gate is 0.29 s and a
+    // 0.08 s press does nothing at all. 0.7 s once opened Siri.
+    //
+    // Why the same nominal hold behaves differently through `ipb lock` (0.7 s,
+    // which never reached Siri in a CLI sweep) is NOT established. An earlier
+    // guess here blamed the CLI tearing its connection down early; that is wrong
+    // -- HIDCTL_WAIT_MS keeps it alive 700 ms after the sequence (bin/ipb:30,
+    // read at action_sender.m:1675). Treat hold values as path-specific and
+    // measured, not as transferable between the two.
+    else if(flags==command && c=='l'){ action=DeviceKey; kind=KeyLock; }
+    // Apple's iPhone Mirroring bindings: Cmd-1 Home, Cmd-2 App Switcher, Cmd-3 Spotlight (the iPhone's
+    // own Cmd-Space). Digits match by key position: the number row is the same on every layout.
+    else if(flags==command && code==kVK_ANSI_1){ action=DeviceKey; kind=KeyHome; }
+    else if(flags==command && code==kVK_ANSI_2){ action=DeviceKey; kind=KeyRecents; }
+    else if(flags==command && code==kVK_ANSI_3) action=Spotlight;
+    else if(flags==shiftCommand && c=='s') action=Screenshot;
+    else if(flags==command && code==kVK_ANSI_0) action=ZoomToFit;
+    // Actual Size moved from Cmd-1 (now Home) to Option-Cmd-0.
+    else if(flags==(command|NSEventModifierFlagOption) && code==kVK_ANSI_0) action=ActualSize;
+    else if(flags==command && c=='v') action=PasteFromMac;
+    else if(flags==command && (c=='c' || c=='x')) action=CopyToMac;
+    double t=nowSec();
+    if(event.isARepeat || !gReady || gClosing || atomic_load(&gFailure)) return;
+    if(action==DeviceKey || action==Screenshot || action==ZoomToFit || action==ActualSize){
+        // Main producer clears pressed immediately: subsequent drag/up cannot revive
+        // the old gesture. FIFO worker completes this UP + barrier before the key.
+        releaseMouse(t); releaseScroll(t);
+        if(action==DeviceKey) submit(kind,0,atomic_load(&gGeneration),0,0,t);
+        else if(!gLocalShortcutPending){
+            gLocalShortcutPending=YES;
+            uint64_t generation=atomic_load(&gGeneration);
+            // The group includes the drain and all key continuations, hence the UP
+            // barrier completes before any local action. One notification at most.
+            dispatch_group_notify(gInputGroup,dispatch_get_main_queue(),^{
+                gLocalShortcutPending=NO;
+                if(!gReady || gClosing || atomic_load(&gFailure) || generation!=atomic_load(&gGeneration)) return;
+                if(action==Screenshot) saveScreenshot();
+                else resizeMirror(action==ActualSize);
+            });
+        }
+        return;
+    }
+    uint32_t usage=action==Spotlight?0x2C:hidUsageForEvent(event);
+    if(!usage){ noteUnmappedKey(code); return; }
+    if(action==PasteFromMac){ pasteFromMac(usage); return; }
+    // The physically held modifiers (Command and any others) first, then the key as a tap.
+    noteKeyboardInUse(event);
+    syncModifiers(event);
+    if(action==Spotlight){ commandChord(usage); return; }
+    // Cmd-C / Cmd-X: read the iPhone's pasteboard only when the chord actually goes out, and time it
+    // from the chord's delivery, not from the key press: the chord shares the FIFO input queue and can
+    // wait there behind a shortcut, a touch-end barrier or queued scroll events. Once the input group
+    // has drained (press and release sent), the iPhone gets a moment to update its pasteboard.
+    if(action!=CopyToMac || !keyboardUsable()){ keyboardChord(&usage,1); return; }
+    NSInteger change=[NSPasteboard generalPasteboard].changeCount;
+    // The read counts as pending from this key press, so a Cmd-V before it is done does not push the
+    // older Mac text over the iPhone's new copy (pasteFromMac). The count ends exactly once: when the
+    // read has ended, or after PullHoldSeconds, whichever comes first.
+    gPullsPending++; gPullChange=change;
+    __block BOOL ended=NO;
+    dispatch_block_t finished=^{ if(ended) return; ended=YES; gPullsPending--; };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(PullHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),finished);
+    keyboardChordThen(&usage,1,^{
+        dispatch_group_notify(gInputGroup,dispatch_get_main_queue(),^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+                pullDeviceClipboard(change,finished);
+            });
+        });
+    });
+}
+
+// Every key-down with Command is decided here, exactly once: performKeyEquivalent: routes it here and
+// keyDown: does too as a fallback, and a second delivery of the same event is ignored.
+//  - Mac app/window shortcuts (Cmd-Q, Cmd-W, Cmd-M, Cmd-H) act natively and never reach the iPhone.
+//  - The mirror's own shortcuts drive device buttons, local actions or the clipboard, and every other
+//    Command combination is forwarded to the iPhone as a keyboard chord (commandKeyAction) -- held
+//    while a paste is pending, like any other key (holdKey). Closing is never delayed.
+static void handleCommandKey(NSEvent *event){
+    static NSTimeInterval lastTimestamp=-1; static unsigned short lastKeyCode=0xFFFF;
+    if(event.timestamp==lastTimestamp && event.keyCode==lastKeyCode) return;
+    lastTimestamp=event.timestamp; lastKeyCode=event.keyCode;
+    NSEventModifierFlags flags=event.modifierFlags &
+        (NSEventModifierFlagCommand|NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption);
+    NSString *key=event.charactersIgnoringModifiers.lowercaseString;
+    unichar c=key.length==1?[key characterAtIndex:0]:0;
+    if(flags==NSEventModifierFlagCommand && (c=='q' || c=='w' || c=='m' || c=='h')){
+        if(event.isARepeat) return;
+        // Through the main menu, as in any Mac app; directly if no menu item takes it.
+        if([NSApp.mainMenu performKeyEquivalent:event]) return;
+        if(c=='q') [NSApp terminate:nil];
+        else if(c=='w') [gWindow performClose:nil];
+        else if(c=='m') [gWindow performMiniaturize:nil];
+        else [NSApp hide:nil];
+        return;
+    }
+    if(holdingKeys()){ if(!event.isARepeat) holdKey(event); return; } // a repeat is ignored anyway
+    commandKeyAction(event);
+}
+
+// After the paste chord (or when a paste is given up): the held key events, in arrival order, each
+// through the path it would have taken. A replayed Cmd-V starts the next paste, and a replayed chord
+// (Command combination, Spotlight, Caps Lock) is released before the next event; the events after it
+// stay held until then (keyboardChordThen resumes the replay), so the order typed is the order the
+// iPhone sees.
+static void replayHeldKeys(void){
+    while(!gPastesPending && !gChordsInFlight && gHeldKeys.count){
+        NSEvent *event=gHeldKeys.firstObject;
+        [gHeldKeys removeObjectAtIndex:0];
+        NSEventType type=event.type;
+        if(type==NSEventTypeKeyDown){
+            if(event.keyCode<128) gHeldKeyDown[event.keyCode>>5]&=~(1u<<(event.keyCode&31));
+            if(event.modifierFlags&NSEventModifierFlagCommand) commandKeyAction(event); // not deduplicated again
+            else keyboardKeyDown(event);
+        }else if(type==NSEventTypeKeyUp) keyboardKeyUp(event);
+        else if(type==NSEventTypeFlagsChanged) keyboardFlagsChanged(event);
+    }
+    if(!gHeldKeys.count) memset(gHeldKeyDown,0,sizeof gHeldKeyDown);
+}
+
+@interface MirrorView : NSView @end
+@implementation MirrorView
+- (BOOL)isFlipped { return YES; }
+- (BOOL)acceptsFirstResponder { return YES; }
+- (void)layout {
+    [super layout];
+    [CATransaction begin]; [CATransaction setDisableActions:YES];
+    CGRect content=gVideoSize.width>0 && gVideoSize.height>0 ?
+        AVMakeRectWithAspectRatioInsideRect(gVideoSize,self.bounds):self.bounds;
+    gContentClip.frame=content;
+    if(gVideoSize.width>0 && gVideoSize.height>0){
+        CGFloat sx=content.size.width/gVideoSize.width,sy=content.size.height/gVideoSize.height;
+        gDisplay.frame=CGRectMake(-gContentRect.origin.x*sx,-gContentRect.origin.y*sy,
+                                 gFrameSize.width*sx,gFrameSize.height*sy);
+    }else gDisplay.frame=gContentClip.bounds;
+    gDisplay.contentsScale=self.window.backingScaleFactor;
+    [CATransaction commit];
+}
+- (void)viewDidChangeBackingProperties { [super viewDidChangeBackingProperties]; [self setNeedsLayout:YES]; }
+- (BOOL)mapEvent:(NSEvent*)event x:(double*)x y:(double*)y {
+    if(gVideoSize.width<=0 || gVideoSize.height<=0) return NO;
+    // Stay in the view's own (flipped, points) space. Backing conversion is NOT
+    // used on purpose: -convertPointToBacking:/-convertRectToBacking: map into the
+    // unflipped backing store, which negates y on a flipped view (measured: view
+    // y=20 near the top became backing y=-40 against a bounds origin of -1688,
+    // normalising to 0.976 instead of 0.024). The scale cancels in the ratio
+    // anyway, so working in points is both correct and Retina-independent.
+    NSRect bounds=self.bounds;
+    NSPoint point=[self convertPoint:event.locationInWindow fromView:nil];
+    NSRect content=AVMakeRectWithAspectRatioInsideRect(gVideoSize,bounds);
+    if(content.size.width<=0 || content.size.height<=0 || !NSPointInRect(point,content)){
+        pthread_mutex_lock(&gLock); gBlackBars++; pthread_mutex_unlock(&gLock); return NO;
+    }
+    *x=(point.x-content.origin.x)/content.size.width;
+    *y=(point.y-content.origin.y)/content.size.height; // flipped view: top-left is (0,0)
+    return YES;
+}
+- (BOOL)performKeyEquivalent:(NSEvent*)event {
+    // AppKit offers a key-down here before the main menu. Every Command combination is decided by
+    // handleCommandKey -- which hands Cmd-Q/W/M/H to the menu itself -- so none is also delivered to
+    // keyDown: or forwarded twice. Anything without Command continues to keyDown:.
+    if(!(event.modifierFlags&NSEventModifierFlagCommand)) return [super performKeyEquivalent:event];
+    handleCommandKey(event);
+    return YES;
+}
+// The key handlers deliberately never call super: an unhandled key would beep, and Tab/Escape would
+// drive AppKit's key-view loop and cancelOperation: instead of reaching the iPhone.
+- (void)keyDown:(NSEvent*)event {
+    if(event.modifierFlags&NSEventModifierFlagCommand) handleCommandKey(event); // fallback; deduplicated
+    else keyboardKeyDownEvent(event);
+}
+- (void)keyUp:(NSEvent*)event { keyboardKeyUpEvent(event); }
+- (void)flagsChanged:(NSEvent*)event { keyboardFlagsChangedEvent(event); }
+- (void)scrollWheel:(NSEvent*)event {
+    double t=nowSec();
+    if(!gReady || gClosing || atomic_load(&gFailure)) return;
+    Event input={.generation=atomic_load(&gGeneration),.kind=event.hasPreciseScrollingDeltas?ScrollPrecise:ScrollWheel,
+        .x=event.scrollingDeltaX,.y=event.scrollingDeltaY,.submit=t,.mode=Scroll,
+        .appPhase=event.phase,.appMomentum=event.momentumPhase};
+    double px=0,py=0;
+    input.pointerValid=[self mapEvent:event x:&px y:&py];
+    input.pointerX=px; input.pointerY=py;
+    Result result=convertScroll(event,&input.scroll);
+    if(!gScrollServiceID){ rejectScroll(input,ScrollUnavailable); return; }
+    // A gesture that opens outside the phone view has no target to scroll:
+    // mapEvent: fails in the letterboxing, and the captured oracle sends no
+    // scroll report at all while the pointer is off the view. Reject the new
+    // gesture rather than scrolling whatever the device still had. An already
+    // running gesture is left alone so its END still reaches the device --
+    // dropping every out-of-bounds event would strand the session open.
+    if(!input.pointerValid && !gScrollActive){ rejectScroll(input,ScrollOffTarget); return; }
+    // Decide at arrival, not at drain: a later mouse UP must never replay this scroll.
+    if(gMousePressed){ gScrollMomentumAllowed=NO; rejectScroll(input,InputConflict); return; }
+    if(result!=Pending){
+        if(result!=ScrollStationary) releaseScroll(t);
+        rejectScroll(input,result); return;
+    }
+    BOOL precise=event.hasPreciseScrollingDeltas,momentum=input.scroll.momentum!=0;
+    BOOL begin=input.scroll.phase==1 || input.scroll.phase==128 || input.scroll.momentum==2;
+    if(gScrollActive && (gScrollPrecise!=precise || gScrollMomentum!=momentum)){
+        releaseScroll(t); // ordered END before any new source; continuations below are rejected
+    }
+    if(!gScrollActive){
+        if((precise && !begin) || (momentum && !gScrollMomentumAllowed)){
+            rejectScroll(input,ScrollOrphan); return;
+        }
+        gScrollActive=YES; gScrollPrecise=precise; gScrollMomentum=momentum;
+        gScrollGeneration=input.generation; gScrollGesture=++gGesture;
+        input.scroll.starts=YES;
+    }
+    input.gesture=gScrollGesture; input.generation=gScrollGeneration;
+    gScrollMomentumAllowed=precise && input.scroll.phase==4;
+    if(input.scroll.ends) gScrollActive=NO;
+    submitEvent(input,Pending);
+}
+- (void)mouseDown:(NSEvent*)event {
+    double t=nowSec(),x,y; // real AppKit arrival, before conversion/submission
+    if(!gReady || gClosing || gMousePressed || atomic_load(&gFailure)) return;
+    if(![self mapEvent:event x:&x y:&y]) return;
+    releaseScroll(t);
+    gMouseMode=y>=1.0-BottomEdgeFraction?BottomEdge:Touch;
+    gMousePressed=YES; gGesture++; gMouseGeneration=atomic_load(&gGeneration);
+    gMouseX=x; gMouseY=y; submit(Down,gGesture,gMouseGeneration,x,y,t);
+}
+- (void)mouseDragged:(NSEvent*)event {
+    double t=nowSec(),x,y;
+    if(!gMousePressed || !gReady || gClosing) return;
+    if(![self mapEvent:event x:&x y:&y]) return;
+    gMouseX=x; gMouseY=y; submit(Move,gGesture,gMouseGeneration,x,y,t);
+}
+- (void)mouseUp:(NSEvent*)event {
+    double t=nowSec(),x,y;
+    if(!gMousePressed) return;
+    if([self mapEvent:event x:&x y:&y]){ gMouseX=x; gMouseY=y; }
+    // An outside UP is rejected as a position, then ends at the last valid point.
+    releaseMouse(t);
+}
+@end
+@interface MirrorDelegate : NSObject <NSWindowDelegate,NSApplicationDelegate> @end
+@implementation MirrorDelegate
+- (BOOL)windowShouldClose:(NSWindow*)window { userClose(@"window closed"); return NO; }
+- (void)windowDidChangeScreen:(NSNotification*)n {
+    if(gVideoSize.width>0 && gVideoSize.height>0) fitWindow(gVideoSize,YES);
+}
+- (void)windowDidResignKey:(NSNotification*)n { releaseMouse(nowSec()); releaseScroll(nowSec()); releaseKeys(nowSec()); }
+- (void)applicationDidResignActive:(NSNotification*)n { releaseMouse(nowSec()); releaseScroll(nowSec()); releaseKeys(nowSec()); }
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)app {
+    // A quit the user asks for (Cmd-Q, the menu, the Dock) closes like the window does: deferred to the
+    // presentation timer, then main's ordered shutdown, hence NSTerminateCancel. A system quit --
+    // logout, restart, shutdown -- is loginwindow's kAEQuitApplication carrying a kAEQuitReason
+    // (kAEReallyLogOut, kAERestart, kAEShutDown, ...). Answering that with NSTerminateCancel makes
+    // loginwindow abort the logout ("... interrupted logging out"), and this helper stays open for as
+    // long as the iPhone is connected. So a system quit runs the same bounded shutdown right here and
+    // exits (code 0: closed by the user's logout) without ever answering; loginwindow sees the app gone.
+    // A quit from the menu or Cmd-Q has no current Apple event, so its reason reads 0. Any non-zero
+    // reason takes this path: either way the result is a user close, only the timing differs.
+    NSAppleEventDescriptor *whyDesc=[[[NSAppleEventManager sharedAppleEventManager] currentAppleEvent] attributeDescriptorForKeyword:kAEQuitReason];
+    OSType why=whyDesc.typeCodeValue ?: whyDesc.enumCodeValue;
+    userClose(why?@"system logout/restart/shutdown":@"application quit");
+    if(!why) return NSTerminateCancel;
+    // shutdownMirror retries a dropped all-released keyboard state, then drains the queued releases
+    // (5 s) under its 10 s watchdog before cancelling the connections.
+    shutdownMirror();
+    int failure=atomic_load(&gFailure);
+    finish(failure,failure?@"mirror failed":@"system logout/restart/shutdown"); // _Exit, never returns
+}
+// The app launches the mirror from the background: once AppKit is running, come to the front.
+- (void)applicationDidFinishLaunching:(NSNotification*)n {
+    [NSApp activateIgnoringOtherApps:YES];
+    [gWindow makeKeyAndOrderFront:nil];
+}
+@end
+// A plain executable has no main menu. Give it the minimum, so Cmd-Q, Cmd-H, Cmd-M and Cmd-W behave as
+// in any Mac app (handleCommandKey routes them here and never forwards them to the iPhone).
+static void installMainMenu(void){
+    if(NSApp.mainMenu) return;
+    NSString *name=NSRunningApplication.currentApplication.localizedName ?: NSProcessInfo.processInfo.processName;
+    NSMenu *bar=[NSMenu new],*appMenu=[[NSMenu alloc] initWithTitle:name],*windowMenu=[[NSMenu alloc] initWithTitle:@"Finestra"];
+    [appMenu addItemWithTitle:[@"Nascondi " stringByAppendingString:name] action:@selector(hide:) keyEquivalent:@"h"];
+    [appMenu addItem:[NSMenuItem separatorItem]];
+    [appMenu addItemWithTitle:[@"Esci da " stringByAppendingString:name] action:@selector(terminate:) keyEquivalent:@"q"];
+    [windowMenu addItemWithTitle:@"Contrai" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+    [windowMenu addItemWithTitle:@"Chiudi" action:@selector(performClose:) keyEquivalent:@"w"];
+    NSMenuItem *appItem=[NSMenuItem new],*windowItem=[NSMenuItem new];
+    appItem.submenu=appMenu; windowItem.submenu=windowMenu;
+    [bar addItem:appItem]; [bar addItem:windowItem];
+    NSApp.mainMenu=bar; NSApp.windowsMenu=windowMenu;
+}
+static void createWindow(void){
+    // The helper starts as an accessory (main): it becomes a Dock app only now that the device has
+    // answered and the mirror is about to show. Still before [NSApp run], so launch finishes as Regular.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    static MirrorDelegate *delegate; delegate=[MirrorDelegate new];
+    NSApp.delegate=delegate;
+    installMainMenu();
+    gWindow=[[NSWindow alloc] initWithContentRect:NSMakeRect(0,0,420,840)
+        styleMask:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskResizable|NSWindowStyleMaskMiniaturizable
+        backing:NSBackingStoreBuffered defer:NO];
+    gWindow.releasedWhenClosed=NO; gWindow.delegate=delegate;
+    gWindow.title=gTitle;
+    // Black frame around the black phone view. The content view stays below the title bar (no
+    // full-size content view), so mapEvent:, fitWindow and the crop geometry are unchanged; the dark
+    // appearance keeps the title readable on black.
+    gWindow.titlebarAppearsTransparent=YES;
+    gWindow.backgroundColor=NSColor.blackColor;
+    gWindow.appearance=[NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    MirrorView *view=[[MirrorView alloc] initWithFrame:NSMakeRect(0,0,420,840)];
+    view.wantsLayer=YES; view.layer.backgroundColor=NSColor.blackColor.CGColor;
+    view.layer.masksToBounds=YES;
+    // Clip at the same aspect-fit rectangle mapEvent uses, including during resize.
+    gContentClip=[CALayer layer]; gContentClip.masksToBounds=YES;
+    [view.layer addSublayer:gContentClip];
+    gDisplay=[AVSampleBufferDisplayLayer layer];
+    gDisplay.videoGravity=AVLayerVideoGravityResize; // explicit raw-frame geometry owns the aspect ratio
+    [gContentClip addSublayer:gDisplay]; gWindow.contentView=view;
+    [view setNeedsLayout:YES]; [gWindow center]; fitWindow(CGSizeMake(420,840),NO); [gWindow makeKeyAndOrderFront:nil];
+    [gWindow makeFirstResponder:view]; [NSApp activateIgnoringOtherApps:YES];
+    [gWindow orderFrontRegardless]; // visible on top even if activation is refused
+    // AppKit does not deliver keyUp: for a key released while Command is down. Without this a key
+    // held before Command was pressed would stay down on the iPhone (and autorepeat) after release.
+    // keyboardKeyUp is idempotent, so the keyUp: that does arrive for other keys is harmless.
+    gKeyUpMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent*(NSEvent *event){
+        if(event.window==gWindow) keyboardKeyUpEvent(event);
+        return event;
+    }];
+}
+static void applyContentGeometry(CGSize frameSize,CGRect crop){
+    if(!CGSizeEqualToSize(gFrameSize,frameSize) || !CGRectEqualToRect(gContentRect,crop)){
+        gFrameSize=frameSize; gContentRect=crop; gVideoSize=crop.size;
+        fitWindow(gVideoSize,YES);
+    }
+}
+static void presentLatest(void){
+    // A main-run-loop timer (also in event-tracking mode) consumes one latest slot.
+    // The sink never queues main-thread blocks, even while AppKit is busy resizing.
+    if(gDisplay.status==AVQueuedSampleBufferRenderingStatusFailed){
+        fail(6,[NSString stringWithFormat:@"display layer failed: %@",gDisplay.error]); return;
+    }
+    pthread_mutex_lock(&gLock);
+    if(!gCrop.frozen && gCrop.frames && nowSec()-gCrop.started>=2) freezeContentRect(NULL);
+    pthread_mutex_unlock(&gLock);
+    if(!gDisplay.readyForMoreMediaData) return;
+    pthread_mutex_lock(&gLock);
+    CMSampleBufferRef sb=gLatest; gLatest=NULL;
+    CGSize frameSize=gCrop.size; CGRect crop=gCrop.rect;
+    pthread_mutex_unlock(&gLock);
+    if(!sb){
+        // A static stream may stop sending before the 2s deadline. Apply the
+        // frozen crop to its already displayed frame without waiting for motion.
+        if(frameSize.width>0 && CGSizeEqualToSize(gFrameSize,frameSize)) applyContentGeometry(frameSize,crop);
+        return;
+    }
+    CMSampleBufferRef copy=NULL;
+    // Make an independent sample container around the retained decoded image.
+    // CMSampleBuffer.h documents CreateCopy as shallow; constructing a new image
+    // sample gives us private sample-attachment dictionaries even if the source
+    // already has presentation keys. Pixel storage itself is never modified.
+    CMSampleTimingInfo timing;
+    OSStatus status=CMSampleBufferGetSampleTimingInfo(sb,0,&timing);
+    if(!status) status=CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault,
+        CMSampleBufferGetImageBuffer(sb),CMSampleBufferGetFormatDescription(sb),&timing,&copy);
+    if(!status){
+        CMPropagateAttachments(sb,copy);
+        CMSampleBufferSetOutputPresentationTimeStamp(copy,CMSampleBufferGetOutputPresentationTimeStamp(sb));
+        CFArrayRef source=CMSampleBufferGetSampleAttachmentsArray(sb,false);
+        CFArrayRef target=CMSampleBufferGetSampleAttachmentsArray(copy,true);
+        if(source && target && CFArrayGetCount(source) && CFArrayGetCount(target)){
+            NSDictionary *values=(__bridge NSDictionary*)CFArrayGetValueAtIndex(source,0);
+            CFMutableDictionaryRef dest=(CFMutableDictionaryRef)CFArrayGetValueAtIndex(target,0);
+            for(id key in values) CFDictionarySetValue(dest,(__bridge const void*)key,(__bridge const void*)values[key]);
+        }
+    }
+    CFRelease(sb);
+    if(status || !copy){ fail(6,[NSString stringWithFormat:@"sample copy failed: %d",(int)status]); return; }
+    if(frameSize.width<=0 || frameSize.height<=0 || CGRectIsEmpty(crop)){
+        CFRelease(copy); fail(6,@"invalid video/content dimensions"); return;
+    }
+    applyContentGeometry(frameSize,crop);
+    // Only our new sample container's dictionaries are changed (never Apple's sb).
+    CFArrayRef attachments=CMSampleBufferGetSampleAttachmentsArray(copy,true);
+    for(CFIndex i=0;attachments && i<CFArrayGetCount(attachments);i++){
+        CFMutableDictionaryRef d=(CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments,i);
+        CFDictionarySetValue(d,kCMSampleAttachmentKey_DisplayImmediately,kCFBooleanTrue);
+    }
+    [gDisplay enqueueSampleBuffer:copy]; CFRelease(copy);
+    pthread_mutex_lock(&gLock); gDisplayed++; pthread_mutex_unlock(&gLock);
+    // Contract with the app: the first frame is on screen and input is live (gReady is only set
+    // after every input socket opened and descriptor discovery succeeded). Once per process.
+    if(!gAnnouncedReady && gReady && !gClosing && !atomic_load(&gFailure)){
+        gAnnouncedReady=YES;
+        announceStatus("SPECCHIO: ready");
+    }
+}
+
+static void usage(void){
+    fprintf(stderr,"usage: specchio-mirror <coredevice-uuid> <utun> <hostIP> <deviceIP> <productType-or-empty> [--service-id ID] [--seconds S] [--title NAME] [--csv PATH]\n"
+        "Defaults: touchscreen descriptor discovery; no time limit (--seconds 0 = unlimited, any S >= 0 accepted); window title \"iPhone\" (--title is UTF-8). Summary on stderr; event CSV only with --csv PATH (overwrites PATH; summary and CSV cover the last 8192 input events). Needs a GUI login session.\n"
+        "Keyboard: while the window is key, keys go to the iPhone as a hardware keyboard (positional), except the Mac shortcuts Cmd-Q/W/M/H and the mirror's own.\n"
+        "Status lines on stderr: \"SPECCHIO: ready\" (first frame shown, input live), \"SPECCHIO: locked\" (device locked).\n"
+        "Exit: 0 closed by the user (or --seconds elapsed), 1 input/connection, 2 usage, 3 service socket/descriptor discovery, 4 tunnel, 5 negotiation, 6 media, 7 no frames for 12 s (unlimited runs: only before the first frame), 8 local I/O, 9 watchdog (setup, shutdown, --seconds S+10, or in unlimited runs a main thread stuck for 30 s), 130/143 SIGINT/SIGTERM.\n");
+}
+static int runMirror(int argc,char **argv,dispatch_source_t watchdog){
+    if(argc<6){ usage(); DIE(2,"missing arguments"); }
+    const char *dev=argv[1],*utun=argv[2],*rxip=argv[3],*txip=argv[4];
+    gProductType=argv[5];
+    double runSeconds=0; // 0 = unlimited: the mirror stays open until the user closes it
+    const char *csvPath=NULL;
+    for(int i=6;i<argc;i++){
+        if(i+1==argc){ usage(); DIE(2,"incomplete option"); }
+        const char *option=argv[i],*value=argv[++i]; char *end=NULL; errno=0;
+        if(!strcmp(option,"--service-id")){
+            gServiceID=strtoull(value,&end,0);
+            if(errno || end==value || *end || !gServiceID || value[0]=='-') DIE(2,"invalid service id");
+        }else if(!strcmp(option,"--seconds")){
+            runSeconds=strtod(value,&end);
+            if(errno || end==value || *end || !isfinite(runSeconds) || runSeconds<0) DIE(2,"seconds must be >=0 (0 = unlimited)");
+            // Beyond ~3 years the watchdog's nanosecond arithmetic would overflow: that is unlimited too.
+            if(runSeconds>1e8) runSeconds=0;
+        }else if(!strcmp(option,"--title")){
+            NSString *title=[NSString stringWithUTF8String:value];
+            if(!title) DIE(2,"title must be UTF-8");
+            if(title.length) gTitle=title; // empty keeps the default
+        }else if(!strcmp(option,"--csv")){
+            if(!*value) DIE(2,"CSV path must not be empty");
+            csvPath=value;
+        }else { usage(); DIE(2,"unknown option"); }
+    }
+    if(csvPath){
+        gCSVFD=open(csvPath,O_WRONLY|O_CREAT|O_TRUNC|O_NONBLOCK,0666);
+        if(gCSVFD<0) DIE(8,"open CSV %s: %s",csvPath,strerror(errno));
+    }
+    uuid_t deviceUUID; if(uuid_parse(dev,deviceUUID)) DIE(2,"invalid CoreDevice UUID");
+    gDeviceUUID=[NSString stringWithUTF8String:dev]; // devicectl --device, for the clipboard
+    if(!dlopen("/Library/Developer/PrivateFrameworks/CoreDevice.framework/Versions/A/CoreDevice",RTLD_NOW)) DIE(2,"CoreDevice dlopen: %s",dlerror());
+    if(!dlopen("/System/Library/PrivateFrameworks/AVConference.framework/Versions/A/AVConference",RTLD_NOW)) DIE(2,"AVConference dlopen: %s",dlerror());
+    _coredevice_xpc_add_bundle([NSBundle bundleWithPath:@"/Library/Developer/PrivateFrameworks/CoreDevice.framework"]);
+    _coredevice_xpc_init_services();
+
+    NSString *sessID = [[NSUUID UUID] UUIDString];
+    Class N = objc_getClass("AVCMediaStreamNegotiator"); if(!N) DIE(2,"no AVCMediaStreamNegotiator");
+    NSError *e=nil;
+    id neg=[[N alloc] initWithMode:5 options:@{} error:&e];   // 5 = CoreDeviceScreenSharing
+    if(!neg) DIE(2,"negotiator init: %s",e.description.UTF8String);
+    if(![neg createOffer]) DIE(2,"createOffer failed");
+    NSData *offer=[neg offer]; if(!offer.length) DIE(2,"empty offer");
+
+    dispatch_queue_t q=dispatch_queue_create("ipb.video.cds",0);
+    xpc_connection_t c=xpc_connection_create("com.apple.CoreDevice.CoreDeviceService",q);
+    xpc_connection_set_event_handler(c,^(xpc_object_t x){});
+    xpc_connection_resume(c);
+    xpc_object_t in0=xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(in0,"featureIdentifier","com.apple.coredevice.feature.startmediastream");
+    xpc_object_t rep=xpc_connection_send_message_with_reply_sync(c,action_env("com.apple.coredevice.action.createservicesocket",dev,in0));
+    xpc_object_t out=rep && xpc_get_type(rep)==XPC_TYPE_DICTIONARY ? xpc_dictionary_get_dictionary(rep,"CoreDevice.output") : NULL;
+    if(!out){
+        // Log the device's own error (a locked device answers RemotePairing 1016 / unlockRequired).
+        char *description=rep?xpc_copy_description(rep):NULL;
+        LOGE("media service socket refused: %s",description?description:"null reply");
+        noteDeviceError(description);
+        fail(3,[NSString stringWithFormat:@"createservicesocket: no output (device/service unavailable): %s",description?description:"null reply"]);
+        free(description); return 3;
+    }
+    int sfd=xpc_dictionary_dup_fd(out,"fileDescriptor");
+    uint64_t flags=xpc_dictionary_get_uint64(out,"remoteXPCVersionFlags");
+    if(sfd<0) DIE(3,"no service fd");
+    xrc_t rc=xpc_remote_connection_create_with_connected_fd(sfd,dispatch_queue_create("ipb.video.rc",0),flags,0);
+    gMediaService=c; gMediaRemote=rc; gMediaFD=sfd;
+    if(!rc) DIE(3,"media RemoteXPC create failed");
+    xpc_remote_connection_set_event_handler(rc,^(xpc_object_t ev){
+        if(ev && xpc_get_type(ev)==XPC_TYPE_ERROR){
+            const char *desc=xpc_dictionary_get_string(ev,XPC_ERROR_KEY_DESCRIPTION);
+            noteDeviceError(desc);
+            mediaError([NSString stringWithFormat:@"media RemoteXPC: %s",desc?desc:"unknown"]);
+        }
+    });
+    xpc_remote_connection_activate(rc);
+
+    int rtp=socket(AF_INET6,SOCK_DGRAM,0); gRTP=rtp; if(rtp<0) DIE(3,"socket: %s",strerror(errno));
+    int one=1; setsockopt(rtp,SOL_SOCKET,SO_REUSEADDR,&one,sizeof one); setsockopt(rtp,SOL_SOCKET,SO_REUSEPORT,&one,sizeof one);
+    struct sockaddr_in6 la; memset(&la,0,sizeof la); la.sin6_len=sizeof la; la.sin6_family=AF_INET6;
+    if(inet_pton(AF_INET6,rxip,&la.sin6_addr)!=1) DIE(2,"bad host IP %s",rxip);
+    la.sin6_scope_id=if_nametoindex(utun); if(!la.sin6_scope_id) DIE(4,"no tunnel interface %s (is the device connected?)",utun);
+    if(bind(rtp,(struct sockaddr*)&la,sizeof la)!=0) DIE(4,"bind [%s%%%s]: %s",rxip,utun,strerror(errno));
+    socklen_t sl=sizeof la; if(getsockname(rtp,(struct sockaddr*)&la,&sl)!=0) DIE(3,"getsockname: %s",strerror(errno));
+    uint16_t rxport=ntohs(la.sin6_port); if(!rxport) DIE(3,"no bound port");
+
+    xpc_object_t in=xpc_dictionary_create_empty();
+    xpc_dictionary_set_string(in,"receiverIP",rxip); xpc_dictionary_set_uint64(in,"receiverPort",rxport);
+    xpc_dictionary_set_string(in,"senderIP",txip); xpc_dictionary_set_uint64(in,"senderPort",51000);
+    xpc_dictionary_set_uint64(in,"timeout",30);
+    xpc_dictionary_set_string(in,"type","video"); xpc_dictionary_set_string(in,"direction","output");
+    xpc_dictionary_set_data(in,"negotiatorOffer",offer.bytes,offer.length);
+    xpc_dictionary_set_uint64(in,"clientSupportedFeatures",972);
+    xpc_object_t opts=xpc_dictionary_create_empty();
+    uuid_t sessUU; uuid_parse(sessID.UTF8String, sessUU);
+    xpc_object_t cvUUID=xpc_dictionary_create_empty(); xpc_dictionary_set_uuid(cvUUID,"uuid",sessUU);
+    xpc_dictionary_set_value(opts,"avcMediaStreamOptionClientSessionID",cvUUID);
+    xpc_dictionary_set_value(in,"options",opts);
+
+    xpc_object_t srep=xpc_remote_connection_send_message_with_reply_sync(rc,action_env("com.apple.coredevice.action.mediastreamstart",dev,in));
+    if(!srep || xpc_get_type(srep)!=XPC_TYPE_DICTIONARY) DIE(5,"mediastreamstart: null/error reply");
+    xpc_object_t serr=xpc_dictionary_get_dictionary(srep,"CoreDevice.error");
+    if(serr){ int64_t code=xpc_dictionary_get_int64(serr,"code"); const char*dom=xpc_dictionary_get_string(serr,"domain");
+              char *description=xpc_copy_description(serr);
+              LOGE("device rejected mediastreamstart: %s",description?description:"?");
+              noteDeviceError(description); free(description);
+              DIE(5,"device rejected mediastreamstart: %s %lld",dom?dom:"?",(long long)code); }
+    xpc_object_t so=xpc_dictionary_get_dictionary(srep,"CoreDevice.output");
+    if(!so) DIE(5,"mediastreamstart: no output");
+    size_t alen=0; const void*ans=xpc_dictionary_get_data(so,"negotiatorAnswer",&alen);
+    if(!ans) ans=xpc_dictionary_get_data(so,"answer",&alen);
+    if(!ans) DIE(5,"no negotiator answer from device");
+    NSError *ae=nil;
+    if(![neg setAnswer:[NSData dataWithBytes:ans length:alen] withError:&ae]) DIE(5,"setAnswer: %s",ae?ae.description.UTF8String:"?");
+    id cfg=[neg generateMediaStreamConfigurationWithError:&ae]; if(!cfg) DIE(5,"generateConfiguration: %s",ae?ae.description.UTF8String:"?");
+    id initOpts=[neg generateMediaStreamInitOptionsWithError:&ae]; if(!initOpts) DIE(5,"generateInitOptions: %s",ae?ae.description.UTF8String:"?");
+
+    // learn the device's RTP source (MSG_PEEK, do not consume) and connect the socket to it
+    struct timeval ptv={8,0}; setsockopt(rtp,SOL_SOCKET,SO_RCVTIMEO,&ptv,sizeof ptv);
+    uint8_t pk[4]; struct sockaddr_in6 peer; socklen_t pl=sizeof peer;
+    ssize_t pn=recvfrom(rtp,pk,sizeof pk,MSG_PEEK,(struct sockaddr*)&peer,&pl);
+    if(pn<=0) DIE(6,"no RTP from device within 8s (peek: %s)",strerror(errno));
+    if(connect(rtp,(struct sockaddr*)&peer,sizeof peer)!=0) DIE(6,"connect to RTP peer: %s",strerror(errno));
+
+    NSMutableDictionary *o2=[NSMutableDictionary dictionary];
+    if([initOpts isKindOfClass:[NSDictionary class]]) [o2 addEntriesFromDictionary:initOpts];
+    o2[@"avcMediaStreamOptionRunInProcess"]=@(YES);   // default: decode in-process (no entitlement)
+    o2[@"avcMediaStreamOptionClientName"]=@"CoreDeviceScreenSharing";
+    o2[@"avcMediaStreamOptionClientSessionID"]=[[NSUUID alloc] initWithUUIDString:sessID];
+
+    xpc_object_t socks=xpc_dictionary_create_empty();
+    xpc_dictionary_set_fd(socks,"avcKeySharedSocket",rtp);
+    gDelegateQueue=dispatch_queue_create("ipb.mirror.media.delegate",DISPATCH_QUEUE_SERIAL);
+    gNewestPTS=kCMTimeInvalid;
+    installInProcessSink(); // original VCImageQueue/VCStreamOutput path, GUI session required
+    Class VS=objc_getClass("AVCVideoStream"); if(!VS) DIE(6,"no AVCVideoStream class");
+    NSError *se=nil;
+    AVCVideoStream *vs=[[VS alloc] initWithNetworkSockets:(id)socks options:o2 error:&se];
+    if(!vs) DIE(6,"AVCVideoStream init: %s",se?se.description.UTF8String:"?");
+    FrameSink *sink=[FrameSink new];
+    [vs setDelegate:sink];
+    NSError *ce=nil; if(![vs configure:cfg error:&ce]) DIE(6,"configure: %s",ce?ce.description.UTF8String:"?");
+    gStream=vs;
+    [vs start];
+
+    gInputQueue=dispatch_queue_create("ipb.mirror.input",DISPATCH_QUEUE_SERIAL);
+    gInputGroup=dispatch_group_create();
+    dispatch_group_async(gInputGroup,gInputQueue,^{
+        if(openInput(dev,"com.apple.coredevice.feature.remote.universalhidservice",&gInput,&gInputFD)) return;
+        discoverService(); // scroll ID is discovered even with --service-id
+        if(atomic_load(&gFailure)) return;
+        if(openInput(dev,"com.apple.coredevice.feature.remote.hid.button",&gButton,&gButtonFD)) return;
+        if(atomic_load(&gFailure)) return;
+        openInput(dev,"com.apple.coredevice.feature.remote.hid.digitizer",&gDigitizer,&gDigitizerFD);
+    });
+    double inputDeadline=nowSec()+15;
+    while(dispatch_group_wait(gInputGroup,DISPATCH_TIME_NOW)!=0 && !atomic_load(&gFailure) && nowSec()<inputDeadline)
+        pumpUntil(nowSec()+.005);
+    if(dispatch_group_wait(gInputGroup,DISPATCH_TIME_NOW)) fail(9,@"input setup/discovery exceeded 15s");
+    if(atomic_load(&gFailure)) return atomic_load(&gFailure);
+    pthread_mutex_lock(&gLock); gCollect=YES; gLastFrame=nowSec(); pthread_mutex_unlock(&gLock);
+    createWindow(); gReady=YES;
+    // M4 brief: AX menu capture, Device Hub in Xcode 27 beta 6, iPhone 13 Pro.
+    // hardwareGestureControls.actionButton / .sideButton use ConditionalKeyboardShortcut;
+    // neither menu item appears with the 13 Pro. Revisit on corresponding hardware.
+    LOGE("Shortcuts: ⌘1 or ⇧⌘H=Home, ⌘2 or ⌃⇧⌘H=App Switcher, ⌘3=Spotlight, ⌘↑=Volume+, ⌘↓=Volume−, ⌘L=Lock/Wake, ⇧⌘S=Screenshot, ⌘0=Zoom to Fit, ⌥⌘0=Actual Size, ⌘V/⌘C/⌘X=clipboard with the Mac; ⌘Q/⌘W/⌘M/⌘H stay on the Mac (shortcut key repeat ignored).");
+    LOGE("Keyboard: every other key and Command combination goes to the iPhone as a hardware keyboard while this window is key.");
+    LOGE("Siri (⇧⌥⌘H): not implemented; usage-code evidence missing. Recording (⇧⌘R): not implemented; capture/recording behavior evidence missing. Action Button / Camera Control: usage-code evidence and corresponding local hardware missing.");
+    // A limited run keeps ipb's runSeconds+10 collection bound. An unlimited one (the app's
+    // --seconds 0) cannot have a fixed bound, so the watchdog becomes a main-thread heartbeat instead:
+    // the presentation timer below re-arms it every second, and a main thread stuck for
+    // HeartbeatSeconds (e.g. inside a private AVConference/AppKit call) still trips it -- exit 9, then
+    // the second-stage finish -- rather than leaving a frozen window that never exits. requestClose
+    // and shutdownMirror arm their 10 s shutdown bound as before, and the heartbeat stops once closing.
+    const double HeartbeatSeconds=30;
+    if(runSeconds>0) armWatchdog(watchdog,runSeconds+10);
+    else armWatchdog(watchdog,HeartbeatSeconds);
+    __block double heartbeat=nowSec();
+    __block BOOL mediaIdle=NO;
+    // A session can last hours while the window is in the background: keep App Nap from throttling
+    // the presentation timer, without keeping the Mac awake.
+    gActivity=[[NSProcessInfo processInfo] beginActivityWithOptions:NSActivityUserInitiatedAllowingIdleSystemSleep
+                                                              reason:@"live iPhone mirror"];
+    double deadline=nowSec()+runSeconds;
+    NSTimer *timer=[NSTimer timerWithTimeInterval:1.0/120 repeats:YES block:^(NSTimer *t){
+        @try {
+            double now=nowSec();
+            if(runSeconds<=0 && !gClosing && now-heartbeat>=1){ heartbeat=now; armWatchdog(watchdog,HeartbeatSeconds); }
+            if(atomic_load(&gFailure)) requestClose(@"connection/stream failure");
+            if(runSeconds>0 && now>=deadline) requestClose(@"run duration reached");
+            pthread_mutex_lock(&gLock); double last=gLastFrame; pthread_mutex_unlock(&gLock);
+            // ipb's 12 s stall guard (exit 7) stays for limited runs and until the first frame is on
+            // screen. After that an unlimited session must survive a still screen: the stream carries
+            // no new frames while nothing on the iPhone changes (ipb docs/verification.md, the
+            // "idle-screen watchdog"), so reading a page for a minute is not a failure. A stream or
+            // connection that actually dies is reported by the media RemoteXPC handler, the FrameSink
+            // stop/server-died delegates and the input RemoteXPC handlers, each of which ends the run.
+            if(now-last>12){
+                if(runSeconds>0 || !gAnnouncedReady){ fail(7,@"no media frames for 12s"); requestClose(@"media stall"); }
+                else if(!mediaIdle){ mediaIdle=YES; LOGE("media: no new frame for 12s (still screen?); unlimited session continues"); }
+            }else if(mediaIdle){ mediaIdle=NO; LOGE("media: frames resumed"); }
+            if(gKeysResync) commitKeys(now); // a dropped keyboard state is resent as soon as there is room
+            if(!gClosing) presentLatest();
+            if(gClosing){
+                [NSApp stop:nil];
+                [NSApp postEvent:[NSEvent otherEventWithType:NSEventTypeApplicationDefined
+                    location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0
+                    context:nil subtype:0 data1:0 data2:0] atStart:YES];
+            }
+        } @catch(NSException *e){ fail(2,[NSString stringWithFormat:@"GUI exception: %@",e]); requestClose(@"GUI exception"); [NSApp stop:nil]; }
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+    [NSApp run];
+    [timer invalidate];
+    requestClose(@"application stopped");
+    return atomic_load(&gFailure);
+}
+
+static void shutdownMirror(void){
+    // UP is already on the ordered input chain. Keep every private call bounded
+    // by the independent shutdown watchdog, including stop/cancel.
+    armWatchdog(gWatchdog,10);
+    // Every close path (window, Cmd-W/Q, logout, SIGTERM, failure) ends here on the main thread: one
+    // bounded last chance for an all-released keyboard state that a full pending queue dropped, before
+    // the drain below sends it and gStopping makes submitEvent reject everything. The presentation
+    // timer retries only while the run loop runs, i.e. once at most after requestClose.
+    if(gKeysResync && gInputGroup){
+        double until=nowSec()+1;
+        while(!inputQueueHasRoom() && nowSec()<until) usleep(5000);
+        commitKeys(nowSec());
+    }
+    if(gInputGroup && dispatch_group_wait(gInputGroup,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC)))
+        fail(9,@"input drain exceeded 5s; device release is NOT guaranteed");
+    pthread_mutex_lock(&gLock);
+    gStopping=YES; gCollect=NO;
+    if(gLatest){ CFRelease(gLatest); gLatest=NULL; }
+    if(gScreenshotFrame){ CVPixelBufferRelease(gScreenshotFrame); gScreenshotFrame=NULL; }
+    pthread_mutex_unlock(&gLock);
+    if(gScreenshotGroup && dispatch_group_wait(gScreenshotGroup,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC)))
+        fail(8,@"screenshot save exceeded 5s during shutdown");
+    [gStream stop];
+    [gDisplay flushAndRemoveImage];
+    if(gInputGroup && !dispatch_group_wait(gInputGroup,DISPATCH_TIME_NOW)){
+        dispatch_group_async(gInputGroup,gInputQueue,^{
+            pthread_mutex_lock(&gLock); gInputLive=NO; pthread_mutex_unlock(&gLock);
+            if(gButton) xpc_remote_connection_cancel(gButton);
+            if(gDigitizer) xpc_remote_connection_cancel(gDigitizer);
+            if(gButtonFD>=0){ close(gButtonFD); gButtonFD=-1; }
+            if(gDigitizerFD>=0){ close(gDigitizerFD); gDigitizerFD=-1; }
+            if(gInput) xpc_remote_connection_cancel(gInput);
+            if(gInputFD>=0){ close(gInputFD); gInputFD=-1; }
+        });
+        if(dispatch_group_wait(gInputGroup,dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC))) fail(9,@"input cancellation exceeded 2s");
+    }
+    if(gMediaRemote) xpc_remote_connection_cancel(gMediaRemote);
+    if(gMediaService) xpc_connection_cancel(gMediaService);
+    if(gMediaFD>=0) close(gMediaFD);
+    if(gRTP>=0) close(gRTP);
+}
+
+int main(int argc,char **argv){ @autoreleasepool {
+    if(argc==2 && (!strcmp(argv[1],"--help") || !strcmp(argv[1],"-h"))){ usage(); return 0; }
+    gOutputFD=dup(STDOUT_FILENO);
+    if(gOutputFD<0) return 8;
+    signal(SIGPIPE,SIG_IGN);
+    setenv("HIDCTL_QUIET","1",1); // existing glue: no per-event logging
+    [NSApplication sharedApplication];
+    // No Dock icon until there is a window (createWindow switches to Regular, still before [NSApp run]
+    // finishes launching). A locked iPhone ends the helper within a second or two and the app retries
+    // every few seconds: a Regular policy from the start made a second Dock icon blink on every try.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    dispatch_queue_t watchdogQueue=dispatch_queue_create("ipb.mirror.watchdog",DISPATCH_QUEUE_SERIAL);
+    dispatch_source_t watchdog=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,watchdogQueue);
+    dispatch_source_set_event_handler(watchdog,^{
+        if(atomic_exchange(&gWatchdogExpired,true))
+            finish(9,@"watchdog shutdown grace expired; device release is NOT guaranteed");
+        fail(9,@"watchdog expired during setup/collection/shutdown; device release is NOT guaranteed");
+        armWatchdog(watchdog,5);
+        dispatch_async(dispatch_get_main_queue(),^{ requestClose(@"watchdog expired"); });
+    });
+    gWatchdog=watchdog;
+    armWatchdog(watchdog,45); dispatch_resume(watchdog);
+    signal(SIGINT,SIG_IGN); signal(SIGTERM,SIG_IGN);
+    dispatch_source_t interrupt=dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,SIGINT,0,watchdogQueue);
+    dispatch_source_t terminate=dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL,SIGTERM,0,watchdogQueue);
+    dispatch_source_set_event_handler(interrupt,^{ fail(130,@"SIGINT"); dispatch_async(dispatch_get_main_queue(),^{ requestClose(@"SIGINT"); }); });
+    dispatch_source_set_event_handler(terminate,^{ fail(143,@"SIGTERM"); dispatch_async(dispatch_get_main_queue(),^{ requestClose(@"SIGTERM"); }); });
+    dispatch_resume(interrupt); dispatch_resume(terminate);
+    @try {
+        int result=runMirror(argc,argv,watchdog);
+        requestClose(@"shutdown");
+        shutdownMirror();
+        finish(result,result?@"mirror failed":@"complete (host sender return is not device acknowledgement)");
+    } @catch(NSException *exception) {
+        fail(2,[NSString stringWithFormat:@"exception: %@",exception]);
+        requestClose(@"exception"); shutdownMirror(); finish(2,@"exception");
+    }
+    return 9;
+}}
