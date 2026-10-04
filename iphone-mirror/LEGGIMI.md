@@ -79,8 +79,8 @@ Collega l'iPhone e **sbloccalo**: dopo pochi secondi si apre la finestra con il 
 - **Un solo dito**: niente pizzico a due dita.
 - I messaggi di sistema (ad esempio le richieste di permesso) potrebbero non rispondere ai clic: toccali sull'iPhone.
 - Centro di controllo e Notifiche non hanno ancora una scorciatoia: prova a trascinare dal bordo in alto.
-- Un aggiornamento di Xcode o iOS può rompere la modalità veloce: in quel caso, dopo circa un minuto di tentativi,
-  l'app passa alla compatibilità; basta riscaricare la cartella aggiornata e rilanciare `./crea-app.sh`.
+- Un aggiornamento di Xcode o iOS può rompere la modalità veloce: in quel caso, dopo circa un minuto di tentativi
+  con il cavo collegato, l'app passa alla compatibilità; basta riscaricare la cartella aggiornata e rilanciare `./crea-app.sh`.
 - Non si può pubblicare sull'App Store: è uno strumento personale.
 
 ## Problemi comuni

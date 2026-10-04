@@ -74,6 +74,7 @@ final class MirrorEngine: ObservableObject {
     private var runID = 0
     private var failures = 0
     private var firstFailure: Date?
+    private var lastFailure: Date?
     private var lockedRounds = 0
     private var keepaliveFailures = 0
     private var nextAttempt = Date.distantPast
@@ -117,6 +118,7 @@ final class MirrorEngine: ObservableObject {
         wantsOpen = true
         reopening = false
         nextAttempt = .distantPast
+        resetFailures()
         if helper == nil, !launching, state == .closed || state == .waiting {
             state = device == nil ? .waiting : .starting
         }
@@ -135,8 +137,7 @@ final class MirrorEngine: ObservableObject {
 
     /// Riprova da capo dopo un errore.
     func retry() {
-        failures = 0
-        firstFailure = nil
+        resetFailures()
         lockedRounds = 0
         unsupported = false
         open()
@@ -149,6 +150,7 @@ final class MirrorEngine: ObservableObject {
         guard active, wantsOpen, state != .running else { return }
         wantsOpen = false
         nextAttempt = .distantPast
+        resetFailures()
         guard helper == nil else { return }
         if launching && state == .starting { return }
         attempt += 1
@@ -205,8 +207,7 @@ final class MirrorEngine: ObservableObject {
             // iPhone scollegato: alla prossima connessione si riparte da zero.
             missedOnce = false
             device = nil
-            failures = 0
-            firstFailure = nil
+            resetFailures()
             lockedRounds = 0
             unsupported = false
             wantsOpen = false
@@ -217,8 +218,7 @@ final class MirrorEngine: ObservableObject {
         device = found
 
         if found.id != previous?.id || (found.wired && previous?.wired != true) {
-            failures = 0
-            firstFailure = nil
+            resetFailures()
             lockedRounds = 0
             unsupported = (found.osMajor ?? 27) < 27
             if found.wired {
@@ -392,7 +392,9 @@ final class MirrorEngine: ObservableObject {
         }
         if code == 0 {
             // Finestra chiusa dall'utente: si riapre solo con «Mostra iPhone» o ricollegando il cavo.
+            // La sessione è finita bene: gli errori di prima non contano più.
             wantsOpen = false
+            resetFailures()
             state = .closed
             return
         }
@@ -412,8 +414,7 @@ final class MirrorEngine: ObservableObject {
         lockedRounds = 0
         if let ranFor, ranFor >= 60 {
             // Lo specchio ha funzionato per un po': si riapre subito e si riparte da zero.
-            failures = 0
-            firstFailure = nil
+            resetFailures()
             state = .starting
             retryLater(after: 2)
             return
@@ -426,29 +427,48 @@ final class MirrorEngine: ObservableObject {
     /// modalità compatibilità. Un problema passeggero non basta: l'iPhone appena collegato che prepara
     /// gli strumenti per sviluppatori, un collegamento da riaprire.
     private func attemptFailed(code: Int32) {
+        let now = Date()
+        // Contano solo gli errori uno dopo l'altro: uno di parecchi minuti fa (prima di una sessione
+        // andata bene o di una lunga attesa con l'iPhone bloccato) non conta più.
+        if let last = lastFailure, now.timeIntervalSince(last) > 300 { resetFailures() }
         failures += 1
-        let first = firstFailure ?? Date()
+        let first = firstFailure ?? now
         firstFailure = first
-        if failures >= 4, Date().timeIntervalSince(first) >= 60 {
-            unsupported = true
-            state = .failed(Self.explain(code: code, lines: recentLines))
+        lastFailure = now
+        if failures >= 4, now.timeIntervalSince(first) >= 60 {
+            let wired = device?.wired == true
+            // La compatibilità prende video e comandi dal cavo: senza cavo non servirebbe a niente,
+            // si resta nella modalità veloce e si riprova ogni tanto.
+            if wired {
+                unsupported = true
+            } else {
+                retryLater(after: 30)
+            }
+            state = .failed(Self.explain(code: code, lines: recentLines, wired: wired))
             return
         }
         state = .starting
         retryLater(after: min(30, pow(2, Double(failures))))
     }
 
+    private func resetFailures() {
+        failures = 0
+        firstFailure = nil
+        lastFailure = nil
+    }
+
     private func retryLater(after seconds: TimeInterval) {
         nextAttempt = Date().addingTimeInterval(seconds)
     }
 
-    private static func explain(code: Int32, lines: [String]) -> String {
+    private static func explain(code: Int32, lines: [String], wired: Bool) -> String {
         let text = lines.joined(separator: "\n").lowercased()
         if text.contains("not supported") || text.contains("1001") {
             return "Il tuo Xcode o iOS non supporta lo specchio veloce (servono Xcode 27 e iOS 27)."
         }
         switch code {
         case 3: return "L'iPhone ha rifiutato il collegamento veloce (errore 3)."
+        case 4 where !wired: return "Non riesco a raggiungere l'iPhone in Wi‑Fi: sbloccalo e tienilo vicino al Mac, oppure collegalo con il cavo."
         case 4: return "Non riesco a collegarmi all'iPhone: aprilo una volta in Xcode con il cavo collegato e l'iPhone sbloccato."
         case 5, 6, 7: return "Il video veloce non parte (errore \(code))."
         case 9: return "Lo specchio veloce non risponde (errore 9)."

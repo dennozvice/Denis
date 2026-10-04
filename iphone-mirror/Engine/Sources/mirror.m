@@ -1651,17 +1651,37 @@ static void runDevicectl(NSArray<NSString*> *arguments,NSData *input,void (^comp
 // own last write to the Mac pasteboard.
 static NSString *gExchangedText;
 static NSInteger gExchangedChange=-1,gOwnPasteboardChange=-1;
+// Main thread only. gPullsPending: Cmd-C/X reads of the iPhone's pasteboard, counted from the key press
+// until the read has ended (Mac clipboard written or not) or PullHoldSeconds have passed (see
+// commandKeyAction); gPullChange: the Mac pasteboard's changeCount at the latest such key press.
+static unsigned gPullsPending;
+static NSInteger gPullChange=-1;
 // A paste whose devicectl has not answered after this long is given up: the held keys go out, and a
 // late answer no longer sends Cmd-V (it would paste into whatever has focus by then). devicectl itself
 // is terminated after DevicectlTimeoutSeconds and killed 2 s later, so this only bounds a call that
 // never returns at all.
 #define PasteHoldSeconds (DevicectlTimeoutSeconds+3)
+// A Cmd-C/X read stops counting as pending this long after the key press at the latest: its devicectl
+// may wait behind one earlier call, and each is terminated after DevicectlTimeoutSeconds and killed
+// 2 s later. Like PasteHoldSeconds, this only bounds a call that never returns at all.
+#define PullHoldSeconds (2*(DevicectlTimeoutSeconds+2)+1)
 // Cmd-V: put the Mac clipboard's text on the iPhone's pasteboard, then send Cmd-V to the iPhone --
 // after devicectl finishes, successful or not (on failure the iPhone pastes what it already holds).
 // Keys typed meanwhile are held and follow the paste (holdKey).
 static void pasteFromMac(uint32_t usage){
     NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
     NSInteger change=pasteboard.changeCount;
+    // Cmd-V soon after Cmd-C/X, before the iPhone's text has reached the Mac clipboard (the read starts
+    // about half a second after the key and devicectl takes a second or more): the Mac clipboard still
+    // holds older text, and pushing it would replace the copy just made on the iPhone -- and a cut text
+    // would end up on neither clipboard. The newest content is the iPhone's own, so it pastes that, with
+    // no push; the pending read then brings it to the Mac clipboard as usual. Unless the user copied
+    // something on the Mac after that key press (our own write does not count, as in
+    // storeDeviceClipboard): that copy is newer and is pushed as usual (the read then keeps it).
+    if(gPullsPending && (change==gPullChange || change==gOwnPasteboardChange)){
+        LOGE("pasteboard: Cmd-V before the iPhone's Cmd-C/X reached the Mac clipboard; the iPhone pastes its own clipboard");
+        commandChord(usage); return;
+    }
     NSString *text=[pasteboard stringForType:NSPasteboardTypeString];
     NSData *data=[text dataUsingEncoding:NSUTF8StringEncoding];
     if(!data.length || !gDeviceUUID){ commandChord(usage); return; }
@@ -1688,47 +1708,53 @@ static void pasteFromMac(uint32_t usage){
         keyboardChordThen(chord,2,^{ gPastesPending--; replayHeldKeys(); });
     });
 }
-// After Cmd-C / Cmd-X on the iPhone: read its pasteboard and put the text on the Mac clipboard.
+// The answer of devicectl's pasteboard paste after Cmd-C / Cmd-X: put the text on the Mac clipboard.
 // `change` is the Mac pasteboard's changeCount when the user pressed Cmd-C/X.
-static void pullDeviceClipboard(NSInteger change){
-    if(gClosing || !gDeviceUUID) return;
+static void storeDeviceClipboard(int status,NSData *output,NSInteger change){
+    NSString *text=!status && output.length?[[NSString alloc] initWithData:output encoding:NSUTF8StringEncoding]:nil;
+    if([text hasSuffix:@"\n"]) text=[text substringToIndex:text.length-1]; // devicectl's own newline
+    if(!text.length){
+        LOGE("pasteboard: devicectl paste exited %d with %lu bytes of text; Mac clipboard unchanged",
+             status,(unsigned long)output.length);
+        return;
+    }
+    NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
+    NSInteger now=pasteboard.changeCount;
+    // The user copied something on the Mac after pressing Cmd-C here: that copy is newer. Our own
+    // write since then does not count (two quick Cmd-Cs).
+    if(now!=change && now!=gOwnPasteboardChange){
+        LOGE("pasteboard: the Mac clipboard changed after Cmd-C; the iPhone's text was not copied");
+        return;
+    }
+    // Cmd-C that copied nothing (no selection, or an app without a hardware Cmd-C) leaves the
+    // iPhone's old clipboard in place. If that is exactly the text last exchanged with the Mac, and
+    // the Mac clipboard has changed since, it would replace a newer Mac copy with old text: keep the
+    // Mac clipboard. Identical text copied again on purpose cannot be told apart, so a second Cmd-C
+    // (with no Mac copy in between) copies it anyway.
+    if(gExchangedText && [text isEqualToString:gExchangedText] && now!=gExchangedChange){
+        gExchangedChange=now;
+        LOGE("pasteboard: the iPhone's clipboard still holds the text last exchanged with the Mac, and the Mac clipboard changed since; Mac clipboard kept (Cmd-C again copies it)");
+        return;
+    }
+    if([[pasteboard stringForType:NSPasteboardTypeString] isEqualToString:text]){
+        gExchangedText=text; gExchangedChange=now;
+        LOGE("pasteboard: the Mac clipboard already holds the iPhone's text");
+        return;
+    }
+    [pasteboard clearContents];
+    if([pasteboard setString:text forType:NSPasteboardTypeString]){
+        gOwnPasteboardChange=pasteboard.changeCount;
+        gExchangedText=text; gExchangedChange=gOwnPasteboardChange;
+        LOGE("pasteboard: %lu characters from the iPhone copied to the Mac clipboard",(unsigned long)text.length);
+    }else LOGE("pasteboard: writing the Mac clipboard failed");
+}
+// After Cmd-C / Cmd-X on the iPhone: read its pasteboard and put the text on the Mac clipboard.
+// `finished` (main thread, idempotent) ends the read's gPullsPending count; it runs on every outcome.
+static void pullDeviceClipboard(NSInteger change,dispatch_block_t finished){
+    if(gClosing || !gDeviceUUID){ finished(); return; }
     runDevicectl(@[@"device",@"pasteboard",@"paste",@"--device",gDeviceUUID],nil,^(int status,NSData *output){
-        NSString *text=!status && output.length?[[NSString alloc] initWithData:output encoding:NSUTF8StringEncoding]:nil;
-        if([text hasSuffix:@"\n"]) text=[text substringToIndex:text.length-1]; // devicectl's own newline
-        if(!text.length){
-            LOGE("pasteboard: devicectl paste exited %d with %lu bytes of text; Mac clipboard unchanged",
-                 status,(unsigned long)output.length);
-            return;
-        }
-        NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
-        NSInteger now=pasteboard.changeCount;
-        // The user copied something on the Mac after pressing Cmd-C here: that copy is newer. Our own
-        // write since then does not count (two quick Cmd-Cs).
-        if(now!=change && now!=gOwnPasteboardChange){
-            LOGE("pasteboard: the Mac clipboard changed after Cmd-C; the iPhone's text was not copied");
-            return;
-        }
-        // Cmd-C that copied nothing (no selection, or an app without a hardware Cmd-C) leaves the
-        // iPhone's old clipboard in place. If that is exactly the text last exchanged with the Mac, and
-        // the Mac clipboard has changed since, it would replace a newer Mac copy with old text: keep the
-        // Mac clipboard. Identical text copied again on purpose cannot be told apart, so a second Cmd-C
-        // (with no Mac copy in between) copies it anyway.
-        if(gExchangedText && [text isEqualToString:gExchangedText] && now!=gExchangedChange){
-            gExchangedChange=now;
-            LOGE("pasteboard: the iPhone's clipboard still holds the text last exchanged with the Mac, and the Mac clipboard changed since; Mac clipboard kept (Cmd-C again copies it)");
-            return;
-        }
-        if([[pasteboard stringForType:NSPasteboardTypeString] isEqualToString:text]){
-            gExchangedText=text; gExchangedChange=now;
-            LOGE("pasteboard: the Mac clipboard already holds the iPhone's text");
-            return;
-        }
-        [pasteboard clearContents];
-        if([pasteboard setString:text forType:NSPasteboardTypeString]){
-            gOwnPasteboardChange=pasteboard.changeCount;
-            gExchangedText=text; gExchangedChange=gOwnPasteboardChange;
-            LOGE("pasteboard: %lu characters from the iPhone copied to the Mac clipboard",(unsigned long)text.length);
-        }else LOGE("pasteboard: writing the Mac clipboard failed");
+        storeDeviceClipboard(status,output,change);
+        finished();
     });
 }
 
@@ -1806,10 +1832,17 @@ static void commandKeyAction(NSEvent *event){
     // has drained (press and release sent), the iPhone gets a moment to update its pasteboard.
     if(action!=CopyToMac || !keyboardUsable()){ keyboardChord(&usage,1); return; }
     NSInteger change=[NSPasteboard generalPasteboard].changeCount;
+    // The read counts as pending from this key press, so a Cmd-V before it is done does not push the
+    // older Mac text over the iPhone's new copy (pasteFromMac). The count ends exactly once: when the
+    // read has ended, or after PullHoldSeconds, whichever comes first.
+    gPullsPending++; gPullChange=change;
+    __block BOOL ended=NO;
+    dispatch_block_t finished=^{ if(ended) return; ended=YES; gPullsPending--; };
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(PullHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),finished);
     keyboardChordThen(&usage,1,^{
         dispatch_group_notify(gInputGroup,dispatch_get_main_queue(),^{
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-                pullDeviceClipboard(change);
+                pullDeviceClipboard(change,finished);
             });
         });
     });
