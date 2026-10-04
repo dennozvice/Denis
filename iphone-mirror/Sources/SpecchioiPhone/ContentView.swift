@@ -1,8 +1,16 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var capture: CaptureManager
-    @EnvironmentObject private var wda: WDAClient
+    @ObservedObject var controller: AppController
+    @ObservedObject private var capture: CaptureManager
+    @ObservedObject private var wda: WDAClient
+    @State private var showAdvanced = false
+
+    init(controller: AppController) {
+        _controller = ObservedObject(wrappedValue: controller)
+        _capture = ObservedObject(wrappedValue: controller.capture)
+        _wda = ObservedObject(wrappedValue: controller.wda)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,7 +27,6 @@ struct ContentView: View {
         }
         .frame(minWidth: 320, minHeight: 520)
         .onChange(of: capture.videoSize) { _ in wda.screenChanged() }
-        .onAppear { wda.connect() }
     }
 
     private var waiting: some View {
@@ -33,7 +40,7 @@ struct ContentView: View {
             } else {
                 Text("In attesa dell'iPhone…")
                     .font(.headline)
-                Text("Collega l'iPhone con il cavo, sbloccalo e tocca «Autorizza» se ti chiede di dare fiducia a questo computer.")
+                Text("Collega l'iPhone con il cavo e sbloccalo. La prima volta tocca «Autorizza» quando ti chiede di dare fiducia a questo computer.")
             }
         }
         .multilineTextAlignment(.center)
@@ -43,31 +50,47 @@ struct ContentView: View {
 
     private var controls: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
+                button("chevron.backward", "Indietro (⇧⌘B)") { wda.back() }
                 button("house", "Home (⇧⌘H)") { wda.home() }
                 button("square.stack", "App aperte (⇧⌘A)") { wda.appSwitcher() }
                 button("switch.2", "Centro di controllo (⇧⌘C)") { wda.controlCenter() }
                 button("bell", "Notifiche (⇧⌘N)") { wda.notifications() }
-                button("speaker.wave.1", "Volume giù") { wda.pressButton("volumeDown") }
-                button("speaker.wave.3", "Volume su") { wda.pressButton("volumeUp") }
+                button("speaker.wave.1", "Abbassa volume (⇧⌘-)") { wda.pressButton("volumeDown") }
+                button("speaker.wave.3", "Alza volume (⇧⌘+)") { wda.pressButton("volumeUp") }
                 button("lock", "Blocca (⇧⌘L)") { wda.lock() }
             }
+            .disabled(!controller.ready)
+
             HStack(spacing: 6) {
                 Circle()
-                    .fill(wda.connected ? Color.green : Color.red)
+                    .fill(controller.ready ? Color.green : Color.orange)
                     .frame(width: 8, height: 8)
-                    .help(wda.connected ? "Controllo attivo" : "Controllo non attivo: vedi lo schermo ma non puoi toccarlo")
-                TextField("http://localhost:8100", text: $wda.address)
-                    .textFieldStyle(.roundedBorder)
-                    .onSubmit { wda.connect() }
-                Button("Connetti") { wda.connect() }
-            }
-            if let error = wda.lastError {
-                Text(error)
+                Text(controller.ready ? (wda.lastError ?? controller.status) : controller.status)
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(controller.ready && wda.lastError == nil ? Color.secondary : Color.primary)
+                    .lineLimit(2)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .lineLimit(3)
+                Button {
+                    showAdvanced.toggle()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .help("Impostazioni avanzate")
+            }
+
+            if showAdvanced {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Indirizzo WebDriverAgent (lascia vuoto per usare il cavo):")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack {
+                        TextField("automatico (cavo)", text: $wda.manualAddress)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Riconnetti") { controller.reconnect() }
+                    }
+                }
             }
         }
         .padding(10)

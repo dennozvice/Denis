@@ -2,3 +2,4 @@
 build/
 WebDriverAgent/
 .swiftpm/
+.wda-build/

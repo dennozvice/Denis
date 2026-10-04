@@ -4,11 +4,21 @@ import Foundation
 /// Invia tocchi, gesti e testo all'iPhone tramite WebDriverAgent (lo stesso strumento usato da Appium).
 /// I comandi vengono eseguiti uno alla volta, nell'ordine in cui arrivano.
 final class WDAClient: ObservableObject {
-    @Published var address: String {
-        didSet { UserDefaults.standard.set(address, forKey: "wdaAddress") }
+    /// Indirizzo scritto a mano (facoltativo). Vuoto = collegamento automatico dal cavo.
+    @Published var manualAddress: String {
+        didSet { UserDefaults.standard.set(manualAddress, forKey: "wdaManualAddress") }
     }
-    @Published private(set) var connected = false
+    /// Indirizzo del collegamento via cavo, impostato da AppController.
+    var cableAddress: String?
     @Published private(set) var lastError: String?
+
+    var usesManualAddress: Bool {
+        !manualAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var address: String? {
+        usesManualAddress ? manualAddress : cableAddress
+    }
 
     // Usati solo dentro la coda dei comandi.
     private var sessionId: String?
@@ -18,17 +28,31 @@ final class WDAClient: ObservableObject {
     private var pendingText = ""
 
     init() {
-        address = UserDefaults.standard.string(forKey: "wdaAddress") ?? "http://localhost:8100"
+        manualAddress = UserDefaults.standard.string(forKey: "wdaManualAddress") ?? ""
     }
 
     // MARK: - Comandi
 
-    func connect() {
+    /// Si dimentica la sessione: la prossima azione ne crea una nuova.
+    func reset() {
         enqueue {
             self.sessionId = nil
             self.screenSize = nil
-            _ = try await self.ensureSession()
         }
+    }
+
+    /// Controlla velocemente se WebDriverAgent risponde.
+    func ping(_ completion: @escaping (Bool) -> Void) {
+        guard let url = Self.url(address, "/status") else {
+            completion(false)
+            return
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 3
+        URLSession.shared.dataTask(with: request) { _, response, _ in
+            let ok = (response as? HTTPURLResponse)?.statusCode == 200
+            DispatchQueue.main.async { completion(ok) }
+        }.resume()
     }
 
     /// Da chiamare quando l'iPhone ruota: la dimensione dello schermo va riletta.
@@ -108,16 +132,47 @@ final class WDAClient: ObservableObject {
         }
     }
 
+    // Gesti dai bordi dello schermo: usano il trascinamento "nativo" di XCTest,
+    // che iOS riconosce meglio come gesto di sistema.
+
     func appSwitcher() {
-        gesture(from: CGPoint(x: 0.5, y: 0.995), to: CGPoint(x: 0.5, y: 0.6), duration: 0.6, holdAtEnd: 0.6)
+        systemSwipe(from: CGPoint(x: 0.5, y: 0.999), to: CGPoint(x: 0.5, y: 0.6), velocity: 700, hold: 0.7)
     }
 
     func controlCenter() {
-        gesture(from: CGPoint(x: 0.9, y: 0.003), to: CGPoint(x: 0.9, y: 0.5), duration: 0.3)
+        systemSwipe(from: CGPoint(x: 0.92, y: 0.001), to: CGPoint(x: 0.92, y: 0.6), velocity: 2500, hold: 0)
     }
 
     func notifications() {
-        gesture(from: CGPoint(x: 0.3, y: 0.003), to: CGPoint(x: 0.3, y: 0.6), duration: 0.3)
+        systemSwipe(from: CGPoint(x: 0.3, y: 0.001), to: CGPoint(x: 0.3, y: 0.7), velocity: 2500, hold: 0)
+    }
+
+    /// Torna indietro con lo swipe dal bordo sinistro.
+    func back() {
+        systemSwipe(from: CGPoint(x: 0.001, y: 0.45), to: CGPoint(x: 0.75, y: 0.45), velocity: 1500, hold: 0)
+    }
+
+    private func systemSwipe(from start: CGPoint, to end: CGPoint, velocity: Double, hold: TimeInterval) {
+        enqueue {
+            try await self.withSession { id, size in
+                let body: [String: Any] = [
+                    "fromX": Double(start.x * size.width), "fromY": Double(start.y * size.height),
+                    "toX": Double(end.x * size.width), "toY": Double(end.y * size.height),
+                    "pressDuration": 0.05, "holdDuration": hold, "velocity": velocity,
+                ]
+                do {
+                    _ = try await self.request("POST", "/session/\(id)/wda/pressAndDragWithVelocity", body: body)
+                } catch WDAError.invalidSession {
+                    throw WDAError.invalidSession
+                } catch {
+                    // Versioni vecchie di WebDriverAgent: si usa il gesto normale.
+                    let distance = Double(hypot((end.x - start.x) * size.width, (end.y - start.y) * size.height))
+                    await MainActor.run {
+                        self.gesture(from: start, to: end, duration: distance / velocity, holdAtEnd: hold)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Coda dei comandi
@@ -137,12 +192,11 @@ final class WDAClient: ObservableObject {
 
     @MainActor
     private func report(_ error: Error?) {
-        connected = error == nil
         switch error {
         case nil:
             lastError = nil
         case is URLError:
-            lastError = "WebDriverAgent non risponde su \(address). È avviato sull'iPhone? (Con il cavo serve anche iproxy.)"
+            lastError = "L'iPhone non risponde ai comandi, riprovo appena il controllo è di nuovo attivo."
         default:
             lastError = error?.localizedDescription
         }
@@ -164,13 +218,20 @@ final class WDAClient: ObservableObject {
 
     private func ensureSession() async throws -> (String, CGSize) {
         if sessionId == nil {
-            let json = try await request("POST", "/session", body: ["capabilities": ["alwaysMatch": [String: Any]()]])
+            // Senza attese: di norma WebDriverAgent aspetta che l'app sia "ferma" prima di ogni tocco.
+            let fast: [String: Any] = [
+                "shouldWaitForQuiescence": false,
+                "waitForIdleTimeout": 0,
+                "animationCoolOffTimeout": 0,
+            ]
+            let json = try await request("POST", "/session", body: ["capabilities": ["alwaysMatch": fast]])
             let value = json["value"] as? [String: Any]
             guard let id = (json["sessionId"] as? String) ?? (value?["sessionId"] as? String) else {
                 throw WDAError.server("WebDriverAgent non ha restituito una sessione.")
             }
             sessionId = id
             screenSize = nil
+            _ = try? await request("POST", "/session/\(id)/appium/settings", body: ["settings": fast])
         }
         guard let id = sessionId else { throw WDAError.invalidSession }
         if screenSize == nil {
@@ -188,14 +249,12 @@ final class WDAClient: ObservableObject {
     }
 
     private func request(_ method: String, _ path: String, body: [String: Any]? = nil) async throws -> [String: Any] {
-        var base = await MainActor.run { self.address }.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !base.contains("://") { base = "http://" + base }
-        while base.hasSuffix("/") { base.removeLast() }
-        guard let url = URL(string: base + path) else { throw WDAError.badAddress }
+        let base = await MainActor.run { self.address }
+        guard let url = Self.url(base, path) else { throw WDAError.notConnected }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.timeoutInterval = 60
+        request.timeoutInterval = 20
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -214,14 +273,23 @@ final class WDAClient: ObservableObject {
     }
 }
 
+extension WDAClient {
+    static func url(_ base: String?, _ path: String) -> URL? {
+        guard var base = base?.trimmingCharacters(in: .whitespacesAndNewlines), !base.isEmpty else { return nil }
+        if !base.contains("://") { base = "http://" + base }
+        while base.hasSuffix("/") { base.removeLast() }
+        return URL(string: base + path)
+    }
+}
+
 enum WDAError: LocalizedError {
-    case badAddress
+    case notConnected
     case invalidSession
     case server(String)
 
     var errorDescription: String? {
         switch self {
-        case .badAddress: return "Indirizzo di WebDriverAgent non valido."
+        case .notConnected: return "Collega l'iPhone con il cavo."
         case .invalidSession: return "Sessione di WebDriverAgent scaduta."
         case .server(let message): return message
         }
