@@ -32,6 +32,16 @@ final class AsyncProbeState: @unchecked Sendable {
 var retainedCoreDeviceStrings: [String] = []
 var retainedCoreDeviceData: [Data] = []
 
+// The service factories run on whatever global-queue thread the mirror's bounded sender uses, and a
+// send it stopped waiting for can still be running when the next one starts, so appends are locked.
+let retainedCoreDeviceStringsLock = NSLock()
+
+func retainCoreDeviceString(_ value: String) {
+    retainedCoreDeviceStringsLock.lock()
+    retainedCoreDeviceStrings.append(value)
+    retainedCoreDeviceStringsLock.unlock()
+}
+
 @_silgen_name("$s7Mercury19RemoteXPCConnectionC10unsafePeer4fromAA17XPCPeerConnection_pSo24OS_xpc_remote_connectionC_tFZ")
 func mercuryUnsafePeer(_ connection: UnsafeMutableRawPointer?) -> AnyObject
 
@@ -747,7 +757,7 @@ func makeDDIUniversalHIDService(_ connection: UnsafeMutableRawPointer?) -> (Unsa
     storePointer(hidxpcPointer, offset: 24, peerWitness)
     var retainedFeatureIdentifier = featureIdentifier
     storeString(hidxpcPointer, offset: 32, &retainedFeatureIdentifier)
-    retainedCoreDeviceStrings.append(retainedFeatureIdentifier)
+    retainCoreDeviceString(retainedFeatureIdentifier)
 
     storePointer(ddiPointer, offset: 16, UnsafeRawPointer(hidxpcPointer))
     ddiPointer.advanced(by: 24).storeBytes(of: UInt(0), as: UInt.self)
@@ -768,6 +778,47 @@ func makeDDIUniversalHIDService(_ connection: UnsafeMutableRawPointer?) -> (Unsa
     }
     return (ddiPointer, ddiWitness)
 }
+
+// One DDIUniversalHIDService per RemoteXPC connection, built on first use and then reused for every
+// report and barrier, the way Device Hub keeps one for the life of a connection. Building one per call
+// (fine for ipb's short CLI runs) leaks two objects, a retain on the Mercury peer and an element of
+// retainedCoreDeviceStrings per send: unbounded growth over an hours-long mirror session, where every
+// touch move, scroll step, keyboard state and barrier is a send. The dispatch shims pass the service
+// as a guaranteed (borrowed) `self`, so reusing it does not change its retain count.
+//
+// Checked out, never shared: a call takes the idle service out of the pool and puts it back when it
+// returns. The mirror runs each send on a global queue and stops waiting for one at a deadline, so a
+// stuck call can overlap the next; that next call finds the pool empty and builds a service of its
+// own (leaked as before), so no service object is ever used by two calls at once. The key is the
+// connection's address, which cannot be recycled while it is cached: the service's peer is retained
+// forever (passRetained) and wraps that connection -- and the mirror opens a single UniversalHID
+// connection per process anyway. Cached services are deliberately never released, not even after the
+// connection is cancelled: their fields were written as raw bits (storePointer/storeString), so a
+// deinit would release the feature string it does not own. The process exits right after the cancel.
+final class UniversalHIDServicePool: @unchecked Sendable {
+    private let lock = NSLock()
+    private var idle: [UInt: (UnsafeMutableRawPointer, UnsafeRawPointer)] = [:]
+
+    func withService<T>(
+        _ connection: UnsafeMutableRawPointer,
+        _ body: (UnsafeMutableRawPointer, UnsafeRawPointer) -> T
+    ) -> T {
+        let key = UInt(bitPattern: connection)
+        lock.lock()
+        let cached = idle.removeValue(forKey: key)
+        lock.unlock()
+        let entry = cached ?? makeDDIUniversalHIDService(connection)
+        let result = body(entry.0, entry.1)
+        lock.lock()
+        if idle[key] == nil {
+            idle[key] = entry
+        }
+        lock.unlock()
+        return result
+    }
+}
+
+let universalHIDServicePool = UniversalHIDServicePool()
 
 func makeIndigoHIDButton(_ connection: UnsafeMutableRawPointer?) -> (UnsafeMutableRawPointer, UnsafeRawPointer) {
     let serviceName = ProcessInfo.processInfo.environment["HIDCTL_BUTTON_MERCURY_SERVICE"]
@@ -802,7 +853,7 @@ func makeIndigoHIDButton(_ connection: UnsafeMutableRawPointer?) -> (UnsafeMutab
     storePointer(buttonPointer, offset: 24, peerWitness)
     var retainedFeatureIdentifier = featureIdentifier
     storeString(buttonPointer, offset: 32, &retainedFeatureIdentifier)
-    retainedCoreDeviceStrings.append(retainedFeatureIdentifier)
+    retainCoreDeviceString(retainedFeatureIdentifier)
 
     let buttonWitness = swiftProtocolWitness(
         for: buttonClass,
@@ -849,7 +900,7 @@ func makeIndigoHIDScroll(_ connection: UnsafeMutableRawPointer?) -> (UnsafeMutab
     storePointer(scrollPointer, offset: 24, peerWitness)
     var retainedFeatureIdentifier = featureIdentifier
     storeString(scrollPointer, offset: 32, &retainedFeatureIdentifier)
-    retainedCoreDeviceStrings.append(retainedFeatureIdentifier)
+    retainCoreDeviceString(retainedFeatureIdentifier)
 
     let scrollWitness = swiftProtocolWitness(
         for: scrollClass,
@@ -896,11 +947,11 @@ func makeIndigoHIDVendorDefined(_ connection: UnsafeMutableRawPointer?, deviceId
     storePointer(vendorPointer, offset: 24, peerWitness)
     var retainedFeatureIdentifier = featureIdentifier
     storeString(vendorPointer, offset: 32, &retainedFeatureIdentifier)
-    retainedCoreDeviceStrings.append(retainedFeatureIdentifier)
+    retainCoreDeviceString(retainedFeatureIdentifier)
 
     var retainedDeviceIdentifier = deviceIdentifier
     storeString(vendorPointer, offset: 48, &retainedDeviceIdentifier)
-    retainedCoreDeviceStrings.append(retainedDeviceIdentifier)
+    retainCoreDeviceString(retainedDeviceIdentifier)
 
     let vendorWitness = swiftProtocolWitness(
         for: vendorClass,
@@ -947,7 +998,7 @@ func makeIndigoHIDDigitizer(_ connection: UnsafeMutableRawPointer?) -> (UnsafeMu
     storePointer(digitizerPointer, offset: 24, peerWitness)
     var retainedFeatureIdentifier = featureIdentifier
     storeString(digitizerPointer, offset: 32, &retainedFeatureIdentifier)
-    retainedCoreDeviceStrings.append(retainedFeatureIdentifier)
+    retainCoreDeviceString(retainedFeatureIdentifier)
 
     let digitizerWitness = swiftProtocolWitness(
         for: digitizerClass,
@@ -1292,8 +1343,9 @@ public func coredeviceSendUniversalHIDReport(
         return 2
     }
 
-    let (service, witness) = makeDDIUniversalHIDService(connection)
-    let result = coredeviceUniversalHIDSendDispatchABI(service, witness, reportWords, serviceID)
+    let result = universalHIDServicePool.withService(connection) { service, witness in
+        coredeviceUniversalHIDSendDispatchABI(service, witness, reportWords, serviceID)
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice hid: send dispatch result=\(result)\n", stderr)
     }
@@ -1310,8 +1362,9 @@ public func coredeviceResetUniversalHIDGesture(
         return 2
     }
 
-    let (service, witness) = makeDDIUniversalHIDService(connection)
-    let result = coredeviceUniversalHIDResetDispatchABI(service, witness, serviceID)
+    let result = universalHIDServicePool.withService(connection) { service, witness in
+        coredeviceUniversalHIDResetDispatchABI(service, witness, serviceID)
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice hid: reset dispatch result=\(result)\n", stderr)
     }
@@ -1325,8 +1378,9 @@ public func coredeviceSendUniversalHIDBarrier(_ connection: UnsafeMutableRawPoin
         return 2
     }
 
-    let (service, witness) = makeDDIUniversalHIDService(connection)
-    let result = coredeviceUniversalHIDBarrierDispatchABI(service, witness)
+    let result = universalHIDServicePool.withService(connection) { service, witness in
+        coredeviceUniversalHIDBarrierDispatchABI(service, witness)
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice hid: barrier dispatch result=\(result)\n", stderr)
     }

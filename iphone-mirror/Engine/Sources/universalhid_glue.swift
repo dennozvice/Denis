@@ -17,6 +17,30 @@ typealias UHIDScrollCollection = UHIDReportWords
 
 var retainedHIDReports: [UHIDHIDReport] = []
 
+// Bounded instead of append-only: the mirror now runs for hours, and every report it builds used to
+// stay in this array for the life of the process.
+//
+// What trimming can and cannot free. UHIDHIDReport is our two-word stand-in for UniversalHID's
+// HIDReport, declared as a plain struct of integers, so this array holds bit copies and Swift never
+// retains or releases through them: the reference inside each report is kept alive by the +1 the
+// UniversalHID initializer/getter returned, which is never balanced. Dropping entries therefore
+// releases only the array's own 16 bytes per report -- it can never free storage a send still reads.
+// (That per-report storage stays leaked, as it always was; this bound is about the array.)
+//
+// Should this array ever own the reports (a real HIDReport type), the bound still holds: all builders
+// run on the mirror's serial input queue, the report is sent immediately after it is built, and at
+// most one send is in flight (a report send abandoned after its deadline ends the session).
+// Keeping the newest 4096 therefore keeps thousands of reports more than any send can still use.
+let retainedHIDReportLimit = 8192
+let retainedHIDReportKeep = 4096
+
+func retainHIDReport(_ report: UHIDHIDReport) {
+    retainedHIDReports.append(report)
+    if retainedHIDReports.count > retainedHIDReportLimit {
+        retainedHIDReports.removeFirst(retainedHIDReports.count - retainedHIDReportKeep)
+    }
+}
+
 @_silgen_name("$s12UniversalHID9HIDReportV8bitCount2idACSi_AA8ReportIDVtcfC")
 func uhidHIDReportInit(_ bitCount: Int, _ reportID: UInt8) -> UHIDHIDReport
 
@@ -566,7 +590,7 @@ public func uhidMakeDigitizerHIDReport(
     uhidDigitizerReportSetContactCountMaximumABI(&report, 1)
 
     var finalReport = uhidDigitizerReportGetReport(report)
-    retainedHIDReports.append(finalReport)
+    retainHIDReport(finalReport)
     if let output {
         withUnsafeBytes(of: &finalReport) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -587,7 +611,7 @@ public func uhidMakeAbsolutePointerHIDReport(
         y: y,
         buttons: UInt8(truncatingIfNeeded: buttons)
     )
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -614,7 +638,7 @@ public func uhidMakeScrollWireHIDReport(
         accelX: accelX,
         accelY: accelY
     )
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -645,7 +669,7 @@ public func uhidMakeScrollHIDReport(
     ) else {
         return -1
     }
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -674,7 +698,7 @@ public func uhidMakePointerHIDReport(
     ) else {
         return -2
     }
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -692,7 +716,38 @@ public func uhidMakeKeyboardHIDReport(
     guard var report = makeKeyboardHIDReport(usage: usage, pressed: pressed != 0) else {
         return -1
     }
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
+    if let output {
+        withUnsafeBytes(of: &report) { bytes in
+            output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
+        }
+    }
+    return Int32(MemoryLayout<UHIDHIDReport>.size)
+}
+
+/// Complete keyboard state: every usage in `usages` (1...0xE7) pressed at once in one KeyboardReport,
+/// with the same layout as `makeKeyboardHIDReport` (ID 1, 0x138 bits, usage bit at usage + 8). The
+/// mirror sends one of these per change of the pressed set (modifiers included), so the device always
+/// gets a consistent state; an empty list is the all-released report. Other values are ignored.
+func makeKeyboardStateHIDReport(usages: UnsafeBufferPointer<UInt32>) -> UHIDHIDReport {
+    var report = uhidHIDReportInit(0x138, 0x01)
+    for usage in usages where usage >= 1 && usage <= 0xe7 {
+        uhidHIDReportSetBitABI(&report, Int(usage) + 8, 1)
+    }
+    return report
+}
+
+@_cdecl("uhid_make_keyboard_state_hid_report")
+public func uhidMakeKeyboardStateHIDReport(
+    _ usages: UnsafePointer<UInt32>?,
+    _ count: Int32,
+    _ output: UnsafeMutableRawPointer?
+) -> Int32 {
+    guard count >= 0, count == 0 || usages != nil else {
+        return -1
+    }
+    var report = makeKeyboardStateHIDReport(usages: UnsafeBufferPointer(start: usages, count: Int(count)))
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -731,7 +786,7 @@ public func uhidMakeDigitizerSwipeHIDReport(
     uhidDigitizerReportSetContactCountMaximumABI(&report, 1)
 
     var finalReport = uhidDigitizerReportGetReport(report)
-    retainedHIDReports.append(finalReport)
+    retainHIDReport(finalReport)
     if let output {
         withUnsafeBytes(of: &finalReport) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -761,7 +816,7 @@ public func uhidMakeNavigationSwipeHIDReport(
         y: y
     )
     var report = uhidHIDReportInitData(data)
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)
@@ -791,7 +846,7 @@ public func uhidMakeDockSwipeHIDReport(
         y: y
     )
     var report = uhidHIDReportInitData(data)
-    retainedHIDReports.append(report)
+    retainHIDReport(report)
     if let output {
         withUnsafeBytes(of: &report) { bytes in
             output.copyMemory(from: bytes.baseAddress!, byteCount: bytes.count)

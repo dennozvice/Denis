@@ -50,7 +50,7 @@ $(MIRROR_TARGET): $(BUILD_DIR)/mirror.o $(GLUE)
 	swiftc $^ -o $@ \
 		$(FRAMEWORK_PATHS) \
 		-framework Foundation -framework CoreFoundation \
-		-framework AppKit -framework AVFoundation -framework QuartzCore -framework CoreImage \
+		-framework AppKit -framework Carbon -framework AVFoundation -framework QuartzCore -framework CoreImage \
 		-framework CoreMedia -framework CoreVideo \
 		-framework CoreDevice -framework CoreDeviceUtilities \
 		-framework RemoteXPC -framework Mercury -framework UniversalHID \
