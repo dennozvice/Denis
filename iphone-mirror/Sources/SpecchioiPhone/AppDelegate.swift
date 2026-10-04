@@ -4,16 +4,22 @@ import ServiceManagement
 import SwiftUI
 
 /// Avvio dell'app: icona nella barra dei menu, apertura all'accesso al Mac,
-/// e finestra che compare da sola quando colleghi l'iPhone.
+/// e iPhone che compare da solo quando lo colleghi.
+/// Nella modalità veloce l'iPhone si vede nella finestra dello specchio (un programma a parte):
+/// la finestra dell'app mostra solo cosa sta succedendo e si nasconde quando lo specchio è aperto.
 @main
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private var controller: AppController!
     private var window: NSWindow?
     private var statusItem: NSStatusItem?
+    private var statusMenuItem: NSMenuItem?
     private var loginMenuItem: NSMenuItem?
+    private var fastModeMenuItem: NSMenuItem?
     private var actions: [MenuAction] = []
     private var cancellables: Set<AnyCancellable> = []
     private var launchedAtLogin = false
+
+    static let mirrorBundleIdentifier = "com.dennozvice.specchioiphone.mirror"
 
     static func main() {
         signal(SIGPIPE, SIG_IGN)
@@ -36,22 +42,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         makeStatusItem()
         setUpLoginItem()
 
-        // Appena l'iPhone viene collegato, la finestra si apre da sola.
+        // Appena l'iPhone viene collegato, si apre da solo.
+        controller.engine.onWiredConnect = { [weak self] in
+            self?.showWindow()
+        }
         controller.capture.$deviceName
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] name in
-                if name != nil { self?.showWindow() }
+                if name != nil, self?.controller.mode == .compatibility { self?.showWindow() }
+            }
+            .store(in: &cancellables)
+
+        // Modalità veloce: la finestra di stato sparisce quando lo specchio è aperto,
+        // e ricompare se serve un intervento (iPhone bloccato, errore).
+        controller.engine.$state
+            .removeDuplicates()
+            .sink { [weak self] state in
+                DispatchQueue.main.async { self?.engineStateChanged(state) }
             }
             .store(in: &cancellables)
 
         if !launchedAtLogin {
-            showWindow()
+            showIPhone()
         }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showWindow()
+        showIPhone()
         return true
     }
 
@@ -64,6 +82,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     // MARK: - Finestra
+
+    /// «Mostra iPhone»: lo specchio nella modalità veloce, altrimenti la finestra dell'app.
+    @objc func showIPhone() {
+        guard controller.mode == .fast else {
+            showWindow()
+            return
+        }
+        if controller.engine.state == .running {
+            NSRunningApplication.runningApplications(withBundleIdentifier: Self.mirrorBundleIdentifier)
+                .first?
+                .activate(options: [.activateAllWindows])
+        } else {
+            controller.engine.open()
+            showWindow()
+        }
+    }
+
+    private func engineStateChanged(_ state: MirrorEngine.State) {
+        guard controller.mode == .fast else { return }
+        switch state {
+        case .running:
+            hideWindow()
+        case .locked, .failed:
+            if controller.engine.wantsOpen || state != .locked { showWindow() }
+        default:
+            break
+        }
+    }
+
+    private func hideWindow() {
+        guard let window, window.isVisible else { return }
+        window.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
+    }
 
     @objc func showWindow() {
         if window == nil {
@@ -99,7 +151,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Specchio iPhone")
         let menu = NSMenu()
-        menu.addItem(action("Mostra iPhone") { [weak self] in self?.showWindow() })
+        menu.delegate = self
+        let status = NSMenuItem(title: controller.status, action: nil, keyEquivalent: "")
+        status.isEnabled = false
+        statusMenuItem = status
+        menu.addItem(status)
+        menu.addItem(.separator())
+        menu.addItem(action("Mostra iPhone") { [weak self] in self?.showIPhone() })
+        let fast = action("Modalità veloce (Xcode 27)") { [weak self] in self?.toggleFastMode() }
+        fastModeMenuItem = fast
+        menu.addItem(fast)
         let login = action("Apri all'accesso al Mac") { [weak self] in self?.toggleLoginItem() }
         loginMenuItem = login
         menu.addItem(login)
@@ -107,6 +168,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(NSMenuItem(title: "Esci", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
         statusItem = item
+    }
+
+    /// Aggiorna le voci ogni volta che il menu viene aperto.
+    func menuWillOpen(_ menu: NSMenu) {
+        statusMenuItem?.title = controller.status
+        fastModeMenuItem?.state = controller.prefersFastMode ? .on : .off
+        if !MirrorEngine.isInstalled {
+            fastModeMenuItem?.title = "Modalità veloce (non disponibile: ricrea l'app con Xcode 27)"
+            fastModeMenuItem?.action = nil
+        }
+        updateLoginMenuItem()
+    }
+
+    private func toggleFastMode() {
+        controller.prefersFastMode.toggle()
+        if controller.mode == .compatibility { showWindow() } else { showIPhone() }
     }
 
     private func makeMainMenu() -> NSMenu {

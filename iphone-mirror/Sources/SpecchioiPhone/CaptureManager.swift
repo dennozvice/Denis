@@ -8,14 +8,21 @@ final class CaptureManager: ObservableObject {
     @Published private(set) var videoSize: CGSize = .zero
     @Published private(set) var cameraDenied = false
 
+    /// Falso nella modalità veloce: il video arriva dallo specchio, non da qui.
+    var isEnabled = true {
+        didSet {
+            guard isEnabled != oldValue else { return }
+            if isEnabled { findDevice() } else { stop() }
+        }
+    }
+
     let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "specchio.capture")
     private var currentDevice: AVCaptureDevice?
     private var observers: [NSObjectProtocol] = []
+    private var accessRequested = false
 
     init() {
-        Self.allowScreenCaptureDevices()
-
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: .AVCaptureDeviceWasConnected, object: nil, queue: .main) { [weak self] _ in
             self?.findDevice()
@@ -30,13 +37,6 @@ final class CaptureManager: ObservableObject {
                   let description = port.formatDescription else { return }
             self?.updateVideoSize(description)
         })
-
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
-                self.cameraDenied = !granted
-                self.findDevice()
-            }
-        }
     }
 
     deinit {
@@ -56,7 +56,20 @@ final class CaptureManager: ObservableObject {
     }
 
     func findDevice() {
-        guard currentDevice == nil, !cameraDenied else { return }
+        guard isEnabled, currentDevice == nil, !cameraDenied else { return }
+        // Permesso e sorgenti iPhone si preparano solo la prima volta che servono
+        // (nella modalità veloce non servono affatto).
+        guard accessRequested else {
+            accessRequested = true
+            Self.allowScreenCaptureDevices()
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    self.cameraDenied = !granted
+                    self.findDevice()
+                }
+            }
+            return
+        }
         let types: [AVCaptureDevice.DeviceType]
         if #available(macOS 14.0, *) {
             types = [.external]
@@ -85,7 +98,7 @@ final class CaptureManager: ObservableObject {
         }
     }
 
-    private func stop() {
+    func stop() {
         currentDevice = nil
         deviceName = nil
         videoSize = .zero

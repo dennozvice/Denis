@@ -4,15 +4,75 @@ struct ContentView: View {
     @ObservedObject var controller: AppController
     @ObservedObject private var capture: CaptureManager
     @ObservedObject private var wda: WDAClient
+    @ObservedObject private var engine: MirrorEngine
     @State private var showAdvanced = false
 
     init(controller: AppController) {
         _controller = ObservedObject(wrappedValue: controller)
         _capture = ObservedObject(wrappedValue: controller.capture)
         _wda = ObservedObject(wrappedValue: controller.wda)
+        _engine = ObservedObject(wrappedValue: controller.engine)
     }
 
     var body: some View {
+        if controller.mode == .fast {
+            fastModeStatus
+        } else {
+            compatibilityMirror
+        }
+    }
+
+    // MARK: - Modalità veloce: solo lo stato (l'iPhone si vede nella finestra dello specchio)
+
+    private var fastModeStatus: some View {
+        VStack(spacing: 14) {
+            Image(systemName: fastSymbol)
+                .font(.system(size: 48))
+            Text(controller.status)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+            Text(fastHint)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            HStack {
+                Button("Mostra iPhone") { engine.retry() }
+                    .keyboardShortcut(.defaultAction)
+                Button("Usa la modalità compatibilità") { controller.prefersFastMode = false }
+            }
+            .padding(.top, 6)
+        }
+        .padding(32)
+        .frame(minWidth: 320, maxWidth: .infinity, minHeight: 520, maxHeight: .infinity)
+    }
+
+    private var fastSymbol: String {
+        switch engine.state {
+        case .locked: return "lock.iphone"
+        case .failed: return "exclamationmark.triangle"
+        case .starting: return "iphone.radiowaves.left.and.right"
+        default: return "iphone"
+        }
+    }
+
+    private var fastHint: String {
+        switch engine.state {
+        case .locked:
+            return "Lo specchio veloce funziona solo con l'iPhone sbloccato. Appena lo sblocchi si apre da solo."
+        case .starting:
+            return "Tieni l'iPhone sbloccato: tra pochi secondi compare la finestra con il suo schermo."
+        case .failed:
+            return "Puoi riprovare oppure passare alla modalità compatibilità (più lenta, ma funziona sempre)."
+        case .closed:
+            return "Riapri lo specchio quando vuoi. Ricollegando il cavo si riapre da solo."
+        default:
+            return "Collega l'iPhone con il cavo e sbloccalo: lo specchio si apre da solo."
+        }
+    }
+
+    // MARK: - Modalità compatibilità: video dal cavo + WebDriverAgent
+
+    private var compatibilityMirror: some View {
         VStack(spacing: 0) {
             ZStack {
                 Color.black
