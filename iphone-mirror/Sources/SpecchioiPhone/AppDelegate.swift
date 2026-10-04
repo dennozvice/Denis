@@ -20,9 +20,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var launchedAtLogin = false
 
     static let mirrorBundleIdentifier = "com.dennozvice.specchioiphone.mirror"
+    private static var terminationSignal: DispatchSourceSignal?
 
     static func main() {
         signal(SIGPIPE, SIG_IGN)
+        // SIGTERM (ad esempio da crea-app.sh): l'app si chiude come con «Esci», così ferma anche
+        // lo specchio, il devicectl che tiene vivo il collegamento e WebDriverAgent.
+        // Un gestore vuoto e non SIG_IGN: SIG_IGN passerebbe ai programmi avviati dall'app, che poi
+        // non si fermerebbero più con terminate(). La sorgente qui sotto riceve il segnale lo stesso.
+        signal(SIGTERM, { _ in })
+        let terminate = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        terminate.setEventHandler { NSApplication.shared.terminate(nil) }
+        terminate.resume()
+        terminationSignal = terminate
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -45,6 +55,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         // Appena l'iPhone viene collegato, si apre da solo.
         controller.engine.onWiredConnect = { [weak self] in
             self?.showWindow()
+        }
+        // Su macOS 14 e successivi un'app passa al primo piano solo se quella attiva glielo concede:
+        // lo specchio deve poter prendere la tastiera appena si apre.
+        controller.engine.willLaunchMirror = {
+            if #available(macOS 14, *) {
+                NSApp.yieldActivation(toApplicationWithBundleIdentifier: AppDelegate.mirrorBundleIdentifier)
+            }
         }
         controller.capture.$deviceName
             .removeDuplicates()
@@ -90,22 +107,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             return
         }
         if controller.engine.state == .running {
-            NSRunningApplication.runningApplications(withBundleIdentifier: Self.mirrorBundleIdentifier)
-                .first?
-                .activate(options: [.activateAllWindows])
+            mirrorApplication?.activate(options: [.activateAllWindows])
         } else {
             controller.engine.open()
             showWindow()
         }
     }
 
+    /// La finestra dello specchio (un programma a parte), se è aperta.
+    private var mirrorApplication: NSRunningApplication? {
+        controller.engine.helperProcessIdentifier.flatMap { NSRunningApplication(processIdentifier: $0) }
+            ?? NSRunningApplication.runningApplications(withBundleIdentifier: Self.mirrorBundleIdentifier).first
+    }
+
     private func engineStateChanged(_ state: MirrorEngine.State) {
         guard controller.mode == .fast else { return }
         switch state {
         case .running:
+            // Se in primo piano c'è questa app (la finestra di stato), passa la tastiera allo specchio
+            // prima di nascondersi: su macOS 14 e successivi lo specchio da solo potrebbe non riuscirci.
+            if NSApp.isActive {
+                mirrorApplication?.activate(options: [])
+            }
             hideWindow()
         case .locked, .failed:
-            if controller.engine.wantsOpen || state != .locked { showWindow() }
+            guard controller.engine.wantsOpen || state != .locked else { break }
+            // Già in vista: si aggiorna da sola, senza rubare di nuovo la tastiera.
+            guard window?.isVisible != true else { break }
+            if controller.engine.reopening {
+                // Lo specchio si è interrotto da solo (ad esempio l'iPhone si è bloccato durante l'uso):
+                // l'avviso compare senza togliere la tastiera all'app che stai usando.
+                showWindowInBackground()
+            } else {
+                showWindow()
+            }
         default:
             break
         }
@@ -118,6 +153,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     @objc func showWindow() {
+        makeWindowIfNeeded()
+        NSApp.setActivationPolicy(.regular)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        // Su macOS 14 e successivi l'attivazione può essere rifiutata (cavo collegato mentre usi
+        // un'altra app): la finestra compare comunque davanti.
+        window?.orderFrontRegardless()
+    }
+
+    /// Mostra la finestra di stato senza attivare l'app: per avvisi che l'utente non ha chiesto.
+    private func showWindowInBackground() {
+        makeWindowIfNeeded()
+        window?.orderFrontRegardless()
+    }
+
+    private func makeWindowIfNeeded() {
         if window == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 430, height: 900),
@@ -135,13 +186,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             window.setFrameAutosaveName("SpecchioiPhone")
             self.window = window
         }
-        NSApp.setActivationPolicy(.regular)
-        window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// Chiudendo la finestra l'app resta nella barra dei menu, pronta per la prossima volta.
+    /// Nella modalità veloce vuol dire anche «non ora»: lo specchio smette di riprovare da solo
+    /// (ad esempio con l'iPhone bloccato) finché non ricolleghi il cavo o scegli «Mostra iPhone».
     func windowWillClose(_ notification: Notification) {
+        if controller.mode == .fast {
+            controller.engine.dismiss()
+        }
         NSApp.setActivationPolicy(.accessory)
     }
 

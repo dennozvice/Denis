@@ -14,3 +14,9 @@ dall'app; i parametri sono:
 ```
 specchio-mirror <id-coredevice> <utunN> <ip-mac> <ip-iphone> <productType> [--seconds S] [--title NOME]
 ```
+
+Limite noto: ogni tocco, scorrimento o tasto inviato all'iPhone lascia in memoria un piccolo blocco
+(il report HID creato dalla libreria UniversalHID di Apple, che non si può liberare senza dipendere dalla
+sua struttura interna). Sono poche decine di byte per evento, cioè qualche decina di MB per ora di
+trascinamenti o scorrimenti continui: la memoria torna libera chiudendo e riaprendo lo specchio
+(⌘W, poi **Mostra iPhone**).

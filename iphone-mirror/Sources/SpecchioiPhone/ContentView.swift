@@ -58,7 +58,7 @@ struct ContentView: View {
     private var fastHint: String {
         switch engine.state {
         case .locked:
-            return "Lo specchio veloce funziona solo con l'iPhone sbloccato. Appena lo sblocchi si apre da solo."
+            return "Lo specchio veloce funziona solo con l'iPhone sbloccato. Appena lo sblocchi si apre da solo (se chiudi questa finestra, smette di aspettare)."
         case .starting:
             return "Tieni l'iPhone sbloccato: tra pochi secondi compare la finestra con il suo schermo."
         case .failed:

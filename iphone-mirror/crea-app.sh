@@ -49,8 +49,24 @@ codesign --force --sign - "$APP"
 DEST="/Applications"
 [ -w "$DEST" ] || DEST="$HOME/Applications"
 mkdir -p "$DEST"
-pkill -x specchio-mirror 2>/dev/null || true
-pkill -x SpecchioiPhone 2>/dev/null && sleep 1 || true
+
+# Chiude la versione già aperta e aspetta che sia uscita (al massimo $2 secondi, poi la forza).
+chiudi() {
+  local nome="$1" secondi="$2" i
+  pkill -x "$nome" 2>/dev/null || return 0
+  for ((i = 0; i < secondi * 2; i++)); do
+    pgrep -x "$nome" >/dev/null || return 0
+    sleep 0.5
+  done
+  pkill -9 -x "$nome" 2>/dev/null || true
+}
+# Prima l'app (con SIGTERM si chiude come con «Esci» e ferma specchio, collegamento e WebDriverAgent),
+# così non riapre lo specchio mentre lo si chiude. Lo specchio rilascia i tasti sull'iPhone e si chiude
+# da solo entro pochi secondi. Poi quello che le versioni precedenti dell'app potevano lasciare aperto.
+chiudi SpecchioiPhone 5
+chiudi specchio-mirror 20
+pkill -f "notification observe.*com.dennozvice.specchio.keepalive" 2>/dev/null || true
+pkill -f "$DIR/.wda-build" 2>/dev/null || true
 rm -rf "$DEST/Specchio iPhone.app"
 cp -R "$APP" "$DEST/"
 open "$DEST/Specchio iPhone.app"

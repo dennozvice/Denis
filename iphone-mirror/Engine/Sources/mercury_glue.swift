@@ -779,25 +779,32 @@ func makeDDIUniversalHIDService(_ connection: UnsafeMutableRawPointer?) -> (Unsa
     return (ddiPointer, ddiWitness)
 }
 
-// One DDIUniversalHIDService per RemoteXPC connection, built on first use and then reused for every
-// report and barrier, the way Device Hub keeps one for the life of a connection. Building one per call
-// (fine for ipb's short CLI runs) leaks two objects, a retain on the Mercury peer and an element of
-// retainedCoreDeviceStrings per send: unbounded growth over an hours-long mirror session, where every
-// touch move, scroll step, keyboard state and barrier is a send. The dispatch shims pass the service
-// as a guaranteed (borrowed) `self`, so reusing it does not change its retain count.
+// One service object per RemoteXPC connection and service kind (DDIUniversalHIDService, IndigoHIDButton,
+// IndigoHIDDigitizer), built on first use and then reused for every send and barrier, the way Device
+// Hub keeps one for the life of a connection. Building one per call (fine for ipb's short CLI runs)
+// leaks the object, a retain on the Mercury peer and an element of retainedCoreDeviceStrings per send:
+// unbounded growth over an hours-long mirror session, where every touch move, scroll step, keyboard
+// state, shortcut press/release and bottom-edge digitizer point is a send. The dispatch shims pass the
+// service as a guaranteed (borrowed) `self` -- its address in x20 (mercury_abi.S) -- so reusing it does
+// not change its retain count.
 //
 // Checked out, never shared: a call takes the idle service out of the pool and puts it back when it
 // returns. The mirror runs each send on a global queue and stops waiting for one at a deadline, so a
 // stuck call can overlap the next; that next call finds the pool empty and builds a service of its
 // own (leaked as before), so no service object is ever used by two calls at once. The key is the
 // connection's address, which cannot be recycled while it is cached: the service's peer is retained
-// forever (passRetained) and wraps that connection -- and the mirror opens a single UniversalHID
-// connection per process anyway. Cached services are deliberately never released, not even after the
+// forever (passRetained) and wraps that connection -- and the mirror opens one connection per service
+// kind per process anyway. Cached services are deliberately never released, not even after the
 // connection is cancelled: their fields were written as raw bits (storePointer/storeString), so a
 // deinit would release the feature string it does not own. The process exits right after the cancel.
-final class UniversalHIDServicePool: @unchecked Sendable {
+final class ServicePool: @unchecked Sendable {
     private let lock = NSLock()
     private var idle: [UInt: (UnsafeMutableRawPointer, UnsafeRawPointer)] = [:]
+    private let make: (UnsafeMutableRawPointer?) -> (UnsafeMutableRawPointer, UnsafeRawPointer)
+
+    init(_ make: @escaping (UnsafeMutableRawPointer?) -> (UnsafeMutableRawPointer, UnsafeRawPointer)) {
+        self.make = make
+    }
 
     func withService<T>(
         _ connection: UnsafeMutableRawPointer,
@@ -807,7 +814,7 @@ final class UniversalHIDServicePool: @unchecked Sendable {
         lock.lock()
         let cached = idle.removeValue(forKey: key)
         lock.unlock()
-        let entry = cached ?? makeDDIUniversalHIDService(connection)
+        let entry = cached ?? make(connection)
         let result = body(entry.0, entry.1)
         lock.lock()
         if idle[key] == nil {
@@ -818,7 +825,9 @@ final class UniversalHIDServicePool: @unchecked Sendable {
     }
 }
 
-let universalHIDServicePool = UniversalHIDServicePool()
+let universalHIDServicePool = ServicePool(makeDDIUniversalHIDService)
+let buttonServicePool = ServicePool(makeIndigoHIDButton)
+let digitizerServicePool = ServicePool(makeIndigoHIDDigitizer)
 
 func makeIndigoHIDButton(_ connection: UnsafeMutableRawPointer?) -> (UnsafeMutableRawPointer, UnsafeRawPointer) {
     let serviceName = ProcessInfo.processInfo.environment["HIDCTL_BUTTON_MERCURY_SERVICE"]
@@ -1399,8 +1408,9 @@ public func coredeviceSendHIDButtonCustom(
         return 2
     }
 
-    let (button, witness) = makeIndigoHIDButton(connection)
-    let result = coredeviceHIDButtonCustomDispatchABI(button, witness, usagePage, usageCode, state)
+    let result = buttonServicePool.withService(connection) { button, witness in
+        coredeviceHIDButtonCustomDispatchABI(button, witness, usagePage, usageCode, state)
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice button: custom dispatch result=\(result) page=\(usagePage) code=\(usageCode) state=\(state)\n", stderr)
     }
@@ -1414,8 +1424,9 @@ public func coredeviceSendHIDButtonBarrier(_ connection: UnsafeMutableRawPointer
         return 2
     }
 
-    let (button, witness) = makeIndigoHIDButton(connection)
-    let result = coredeviceHIDButtonBarrierDispatchABI(button, witness)
+    let result = buttonServicePool.withService(connection) { button, witness in
+        coredeviceHIDButtonBarrierDispatchABI(button, witness)
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice button: barrier dispatch result=\(result)\n", stderr)
     }
@@ -1440,20 +1451,21 @@ public func coredeviceSendHIDDigitizerCGPoint(
         return 2
     }
 
-    let (digitizer, witness) = makeIndigoHIDDigitizer(connection)
-    let result = coredeviceHIDDigitizerCGPointDispatchABI(
-        digitizer,
-        witness,
-        pointOneX,
-        pointOneY,
-        pointTwoX,
-        pointTwoY,
-        pointTwoOptionalTag,
-        eventType,
-        edge,
-        targetLow,
-        targetHigh
-    )
+    let result = digitizerServicePool.withService(connection) { digitizer, witness in
+        coredeviceHIDDigitizerCGPointDispatchABI(
+            digitizer,
+            witness,
+            pointOneX,
+            pointOneY,
+            pointTwoX,
+            pointTwoY,
+            pointTwoOptionalTag,
+            eventType,
+            edge,
+            targetLow,
+            targetHigh
+        )
+    }
     if ProcessInfo.processInfo.environment["HIDCTL_QUIET"] == nil {
         fputs("coredevice digitizer: cgpoint dispatch result=\(result) p1=(\(pointOneX),\(pointOneY)) tag=\(pointTwoOptionalTag) event=\(eventType) edge=\(edge) target=(\(targetLow),\(targetHigh))\n", stderr)
     }

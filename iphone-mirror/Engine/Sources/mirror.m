@@ -107,7 +107,8 @@ typedef struct { uint64_t seq, generation, gesture; Kind kind; double x,y,submit
                  // without one a list scroll has no target. See pointerValid.
                  double pointerX,pointerY; BOOL pointerValid;
                  NSUInteger appPhase,appMomentum;
-                 UsageSet keys; } Event; // keys: KeyboardHID only, the complete pressed state
+                 UsageSet keys;  // KeyboardHID only: the complete pressed state
+                 BOOL flush; } Event; // KeyboardHID only: the release from releaseKeys, followed by a barrier
 typedef struct { Event event; unsigned depth; Result result; int reportCode,barrierCode;
                  double received,reportReturn,barrierReturn; } Record;
 static pthread_mutex_t gLock=PTHREAD_MUTEX_INITIALIZER;
@@ -202,7 +203,8 @@ static xrc_t gButton,gDigitizer;
 static int gButtonFD=-1,gDigitizerFD=-1;
 static BOOL gInputLive;
 // Keyboard: UniversalHID keyboard service on gInput (discovered like the touchscreen, see
-// discoverService). Set to YES on the input queue once the device refuses a keyboard report.
+// discoverService). Set to YES on the input queue when the service refused its first few reports and
+// accepted none (see sendKeyboardState).
 static uint64_t gKeyboardServiceID;
 static _Atomic bool gKeyboardDisabled=false;
 // Main thread only. gKeysDown is what is physically held on the Mac; gKeysChord holds synthesized
@@ -212,8 +214,18 @@ static UsageSet gKeysDown,gKeysChord,gKeysSent;
 // gKeysResync: the device's keyboard state is not known (a state was dropped because the pending
 // queue was full, or a release is being forced), so the next commit sends the whole wanted state as
 // one report; the presentation timer retries it until the queue takes it.
-static BOOL gKeysDirty,gKeysResync;
+// gKeysFlush: releaseKeys wants its all-released state followed by a barrier (Event.flush).
+static BOOL gKeysDirty,gKeysResync,gKeysFlush;
 static uint8_t gPressedUsage[128]; // macOS key code -> usage it was pressed as, so its release matches
+// Main thread only. While a Cmd-V is waiting for devicectl to put the Mac's text on the iPhone
+// (gPastesPending), key events are held in arrival order and replayed after the paste chord, so text
+// typed right after Cmd-V lands after the pasted text (see holdKey). gHeldKeyDown: macOS key codes whose
+// key-down is held, so that their key-up is held too. gChordsInFlight: synthesized chords not yet
+// released (keyboardChordThen); the replay waits for them.
+static unsigned gPastesPending,gChordsInFlight;
+static NSMutableArray<NSEvent*> *gHeldKeys;
+static uint32_t gHeldKeyDown[4];
+static void replayHeldKeys(void);
 // Contract with the Specchio iPhone app: exit 0 means the user closed the mirror, and only that.
 static _Atomic bool gUserClosed=false;
 static _Atomic bool gAnnouncedLocked=false;
@@ -277,8 +289,13 @@ static BOOL writeOutput(int fd,NSString *text){
 // Never calls private APIs or waits for the input queue. No lock is held across a sender.
 static void finish(int code,NSString *reason) __attribute__((noreturn));
 static void finish(int code,NSString *reason){
-    // A losing finalizer must not return from main and preempt the winner's output.
-    if(atomic_exchange(&gFinished,true)) pthread_exit(NULL);
+    // A losing finalizer must not return from main and preempt the winner's output, so it parks until
+    // the winner's _Exit (bounded: writeOutput has 3 s deadlines). Never pthread_exit: the second-stage
+    // watchdog calls finish on a GCD worker thread, where libpthread aborts pthread_exit ("called from a
+    // thread not created by pthread_create()") -- a crash the app would read as a failure and relaunch
+    // the mirror after the user closed it. pause() works on main and GCD threads alike; SIGINT/SIGTERM
+    // are SIG_IGN (dispatch sources handle them), so nothing ends the wait but the winner.
+    if(atomic_exchange(&gFinished,true)) for(;;) pause();
     static Record records[Capacity]; static double intervals[Capacity];
     pthread_mutex_lock(&gLock);
     gStopping=YES; gCollect=NO; atomic_fetch_add(&gGeneration,1);
@@ -338,7 +355,7 @@ static void finish(int code,NSString *reason){
         (unsigned long long)drops,(unsigned long long)errors,intervalN,(unsigned long long)intervalCount];
     [s appendString:@"KEY_* report_return=first send return; barrier_return=button barrier or RECENTS end return (digitizer has no barrier in the existing oracle).\n"];
     [s appendString:@"BOTTOM_EDGE UP: end return only; no digitizer barrier exists in the oracle. Scroll x/y are relative AppKit deltas; scroll calibration is UNVERIFIED.\n"];
-    [s appendString:@"KEYBOARD: one full-state report per change of the pressed set; barrier_return only when all keys are released and no other input is queued. Which keys were pressed is never logged.\n"];
+    [s appendString:@"KEYBOARD: one full-state report per change of the pressed set; barrier_return only for the release at focus loss or close when no other input is queued. Which keys were pressed is never logged.\n"];
     [s appendString:@"drops=local invalid/non-increasing PTS only; transport/decoder losses unknown. Times=CLOCK_MONOTONIC seconds; blank=not reached.\n"];
     NSMutableString *csv=nil;
     if(gCSVFD>=0) csv=[NSMutableString stringWithString:@"seq,type,generation,gesture,result,queue_depth,x,y,t_submit,t_received,t_report_return,t_barrier_return,report_code,barrier_code,mode,scroll_phase,scroll_momentum,scroll_flags,raw_x,raw_y,accel_x,accel_y,app_phase,app_momentum\n"];
@@ -754,9 +771,20 @@ static int sendReportBounded(xrc_t connection,const void *words,size_t length,ui
 static Result failureFor(int code,Result onFail){ return code==SendTimedOutCode?SendTimedOut:onFail; }
 
 // Input queue only. One KeyboardReport carrying the complete pressed state, on the same UniversalHID
-// connection as the touchscreen but addressed to the keyboard service; like `ipb key` (press,
-// release, barrier) a barrier follows once the state is all-released again and the queue is idle. Independent of the
-// touch state machine: typing during a drag neither ends nor rejects the touch.
+// connection as the touchscreen but addressed to the keyboard service. A barrier follows only the
+// release that releaseKeys queues (focus loss, close: a flush before the connection may be cancelled),
+// not every key-up as in `ipb key`, a CLI that exits right after. Independent of the touch state
+// machine: typing during a drag neither ends nor rejects the touch.
+//
+// Refusals: a service that has never accepted a report is the wrong or a missing one (the 0x200
+// fallback), so after a few refusals forwarding stops for the session. Once one has been accepted, a
+// refusal is transient: an all-released report goes out at once (best effort) so that no key pressed
+// by an earlier report stays held -- and autorepeating -- on the iPhone, and forwarding continues;
+// every report is the complete state, so the next one resynchronises the device.
+static BOOL gKeyboardAccepted;       // input queue only
+static unsigned gKeyboardRefusals;   // input queue only: refusals before any report was accepted
+static BOOL gKeyboardRefusalLogged;  // input queue only
+enum { KeyboardRefusalLimit=3 };
 static void sendKeyboardState(Record *r){
     const Event *event=&r->event;
     uint32_t usages[0xE8]; int32_t count=0;
@@ -773,20 +801,38 @@ static void sendKeyboardState(Record *r){
     if(r->reportCode){
         r->result=failureFor(r->reportCode,SendFailed);
         // A timed-out send may have left a key held on the device (it autorepeats), so it is fatal,
-        // exactly like a shortcut press. An outright refusal means this device has no usable
-        // keyboard service: keep the mirror, stop forwarding keys. The RemoteXPC error handler still
-        // reports a connection that is actually dead.
-        if(r->result==SendTimedOut) inputError(@"keyboard sender exceeded the send deadline; a key may be held on the device");
-        else if(!atomic_exchange(&gKeyboardDisabled,true))
-            LOGE("keyboard: service 0x%llx refused a report (code %d); keyboard forwarding disabled for this session",
-                 (unsigned long long)gKeyboardServiceID,r->reportCode);
+        // exactly like a shortcut press. The RemoteXPC error handler still reports a connection that
+        // is actually dead.
+        if(r->result==SendTimedOut){
+            inputError(@"keyboard sender exceeded the send deadline; a key may be held on the device"); return;
+        }
+        if(!gKeyboardAccepted){
+            // Nothing was ever pressed on the device, so stopping strands no key.
+            if(++gKeyboardRefusals>=KeyboardRefusalLimit && !atomic_exchange(&gKeyboardDisabled,true))
+                LOGE("keyboard: service 0x%llx refused %u reports and accepted none (last code %d); keyboard forwarding disabled for this session",
+                     (unsigned long long)gKeyboardServiceID,gKeyboardRefusals,r->reportCode);
+            return;
+        }
+        uint64_t none[2]={0,0};
+        int releaseCode=uhid_make_keyboard_state_hid_report(usages,0,none)==(int)sizeof none?
+            sendReportBounded(gInput,none,sizeof none,gKeyboardServiceID):-1;
+        if(!gKeyboardRefusalLogged){
+            gKeyboardRefusalLogged=YES;
+            LOGE("keyboard: service 0x%llx refused a report (code %d); all keys released (code %d), forwarding continues (later refusals: CSV only)",
+                 (unsigned long long)gKeyboardServiceID,r->reportCode,releaseCode);
+        }
+        if(releaseCode==SendTimedOutCode)
+            inputError(@"keyboard release after a refused report exceeded the send deadline; a key may be held on the device");
         return;
     }
-    if(count){ r->result=Sent; return; }
-    // The barrier only flushes the connection, so it waits until no other input is queued: the next
-    // barrier (this one's successor once the queue is idle, or a touch/scroll end's) covers this
-    // report too. A barrier per keystroke -- 346 ms p95 on localNetwork -- let fast typing outrun
-    // the worker and fill the pending queue.
+    gKeyboardAccepted=YES;
+    // Ordinary key-ups get no barrier: it carries no data (every report is the complete state, and a
+    // dead connection is reported by the RemoteXPC error handler), yet on localNetwork it holds the
+    // serial worker for up to 346 ms p95 -- after nearly every keystroke, since a key-up usually finds
+    // the queue idle -- so typed characters arrived in bursts.
+    if(count || !event->flush){ r->result=Sent; return; }
+    // Skipped when other input is queued behind it: that input follows on the same connection (and a
+    // touch/scroll end brings its own barrier), so it must not wait for a flush.
     pthread_mutex_lock(&gLock); BOOL queued=gCount>0; pthread_mutex_unlock(&gLock);
     if(queued){ r->result=Sent; return; }
     r->barrierCode=sendBounded(^{ return coredevice_send_universalhid_barrier(gInput); });
@@ -1174,7 +1220,7 @@ static void discoverService(void){
     if(gKeyboardServiceID) LOGE("keyboard service=0x%llx (descriptor) on existing universalhidservice",(unsigned long long)gKeyboardServiceID);
     else {
         // HIDServiceID.mainKeyboard, the value bin/ipb falls back to (docs/protocol.md). A wrong id
-        // is not fatal: the first refused report disables keyboard forwarding (sendKeyboardState).
+        // is not fatal: a few refused reports with none accepted disable keyboard forwarding (sendKeyboardState).
         gKeyboardServiceID=0x200;
         LOGE("keyboard service: no CoreDevice keyboard descriptor; falling back to mainKeyboard 0x200");
     }
@@ -1257,12 +1303,14 @@ static BOOL keyboardUsable(void){
 // NO when the pending queue was full and the state was dropped. That is not fatal for the keyboard
 // (see submitEvent): the device's state is then unknown, and commitKeys resends the complete state.
 static BOOL queueKeyboardState(UsageSet keys,double t){
-    Result result=submitEvent((Event){.generation=atomic_load(&gGeneration),.kind=KeyboardHID,.submit=t,.mode=Touch,.keys=keys},Pending);
+    BOOL flush=gKeysFlush && usageSetEmpty(keys);
+    Result result=submitEvent((Event){.generation=atomic_load(&gGeneration),.kind=KeyboardHID,.submit=t,.mode=Touch,.keys=keys,.flush=flush},Pending);
     if(!usageSetEmpty(keys)) gKeysDirty=YES;
     if(result==Overload){
         if(!gKeysResync) LOGE("keyboard: pending input queue full; a keyboard state was dropped, resending the full state");
         gKeysResync=YES; return NO;
     }
+    if(flush) gKeysFlush=NO;
     gKeysSent=keys; return YES;
 }
 // Brings the device to gKeysDown | gKeysChord. Each report is the complete state, so nothing can stay
@@ -1296,7 +1344,9 @@ static void commitKeys(double t){
 static void releaseKeys(double t){
     memset(&gKeysDown,0,sizeof gKeysDown); memset(&gKeysChord,0,sizeof gKeysChord);
     memset(gPressedUsage,0,sizeof gPressedUsage);
-    if(gKeysDirty){ gKeysDirty=NO; gKeysResync=YES; }
+    // Keys held behind a pending paste are dropped with the rest: focus went elsewhere, or the mirror closes.
+    [gHeldKeys removeAllObjects]; memset(gHeldKeyDown,0,sizeof gHeldKeyDown);
+    if(gKeysDirty){ gKeysDirty=NO; gKeysResync=YES; gKeysFlush=YES; }
     commitKeys(t);
 }
 // Device-dependent modifier bits (IOKit NX_DEVICE*KEYMASK), carried in NSEvent.modifierFlags next
@@ -1340,17 +1390,26 @@ static void syncModifiers(NSEvent *event){
 // key released while Command is down, so holding it until key-up could leave it stuck) and for the
 // synthesized chords (Spotlight, paste, Caps Lock).
 static const double ChordHoldSeconds=.05;
-static void keyboardChord(const uint32_t *usages,unsigned count){
-    if(!keyboardUsable()) return;
+// `after` (optional) runs on the main thread once the chord's release is queued -- or right away when
+// the keyboard is not usable and no chord goes out -- so input queued by it follows the whole chord.
+// Held keys resume after a chord's release too: replayed at once, they would otherwise be pressed
+// together with the chord (a replayed Cmd-3 followed by letters would send Command-letters).
+static void keyboardChordThen(const uint32_t *usages,unsigned count,dispatch_block_t after){
+    if(!keyboardUsable()){ if(after) after(); return; }
     UsageSet added={{0}};
     for(unsigned i=0;i<count;i++) usageSetAdd(&added,usages[i]);
     for(unsigned i=0;i<8;i++) gKeysChord.w[i]|=added.w[i];
     commitKeys(nowSec());
+    gChordsInFlight++;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(ChordHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
         for(unsigned i=0;i<8;i++) gKeysChord.w[i]&=~added.w[i];
         commitKeys(nowSec());
+        gChordsInFlight--;
+        if(after) after();
+        replayHeldKeys(); // nothing to do unless keys are held
     });
 }
+static void keyboardChord(const uint32_t *usages,unsigned count){ keyboardChordThen(usages,count,nil); }
 static void commandChord(uint32_t usage){ uint32_t chord[2]={0xE3,usage}; keyboardChord(chord,2); }
 // keyDown: without Command. Key repeat is ignored: the iPhone repeats a held key by itself.
 static void keyboardKeyDown(NSEvent *event){
@@ -1383,6 +1442,51 @@ static void keyboardFlagsChanged(NSEvent *event){
     if(code==kVK_CapsLock){ uint32_t caps=0x39; keyboardChord(&caps,1); return; }
     syncModifiers(event);
     commitKeys(nowSec());
+}
+
+// ---- Keys typed while a Cmd-V is pending (main thread) ---------------------------------------------
+//
+// pasteFromMac sends the iPhone's Cmd-V only once devicectl has put the Mac's text on the iPhone, a
+// separate process that takes a second or more. Keys sent meanwhile would reach the iPhone BEFORE the
+// pasted text: paste a URL and press Return, and Safari would navigate first; in a chat the message
+// would go out empty. So while a paste is pending -- and after it, until everything held has been
+// replayed -- key events are held in arrival order and replayed after the paste chord (replayHeldKeys).
+// What is not held, because it cannot reorder anything typed: the key-up of a key pressed before the
+// paste (so it does not autorepeat on the iPhone meanwhile), and a modifier change that only releases
+// modifiers while nothing is held yet (Command let go after Cmd-V: the chord carries its own Command).
+// Cmd-Q/W/M/H are never held (handleCommandKey).
+static BOOL holdingKeys(void){ return gPastesPending || gHeldKeys.count; }
+static void holdKey(NSEvent *event){
+    if(!gHeldKeys) gHeldKeys=[NSMutableArray array];
+    // keyboardKeyUpEvent sees each key-up twice (the local monitor, then keyUp:): hold it once.
+    if([gHeldKeys indexOfObjectIdenticalTo:event]!=NSNotFound) return;
+    [gHeldKeys addObject:event];
+    if(event.type==NSEventTypeKeyDown && event.keyCode<128) gHeldKeyDown[event.keyCode>>5]|=1u<<(event.keyCode&31);
+}
+static BOOL keyDownHeld(unsigned short code){ return code<128 && (gHeldKeyDown[code>>5]&(1u<<(code&31))); }
+// MirrorView keyDown: without Command.
+static void keyboardKeyDownEvent(NSEvent *event){
+    if(holdingKeys()){ if(!event.isARepeat) holdKey(event); return; } // a repeat is ignored anyway
+    keyboardKeyDown(event);
+}
+// keyUp: and the local key-up monitor.
+static void keyboardKeyUpEvent(NSEvent *event){
+    if(holdingKeys() && keyDownHeld(event.keyCode)){ holdKey(event); return; }
+    keyboardKeyUp(event);
+}
+// flagsChanged:.
+static void keyboardFlagsChangedEvent(NSEvent *event){
+    if(holdingKeys()){
+        BOOL releaseOnly=NO;
+        if(!gHeldKeys.count && event.keyCode!=kVK_CapsLock){
+            uint32_t before=gKeysDown.w[7];
+            syncModifiers(event);                          // dry run: what this event would leave pressed
+            releaseOnly=!(gKeysDown.w[7]&~before);
+            gKeysDown.w[7]=before;
+        }
+        if(!releaseOnly){ holdKey(event); return; }
+    }
+    keyboardFlagsChanged(event);
 }
 
 static void releaseMouse(double submitted){
@@ -1542,21 +1646,51 @@ static void runDevicectl(NSArray<NSString*> *arguments,NSData *input,void (^comp
         dispatch_async(dispatch_get_main_queue(),^{ completion(status,output); });
     }});
 }
+// Main thread only. The text last exchanged with the iPhone's pasteboard -- pushed by Cmd-V or pulled
+// by Cmd-C/X -- and the Mac pasteboard's changeCount at that moment; and the changeCount right after our
+// own last write to the Mac pasteboard.
+static NSString *gExchangedText;
+static NSInteger gExchangedChange=-1,gOwnPasteboardChange=-1;
+// A paste whose devicectl has not answered after this long is given up: the held keys go out, and a
+// late answer no longer sends Cmd-V (it would paste into whatever has focus by then). devicectl itself
+// is terminated after DevicectlTimeoutSeconds and killed 2 s later, so this only bounds a call that
+// never returns at all.
+#define PasteHoldSeconds (DevicectlTimeoutSeconds+3)
 // Cmd-V: put the Mac clipboard's text on the iPhone's pasteboard, then send Cmd-V to the iPhone --
 // after devicectl finishes, successful or not (on failure the iPhone pastes what it already holds).
+// Keys typed meanwhile are held and follow the paste (holdKey).
 static void pasteFromMac(uint32_t usage){
-    NSString *text=[[NSPasteboard generalPasteboard] stringForType:NSPasteboardTypeString];
+    NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
+    NSInteger change=pasteboard.changeCount;
+    NSString *text=[pasteboard stringForType:NSPasteboardTypeString];
     NSData *data=[text dataUsingEncoding:NSUTF8StringEncoding];
     if(!data.length || !gDeviceUUID){ commandChord(usage); return; }
     NSUInteger characters=text.length;
+    gPastesPending++;
+    __block BOOL settled=NO; // main thread: the answer or the time limit, whichever comes first
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(PasteHoldSeconds*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+        if(settled) return;
+        settled=YES;
+        LOGE("pasteboard: devicectl copy gave no answer within %.0fs; Cmd-V not sent, held keys released",(double)PasteHoldSeconds);
+        gPastesPending--; replayHeldKeys();
+    });
     runDevicectl(@[@"device",@"pasteboard",@"copy",@"--device",gDeviceUUID],data,^(int status,NSData *output){
+        if(settled){ LOGE("pasteboard: devicectl copy answered after the paste was given up (exit %d); not pasting",status); return; }
+        settled=YES;
         if(status) LOGE("pasteboard: devicectl copy exited %d; pasting the iPhone's own clipboard",status);
-        else LOGE("pasteboard: %lu characters from the Mac clipboard copied to the iPhone",(unsigned long)characters);
-        commandChord(usage); // Command is sent explicitly: the user may have released it by now
+        else {
+            LOGE("pasteboard: %lu characters from the Mac clipboard copied to the iPhone",(unsigned long)characters);
+            gExchangedText=text; gExchangedChange=change;
+        }
+        // Command is sent explicitly: the user may have released it by now. The held keys follow the
+        // chord's release, so none of them is combined with Command-V.
+        uint32_t chord[2]={0xE3,usage};
+        keyboardChordThen(chord,2,^{ gPastesPending--; replayHeldKeys(); });
     });
 }
 // After Cmd-C / Cmd-X on the iPhone: read its pasteboard and put the text on the Mac clipboard.
-static void pullDeviceClipboard(void){
+// `change` is the Mac pasteboard's changeCount when the user pressed Cmd-C/X.
+static void pullDeviceClipboard(NSInteger change){
     if(gClosing || !gDeviceUUID) return;
     runDevicectl(@[@"device",@"pasteboard",@"paste",@"--device",gDeviceUUID],nil,^(int status,NSData *output){
         NSString *text=!status && output.length?[[NSString alloc] initWithData:output encoding:NSUTF8StringEncoding]:nil;
@@ -1567,38 +1701,45 @@ static void pullDeviceClipboard(void){
             return;
         }
         NSPasteboard *pasteboard=[NSPasteboard generalPasteboard];
+        NSInteger now=pasteboard.changeCount;
+        // The user copied something on the Mac after pressing Cmd-C here: that copy is newer. Our own
+        // write since then does not count (two quick Cmd-Cs).
+        if(now!=change && now!=gOwnPasteboardChange){
+            LOGE("pasteboard: the Mac clipboard changed after Cmd-C; the iPhone's text was not copied");
+            return;
+        }
+        // Cmd-C that copied nothing (no selection, or an app without a hardware Cmd-C) leaves the
+        // iPhone's old clipboard in place. If that is exactly the text last exchanged with the Mac, and
+        // the Mac clipboard has changed since, it would replace a newer Mac copy with old text: keep the
+        // Mac clipboard. Identical text copied again on purpose cannot be told apart, so a second Cmd-C
+        // (with no Mac copy in between) copies it anyway.
+        if(gExchangedText && [text isEqualToString:gExchangedText] && now!=gExchangedChange){
+            gExchangedChange=now;
+            LOGE("pasteboard: the iPhone's clipboard still holds the text last exchanged with the Mac, and the Mac clipboard changed since; Mac clipboard kept (Cmd-C again copies it)");
+            return;
+        }
+        if([[pasteboard stringForType:NSPasteboardTypeString] isEqualToString:text]){
+            gExchangedText=text; gExchangedChange=now;
+            LOGE("pasteboard: the Mac clipboard already holds the iPhone's text");
+            return;
+        }
         [pasteboard clearContents];
-        if([pasteboard setString:text forType:NSPasteboardTypeString])
+        if([pasteboard setString:text forType:NSPasteboardTypeString]){
+            gOwnPasteboardChange=pasteboard.changeCount;
+            gExchangedText=text; gExchangedChange=gOwnPasteboardChange;
             LOGE("pasteboard: %lu characters from the iPhone copied to the Mac clipboard",(unsigned long)text.length);
-        else LOGE("pasteboard: writing the Mac clipboard failed");
+        }else LOGE("pasteboard: writing the Mac clipboard failed");
     });
 }
 
-// Every key-down with Command is decided here, exactly once: performKeyEquivalent: routes it here and
-// keyDown: does too as a fallback, and a second delivery of the same event is ignored.
-//  - Mac app/window shortcuts (Cmd-Q, Cmd-W, Cmd-M, Cmd-H) act natively and never reach the iPhone.
-//  - The mirror's own shortcuts drive device buttons, local actions or the clipboard.
-//  - Every other Command combination is forwarded to the iPhone as a keyboard chord.
-static void handleCommandKey(NSEvent *event){
-    static NSTimeInterval lastTimestamp=-1; static unsigned short lastKeyCode=0xFFFF;
-    if(event.timestamp==lastTimestamp && event.keyCode==lastKeyCode) return;
-    lastTimestamp=event.timestamp; lastKeyCode=event.keyCode;
+// A key-down with Command other than Cmd-Q/W/M/H (handleCommandKey, or replayHeldKeys after a paste).
+static void commandKeyAction(NSEvent *event){
     NSEventModifierFlags flags=event.modifierFlags &
         (NSEventModifierFlagCommand|NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption);
     NSString *key=event.charactersIgnoringModifiers.lowercaseString;
     unichar c=key.length==1?[key characterAtIndex:0]:0;
     unsigned short code=event.keyCode;
     NSEventModifierFlags command=NSEventModifierFlagCommand,shiftCommand=command|NSEventModifierFlagShift;
-    if(flags==command && (c=='q' || c=='w' || c=='m' || c=='h')){
-        if(event.isARepeat) return;
-        // Through the main menu, as in any Mac app; directly if no menu item takes it.
-        if([NSApp.mainMenu performKeyEquivalent:event]) return;
-        if(c=='q') [NSApp terminate:nil];
-        else if(c=='w') [gWindow performClose:nil];
-        else if(c=='m') [gWindow performMiniaturize:nil];
-        else [NSApp hide:nil];
-        return;
-    }
     Kind kind=KeyHome;
     enum { DeviceKey, Screenshot, ZoomToFit, ActualSize, Spotlight, PasteFromMac, CopyToMac, Forward } action=Forward;
     // Device Hub bindings captured in the M4 brief (Xcode 27 beta 6).
@@ -1658,11 +1799,68 @@ static void handleCommandKey(NSEvent *event){
     // The physically held modifiers (Command and any others) first, then the key as a tap.
     noteKeyboardInUse(event);
     syncModifiers(event);
-    if(action==Spotlight) commandChord(usage);
-    else keyboardChord(&usage,1);
-    // Only when the chord actually went out; then give the iPhone time to update its pasteboard.
-    if(action==CopyToMac && keyboardUsable())
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(.5*NSEC_PER_SEC)),dispatch_get_main_queue(),^{ pullDeviceClipboard(); });
+    if(action==Spotlight){ commandChord(usage); return; }
+    // Cmd-C / Cmd-X: read the iPhone's pasteboard only when the chord actually goes out, and time it
+    // from the chord's delivery, not from the key press: the chord shares the FIFO input queue and can
+    // wait there behind a shortcut, a touch-end barrier or queued scroll events. Once the input group
+    // has drained (press and release sent), the iPhone gets a moment to update its pasteboard.
+    if(action!=CopyToMac || !keyboardUsable()){ keyboardChord(&usage,1); return; }
+    NSInteger change=[NSPasteboard generalPasteboard].changeCount;
+    keyboardChordThen(&usage,1,^{
+        dispatch_group_notify(gInputGroup,dispatch_get_main_queue(),^{
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(.4*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+                pullDeviceClipboard(change);
+            });
+        });
+    });
+}
+
+// Every key-down with Command is decided here, exactly once: performKeyEquivalent: routes it here and
+// keyDown: does too as a fallback, and a second delivery of the same event is ignored.
+//  - Mac app/window shortcuts (Cmd-Q, Cmd-W, Cmd-M, Cmd-H) act natively and never reach the iPhone.
+//  - The mirror's own shortcuts drive device buttons, local actions or the clipboard, and every other
+//    Command combination is forwarded to the iPhone as a keyboard chord (commandKeyAction) -- held
+//    while a paste is pending, like any other key (holdKey). Closing is never delayed.
+static void handleCommandKey(NSEvent *event){
+    static NSTimeInterval lastTimestamp=-1; static unsigned short lastKeyCode=0xFFFF;
+    if(event.timestamp==lastTimestamp && event.keyCode==lastKeyCode) return;
+    lastTimestamp=event.timestamp; lastKeyCode=event.keyCode;
+    NSEventModifierFlags flags=event.modifierFlags &
+        (NSEventModifierFlagCommand|NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption);
+    NSString *key=event.charactersIgnoringModifiers.lowercaseString;
+    unichar c=key.length==1?[key characterAtIndex:0]:0;
+    if(flags==NSEventModifierFlagCommand && (c=='q' || c=='w' || c=='m' || c=='h')){
+        if(event.isARepeat) return;
+        // Through the main menu, as in any Mac app; directly if no menu item takes it.
+        if([NSApp.mainMenu performKeyEquivalent:event]) return;
+        if(c=='q') [NSApp terminate:nil];
+        else if(c=='w') [gWindow performClose:nil];
+        else if(c=='m') [gWindow performMiniaturize:nil];
+        else [NSApp hide:nil];
+        return;
+    }
+    if(holdingKeys()){ if(!event.isARepeat) holdKey(event); return; } // a repeat is ignored anyway
+    commandKeyAction(event);
+}
+
+// After the paste chord (or when a paste is given up): the held key events, in arrival order, each
+// through the path it would have taken. A replayed Cmd-V starts the next paste, and a replayed chord
+// (Command combination, Spotlight, Caps Lock) is released before the next event; the events after it
+// stay held until then (keyboardChordThen resumes the replay), so the order typed is the order the
+// iPhone sees.
+static void replayHeldKeys(void){
+    while(!gPastesPending && !gChordsInFlight && gHeldKeys.count){
+        NSEvent *event=gHeldKeys.firstObject;
+        [gHeldKeys removeObjectAtIndex:0];
+        NSEventType type=event.type;
+        if(type==NSEventTypeKeyDown){
+            if(event.keyCode<128) gHeldKeyDown[event.keyCode>>5]&=~(1u<<(event.keyCode&31));
+            if(event.modifierFlags&NSEventModifierFlagCommand) commandKeyAction(event); // not deduplicated again
+            else keyboardKeyDown(event);
+        }else if(type==NSEventTypeKeyUp) keyboardKeyUp(event);
+        else if(type==NSEventTypeFlagsChanged) keyboardFlagsChanged(event);
+    }
+    if(!gHeldKeys.count) memset(gHeldKeyDown,0,sizeof gHeldKeyDown);
 }
 
 @interface MirrorView : NSView @end
@@ -1714,10 +1912,10 @@ static void handleCommandKey(NSEvent *event){
 // drive AppKit's key-view loop and cancelOperation: instead of reaching the iPhone.
 - (void)keyDown:(NSEvent*)event {
     if(event.modifierFlags&NSEventModifierFlagCommand) handleCommandKey(event); // fallback; deduplicated
-    else keyboardKeyDown(event);
+    else keyboardKeyDownEvent(event);
 }
-- (void)keyUp:(NSEvent*)event { keyboardKeyUp(event); }
-- (void)flagsChanged:(NSEvent*)event { keyboardFlagsChanged(event); }
+- (void)keyUp:(NSEvent*)event { keyboardKeyUpEvent(event); }
+- (void)flagsChanged:(NSEvent*)event { keyboardFlagsChangedEvent(event); }
 - (void)scrollWheel:(NSEvent*)event {
     double t=nowSec();
     if(!gReady || gClosing || atomic_load(&gFailure)) return;
@@ -1805,10 +2003,8 @@ static void handleCommandKey(NSEvent *event){
     OSType why=whyDesc.typeCodeValue ?: whyDesc.enumCodeValue;
     userClose(why?@"system logout/restart/shutdown":@"application quit");
     if(!why) return NSTerminateCancel;
-    // As on the normal close path, where the presentation timer retries once more: one bounded chance
-    // for an all-released keyboard state that a full pending queue dropped. shutdownMirror then drains
-    // the queued releases (5 s) under its 10 s watchdog before cancelling the connections.
-    if(gKeysResync && gInputGroup){ dispatch_group_wait(gInputGroup,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC)); commitKeys(nowSec()); }
+    // shutdownMirror retries a dropped all-released keyboard state, then drains the queued releases
+    // (5 s) under its 10 s watchdog before cancelling the connections.
     shutdownMirror();
     int failure=atomic_load(&gFailure);
     finish(failure,failure?@"mirror failed":@"system logout/restart/shutdown"); // _Exit, never returns
@@ -1836,6 +2032,9 @@ static void installMainMenu(void){
     NSApp.mainMenu=bar; NSApp.windowsMenu=windowMenu;
 }
 static void createWindow(void){
+    // The helper starts as an accessory (main): it becomes a Dock app only now that the device has
+    // answered and the mirror is about to show. Still before [NSApp run], so launch finishes as Regular.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     static MirrorDelegate *delegate; delegate=[MirrorDelegate new];
     NSApp.delegate=delegate;
     installMainMenu();
@@ -1866,7 +2065,7 @@ static void createWindow(void){
     // held before Command was pressed would stay down on the iPhone (and autorepeat) after release.
     // keyboardKeyUp is idempotent, so the keyUp: that does arrive for other keys is harmless.
     gKeyUpMonitor=[NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyUp handler:^NSEvent*(NSEvent *event){
-        if(event.window==gWindow) keyboardKeyUp(event);
+        if(event.window==gWindow) keyboardKeyUpEvent(event);
         return event;
     }];
 }
@@ -2166,6 +2365,15 @@ static void shutdownMirror(void){
     // UP is already on the ordered input chain. Keep every private call bounded
     // by the independent shutdown watchdog, including stop/cancel.
     armWatchdog(gWatchdog,10);
+    // Every close path (window, Cmd-W/Q, logout, SIGTERM, failure) ends here on the main thread: one
+    // bounded last chance for an all-released keyboard state that a full pending queue dropped, before
+    // the drain below sends it and gStopping makes submitEvent reject everything. The presentation
+    // timer retries only while the run loop runs, i.e. once at most after requestClose.
+    if(gKeysResync && gInputGroup){
+        double until=nowSec()+1;
+        while(!inputQueueHasRoom() && nowSec()<until) usleep(5000);
+        commitKeys(nowSec());
+    }
     if(gInputGroup && dispatch_group_wait(gInputGroup,dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC)))
         fail(9,@"input drain exceeded 5s; device release is NOT guaranteed");
     pthread_mutex_lock(&gLock);
@@ -2202,7 +2410,10 @@ int main(int argc,char **argv){ @autoreleasepool {
     signal(SIGPIPE,SIG_IGN);
     setenv("HIDCTL_QUIET","1",1); // existing glue: no per-event logging
     [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    // No Dock icon until there is a window (createWindow switches to Regular, still before [NSApp run]
+    // finishes launching). A locked iPhone ends the helper within a second or two and the app retries
+    // every few seconds: a Regular policy from the start made a second Dock icon blink on every try.
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
     dispatch_queue_t watchdogQueue=dispatch_queue_create("ipb.mirror.watchdog",DISPATCH_QUEUE_SERIAL);
     dispatch_source_t watchdog=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,watchdogQueue);
     dispatch_source_set_event_handler(watchdog,^{

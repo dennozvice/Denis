@@ -65,6 +65,7 @@ e **apre l'iPhone da sola quando lo colleghi con il cavo**.
 Collega l'iPhone e **sbloccalo**: dopo pochi secondi si apre la finestra con il suo schermo.
 
 - Se l'iPhone è bloccato, una piccola finestra te lo ricorda: appena lo sblocchi lo specchio si apre da solo.
+  Se chiudi quella finestra smette di aspettare (utile se lo lasci in carica): riaprilo con **Mostra iPhone**.
 - Chiudendo lo specchio (⌘W) l'app resta nella barra dei menu. Si riapre ricollegando il cavo
   o con **Mostra iPhone** dal menu dell'icona.
 - Dal menu dell'icona puoi anche disattivare la **Modalità veloce** (per usare la compatibilità)
@@ -78,8 +79,8 @@ Collega l'iPhone e **sbloccalo**: dopo pochi secondi si apre la finestra con il 
 - **Un solo dito**: niente pizzico a due dita.
 - I messaggi di sistema (ad esempio le richieste di permesso) potrebbero non rispondere ai clic: toccali sull'iPhone.
 - Centro di controllo e Notifiche non hanno ancora una scorciatoia: prova a trascinare dal bordo in alto.
-- Un aggiornamento di Xcode o iOS può rompere la modalità veloce: in quel caso l'app passa alla compatibilità
-  e basta riscaricare la cartella aggiornata e rilanciare `./crea-app.sh`.
+- Un aggiornamento di Xcode o iOS può rompere la modalità veloce: in quel caso, dopo circa un minuto di tentativi,
+  l'app passa alla compatibilità; basta riscaricare la cartella aggiornata e rilanciare `./crea-app.sh`.
 - Non si può pubblicare sull'App Store: è uno strumento personale.
 
 ## Problemi comuni
