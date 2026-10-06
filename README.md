@@ -165,6 +165,8 @@ node scripts/screenshot.mjs http://localhost:4173 ./shots   # screenshot desktop
 
 **Stack:** Vite, React 19, TypeScript e le icone `lucide-react`. Non ci sono altre dipendenze: grafici e calendario sono scritti a mano in SVG e CSS.
 
+Per inserire la dashboard in un'altra app (link, iframe o sezione React) vedi [INTEGRAZIONE.md](INTEGRAZIONE.md).
+
 ### Struttura
 
 ```
