@@ -7,7 +7,8 @@ name = "jarvis-assistant"
 version = "0.1.0"
 description = "Assistente vocale sempre in ascolto, in stile J.A.R.V.I.S.: parola di attivazione, Claude come cervello, strumenti per controllare il computer e la casa, HUD olografico."
 readme = "README.md"
-requires-python = ">=3.11"
+# Limite superiore: ctranslate2 e onnxruntime non hanno ancora pacchetti per Python 3.15.
+requires-python = ">=3.11,<3.15"
 license = { text = "MIT" }
 dependencies = [
   "anthropic>=1.13",

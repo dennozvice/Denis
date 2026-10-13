@@ -42,11 +42,13 @@ microfono ──► parola di attivazione ──► registra la frase ──► 
 
 ## Installazione
 
-Serve Python 3.11 o superiore. Su Mac il Python di sistema è più vecchio: installa quello nuovo con Homebrew (`brew install python`) oppure da https://www.python.org/downloads/ e verifica con:
+Serve **Python 3.11, 3.12 o 3.13** (non 3.15: due librerie audio non hanno ancora i pacchetti per quella versione). Su Mac il Python di sistema è più vecchio: installa Python 3.13 da https://www.python.org/downloads/macos/ ("Latest Python 3.13 Release") oppure con Homebrew (`brew install python@3.13`) e verifica con:
 
 ```bash
-python3 --version
+python3.13 --version
 ```
+
+Nei comandi che seguono usa `python3.13` al posto di `python3` se sul tuo Mac `python3` è un'altra versione.
 
 Scarica il repository (se non l'hai già fatto) ed entra nella cartella del progetto:
 
@@ -58,7 +60,7 @@ cd Denis/jarvis
 Crea l'ambiente e installa (su Windows il secondo comando è `.venv\Scripts\activate`):
 
 ```bash
-python3 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
@@ -106,7 +108,9 @@ Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/ac
 
 - **`cd: no such file or directory: jarvis`**: il repository non è stato scaricato, oppure sei nella cartella sbagliata. Esegui il `git clone` qui sopra e poi `cd Denis/jarvis`.
 - **`export: not valid in this context`**: il terminale ha letto un commento come parte del comando. Copia solo la riga `export ...="..."` senza testo dopo.
-- **`Directory cannot be installed in editable mode`** oppure `pip 21.x`: il `pip` è troppo vecchio, di solito perché è il Python di sistema. Installa Python 3.11+ e ricrea l'ambiente `.venv`.
+- **`Directory cannot be installed in editable mode`** oppure `pip 21.x`: il `pip` è troppo vecchio, di solito perché è il Python di sistema. Installa Python 3.13 e ricrea l'ambiente `.venv`.
+- **`Package 'jarvis-assistant' requires a different Python`** oppure errori di compilazione di `ctranslate2`/`onnxruntime`: stai usando Python 3.15. Crea l'ambiente con `python3.13 -m venv .venv`.
+- **`fatal: destination path 'Denis' already exists`**: hai già una copia del repository. Entra con `cd ~/Denis`, poi `git fetch origin` e `git checkout claude/financial-advisor-dashboard-lbiycx`.
 - **`PortAudio library not found`** su Linux: `sudo apt install libportaudio2`.
 
 Esempi di cose da dire dopo «Jarvis»:
