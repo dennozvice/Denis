@@ -2,7 +2,7 @@
 
 Un assistente personale in stile J.A.R.V.I.S. che gira sul tuo computer:
 
-- **sempre in ascolto**: basta dire «**Jarvis**» (senza "hey", senza bottoni) e poi la richiesta;
+- **sempre in ascolto**: basta dire «**Jarvis**» (senza "hey", senza bottoni, senza chiavi da richiedere) e poi la richiesta;
 - **cervello**: Claude (Anthropic) con uso di strumenti, in italiano, con risposte brevi pensate per la voce;
 - **agisce davvero**: apre e chiude applicazioni, siti e file, regola il volume, blocca lo schermo, fa screenshot, scrive al posto tuo, imposta timer, ricorda le tue preferenze, cerca sul web, comanda la casa tramite Home Assistant, e (se lo abiliti) esegue comandi di terminale;
 - **conferma a voce** prima delle azioni delicate (spegnere, riavviare, comandi di terminale);
@@ -38,7 +38,6 @@ microfono ──► parola di attivazione ──► registra la frase ──► 
 - **Python 3.11 o superiore** (su Mac: `brew install python`).
 - **macOS** consigliato (voce `say` integrata, controllo app tramite AppleScript). Linux e Windows funzionano con qualche strumento in meno (vedi tabella).
 - Una **chiave API di Anthropic** per Claude: https://console.anthropic.com
-- Una **AccessKey di Picovoice** (gratuita per uso personale) per la parola «Jarvis»: https://console.picovoice.ai
 
 ## Installazione
 
@@ -73,11 +72,10 @@ sudo apt install libportaudio2 espeak-ng
 pip install --no-deps openwakeword
 ```
 
-Poi le chiavi, sostituendo i puntini con le tue (da https://console.anthropic.com e https://console.picovoice.ai). Mettile anche nel tuo `~/.zshrc` per non doverle ripetere a ogni terminale:
+Poi la chiave di Claude, sostituendo i puntini con la tua (da https://console.anthropic.com › API Keys). Mettila anche nel tuo `~/.zshrc` per non doverla ripetere a ogni terminale:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
-export PICOVOICE_ACCESS_KEY="..."
 ```
 
 E la configurazione (il file può stare anche in `~/.config/jarvis/config.toml`):
@@ -147,7 +145,7 @@ Tutte le opzioni sono commentate in `config.example.toml`. Le più utili:
 |---|---|---|
 | `assistant` | `name`, `user_name` | come si chiama lui e come chiama te |
 | `assistant` | `follow_up_seconds` | per quanti secondi resta in ascolto dopo una risposta (0 per disattivare) |
-| `wakeword` | `backend`, `threshold` | `porcupine` riconosce «Jarvis»; `openwakeword` è gratuito ma riconosce «hey Jarvis» |
+| `wakeword` | `backend`, `threshold` | `whisper` (predefinito) riconosce «Jarvis» senza chiavi; `porcupine` è più leggero ma serve una chiave Picovoice; `openwakeword` riconosce solo «hey Jarvis» |
 | `audio` | `input_device`, `silence_seconds` | microfono e pausa che chiude la frase |
 | `stt` | `model` | `base` veloce, `small` equilibrato, `medium` preciso |
 | `tts` | `voice` | su macOS `say -v ?` elenca le voci; «Alice» e «Luca» sono italiane |
@@ -155,9 +153,14 @@ Tutte le opzioni sono commentate in `config.example.toml`. Le più utili:
 | `tools` | `allow_shell`, `allow_power`, `typing` | abilita comandi di terminale, spegnimento, scrittura automatica |
 | `home_assistant` | `url`, `token` | token "a lunga durata" dal tuo profilo di Home Assistant |
 
-### Parola di attivazione senza registrazione
+### Come viene riconosciuta la parola «Jarvis»
 
-Se non vuoi una chiave Picovoice, usa openWakeWord: `backend = "openwakeword"`, `model = "hey_jarvis"`. In quel caso la parola è «hey Jarvis». Puoi anche addestrare un modello personalizzato per «Jarvis» con il notebook del progetto openWakeWord e indicare il file: `model = "/percorso/jarvis.onnx"`.
+Il backend predefinito (`whisper`) trascrive in locale, con il modello `tiny`, una finestra scorrevole di circa due secondi, e solo quando nella stanza c'è voce. Se tra le parole compare «Jarvis» (anche pronunciato «Giarvis» o simili) scatta l'ascolto, e l'audio detto subito dopo la parola non va perso. Costa un po' di CPU mentre qualcuno parla, nulla nel silenzio; se è troppo sensibile alza `threshold` a 0.85, se non ti sente abbassalo a 0.65. `jarvis listen-test` mostra in tempo reale quando scatta.
+
+Alternative:
+
+- `backend = "porcupine"`: motore dedicato di Picovoice, più leggero e preciso. Serve una AccessKey da https://console.picovoice.ai, che Picovoice concede su richiesta dopo una verifica: mettila in `access_key` o nella variabile `PICOVOICE_ACCESS_KEY`.
+- `backend = "openwakeword"`, `model = "hey_jarvis"`: gratuito e senza registrazione, ma la parola diventa «hey Jarvis». Puoi addestrare un modello personalizzato per «Jarvis» con il notebook del progetto openWakeWord e indicare il file: `model = "/percorso/jarvis.onnx"`.
 
 ## Cosa funziona dove
 

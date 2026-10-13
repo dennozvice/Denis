@@ -70,3 +70,50 @@ def test_manual_trigger_fires_once():
     trigger.trigger()
     assert trigger.feed(frame) is True
     assert trigger.feed(frame) is False
+
+
+# Parola di attivazione tramite Whisper (trascrizione simulata)
+
+from jarvis.audio.wakeword import WhisperWakeDetector, keyword_match
+
+
+def test_keyword_match_tolerates_italian_spellings():
+    assert keyword_match([("Jarvis", 0.2, 0.7)], "jarvis", 0.75) == (1.0, 0.7)
+    assert keyword_match([(" Giarvis,", 0.2, 0.7)], "jarvis", 0.75) is not None
+    assert keyword_match([("Gervis", 0.2, 0.7)], "jarvis", 0.7) is not None
+    assert keyword_match([("jar", 0.1, 0.3), ("vis", 0.3, 0.6)], "jarvis", 0.75) == (1.0, 0.6)
+    assert keyword_match([("ciao", 0.0, 0.3), ("come", 0.3, 0.5), ("va", 0.5, 0.6)], "jarvis", 0.75) is None
+    assert keyword_match([("Jarvisissimo", 0.0, 0.9)], "jarvis", 0.75) is None or keyword_match([("Jarvisissimo", 0.0, 0.9)], "jarvis", 0.75)[0] < 1.0
+    assert keyword_match([], "jarvis", 0.75) is None
+
+
+def test_whisper_wake_detector_runs_only_on_speech_and_carries_tail():
+    calls = []
+
+    def fake_transcribe(audio):
+        calls.append(audio.size)
+        # "Jarvis" finisce a 0.5 s dall'inizio della finestra
+        return [("Jarvis", 0.1, 0.5), ("apri", 0.6, 0.9)]
+
+    detector = WhisperWakeDetector(keyword="jarvis", window_seconds=1.0, hop_seconds=0.5, transcribe=fake_transcribe)
+    # Silenzio: nessuna trascrizione
+    for frame in frames(silence(1.5)):
+        assert detector.feed(frame) is False
+    assert calls == []
+    # Voce: scatta al primo giro utile
+    hit = False
+    for frame in frames(tone(1.0)):
+        if detector.feed(frame):
+            hit = True
+            break
+    assert hit and len(calls) == 1
+    carry = detector.carry()
+    assert carry.size > 0
+    assert detector.carry().size == 0  # consumato
+    # Periodo refrattario: non riscatta subito
+    assert all(detector.feed(frame) is False for frame in frames(tone(0.6)))
+
+
+def test_whisper_wake_detector_ignores_other_words():
+    detector = WhisperWakeDetector(keyword="jarvis", window_seconds=1.0, hop_seconds=0.5, transcribe=lambda a: [("buongiorno", 0.0, 0.8)])
+    assert all(detector.feed(frame) is False for frame in frames(tone(2.0)))

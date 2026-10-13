@@ -73,7 +73,7 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
 
         bus.notice("Carico il modello di trascrizione…")
         transcriber = WhisperTranscriber(config.stt.model, config.stt.device, config.stt.compute_type, config.assistant.language)
-        detector = build_detector(config.wakeword.backend, config.wakeword.model, config.wakeword.threshold, config.wakeword.access_key)
+        detector = make_detector(config)
         microphone = Microphone(config.audio.sample_rate, config.audio.input_device or None)
     else:
         transcriber = None
@@ -83,6 +83,21 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     assistant = Assistant(config, bus, brain, transcriber, speaker, detector, microphone)
     assistant_holder["assistant"] = assistant
     return assistant
+
+
+def make_detector(config: Config):  # noqa: ANN201
+    from jarvis.audio.wakeword import build_detector
+
+    return build_detector(
+        config.wakeword.backend,
+        config.wakeword.model,
+        config.wakeword.threshold,
+        config.wakeword.access_key,
+        whisper_model=config.wakeword.whisper_model,
+        device=config.stt.device,
+        compute_type=config.stt.compute_type,
+        language=config.assistant.language,
+    )
 
 
 def console_logger(bus: EventBus) -> None:
@@ -199,9 +214,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     WhisperModel(config.stt.model, device=config.stt.device, compute_type=config.stt.compute_type)
     print("    ok", flush=True)
     print("2/3 Parola di attivazione…", flush=True)
-    from jarvis.audio.wakeword import build_detector
-
-    detector = build_detector(config.wakeword.backend, config.wakeword.model, config.wakeword.threshold, config.wakeword.access_key)
+    detector = make_detector(config)
     detector.close()
     print("    ok", flush=True)
     print("3/3 Chiave di Claude…", flush=True)
@@ -216,9 +229,8 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
     """Mostra in tempo reale il punteggio della parola di attivazione: utile per tarare la soglia."""
     config = load_config(args.config)
     from jarvis.audio.capture import Microphone, rms_level
-    from jarvis.audio.wakeword import build_detector
 
-    detector = build_detector(config.wakeword.backend, config.wakeword.model, config.wakeword.threshold, config.wakeword.access_key)
+    detector = make_detector(config)
     mic = Microphone(config.audio.sample_rate, config.audio.input_device or None)
     mic.start()
     print(f'Di\' "{config.wakeword.model}". Ctrl+C per uscire.', flush=True)

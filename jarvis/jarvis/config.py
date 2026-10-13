@@ -21,10 +21,11 @@ class AssistantConfig:
 
 @dataclass
 class WakewordConfig:
-    backend: str = "porcupine"
+    backend: str = "whisper"
     model: str = "jarvis"
-    threshold: float = 0.6
+    threshold: float = 0.75
     access_key: str = ""
+    whisper_model: str = "tiny"
 
 
 @dataclass

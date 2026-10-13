@@ -8,7 +8,7 @@ def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.delenv("JARVIS_CONFIG", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     config = load_config()
-    assert config.wakeword.backend == "porcupine"
+    assert config.wakeword.backend == "whisper"
     assert config.wakeword.model == "jarvis"
     assert config.brain.model == "claude-opus-5-5"
 

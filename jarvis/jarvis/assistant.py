@@ -11,6 +11,7 @@ import numpy as np
 
 from jarvis.audio.capture import Microphone, rms_level
 from jarvis.audio.vad import EndpointDetector
+from jarvis.audio.wakeword import carry_audio
 from jarvis.brain.client import Brain, classify_confirmation
 from jarvis.config import Config
 from jarvis.events import EventBus
@@ -112,12 +113,19 @@ class Assistant:
         )
         return detector
 
-    def _listen(self, no_speech_timeout: float) -> np.ndarray | None:
-        """Registra una frase; None se l'utente non ha parlato."""
+    def _listen(self, no_speech_timeout: float, initial: np.ndarray | None = None) -> np.ndarray | None:
+        """Registra una frase; None se l'utente non ha parlato.
+
+        `initial` è audio già catturato subito dopo la parola di attivazione: viene
+        messo in testa, così non si perde l'inizio del comando.
+        """
         assert self.microphone is not None
-        self.microphone.drain()
+        if initial is None or initial.size == 0:
+            self.microphone.drain()
         self.detector.reset()
         endpoint = self._endpoint(no_speech_timeout)
+        if initial is not None and initial.size:
+            endpoint.feed(initial)
         while self._running.is_set() and not endpoint.finished:
             frame = self.microphone.read(timeout=0.5)
             if frame is None:
@@ -136,7 +144,7 @@ class Assistant:
 
                 sounds.play("wake")
             self.bus.set_state("listening", "Ti ascolto")
-            audio = self._listen(no_speech_timeout=5.0)
+            audio = self._listen(no_speech_timeout=5.0, initial=carry_audio(self.detector))
             if audio is None:
                 self.bus.set_state("idle", "Non ho sentito nulla")
                 return

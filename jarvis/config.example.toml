@@ -16,15 +16,19 @@ conversation_timeout_seconds = 180
 chime = true
 
 [wakeword]
-# "porcupine": riconosce la parola "Jarvis" da sola (predefinito). Serve la chiave
-#   gratuita di Picovoice: https://console.picovoice.ai -> AccessKey, da mettere in
-#   access_key qui sotto oppure nella variabile d'ambiente PICOVOICE_ACCESS_KEY.
+# "whisper" (predefinito): riconosce "Jarvis" da solo, senza chiavi, con il modello di
+#   trascrizione locale su una finestra di un paio di secondi. Usa un po' di CPU solo
+#   quando c'è voce nella stanza. threshold = somiglianza richiesta (0.6 = tollerante, 0.9 = rigido).
+# "porcupine": più leggero e preciso, ma serve una AccessKey di Picovoice
+#   (https://console.picovoice.ai, concessa su richiesta): access_key qui sotto oppure
+#   variabile d'ambiente PICOVOICE_ACCESS_KEY. threshold = sensibilità 0-1.
 # "openwakeword": gratuito e senza registrazione, ma il modello pronto riconosce
 #   solo "hey Jarvis" (oppure un modello .onnx personalizzato, vedi README).
-backend = "porcupine"
-model = "jarvis"               # porcupine: "jarvis" o percorso a un file .ppn; openwakeword: "hey_jarvis" o percorso .onnx
-threshold = 0.6                # 0.0-1.0: più alto = più sensibile (porcupine) / soglia di confidenza (openwakeword)
+backend = "whisper"
+model = "jarvis"               # whisper/porcupine: la parola; openwakeword: "hey_jarvis" o percorso .onnx
+threshold = 0.75
 access_key = ""
+whisper_model = "tiny"         # solo per backend whisper: tiny (veloce) o base (più preciso)
 
 [audio]
 input_device = ""              # vuoto = dispositivo predefinito; vedi `jarvis devices`
