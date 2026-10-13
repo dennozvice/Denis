@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-assistant"
+version = "0.1.0"
+description = "Assistente vocale sempre in ascolto, in stile J.A.R.V.I.S.: parola di attivazione, Claude come cervello, strumenti per controllare il computer e la casa, HUD olografico."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+  "anthropic>=1.13",
+  "numpy>=1.26",
+  "sounddevice>=0.5",
+  "faster-whisper>=1.1",
+  "onnxruntime>=1.17",
+  # openWakeWord dichiara tflite-runtime su Linux, che non esiste per Python 3.12+.
+  # Su Linux si installa con: pip install --no-deps openwakeword (vedi README).
+  "openwakeword>=0.6.0; platform_system != 'Linux'",
+  "pvporcupine>=3.0",
+  "requests>=2.31",
+  "tqdm>=4.66",
+  "scipy>=1.11",
+  "scikit-learn>=1.3",
+  "aiohttp>=3.9",
+]
+
+[project.optional-dependencies]
+window = ["pywebview>=5.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+jarvis = "jarvis.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+
+[tool.setuptools.package-data]
+"jarvis.ui" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

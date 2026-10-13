@@ -1,0 +1,75 @@
+# Configurazione di Jarvis. Copia questo file in config.toml (nella cartella del
+# progetto oppure in ~/.config/jarvis/config.toml) e modifica ciò che ti serve.
+# La chiave API di Claude NON va qui: esportala come variabile d'ambiente
+#   export ANTHROPIC_API_KEY="sk-ant-..."
+# oppure accedi una volta con `ant auth login`.
+
+[assistant]
+name = "Jarvis"
+user_name = "Signore"          # come Jarvis si rivolge a te
+language = "it"
+# Secondi in cui Jarvis resta in ascolto dopo una risposta, senza parola di attivazione.
+follow_up_seconds = 6.0
+# Dopo quanti secondi di silenzio una conversazione si considera chiusa (nuovo contesto).
+conversation_timeout_seconds = 180
+# Suono di conferma quando sente la parola di attivazione.
+chime = true
+
+[wakeword]
+# "porcupine": riconosce la parola "Jarvis" da sola (predefinito). Serve la chiave
+#   gratuita di Picovoice: https://console.picovoice.ai -> AccessKey, da mettere in
+#   access_key qui sotto oppure nella variabile d'ambiente PICOVOICE_ACCESS_KEY.
+# "openwakeword": gratuito e senza registrazione, ma il modello pronto riconosce
+#   solo "hey Jarvis" (oppure un modello .onnx personalizzato, vedi README).
+backend = "porcupine"
+model = "jarvis"               # porcupine: "jarvis" o percorso a un file .ppn; openwakeword: "hey_jarvis" o percorso .onnx
+threshold = 0.6                # 0.0-1.0: più alto = più sensibile (porcupine) / soglia di confidenza (openwakeword)
+access_key = ""
+
+[audio]
+input_device = ""              # vuoto = dispositivo predefinito; vedi `jarvis devices`
+sample_rate = 16000
+silence_seconds = 0.9          # pausa che chiude la frase
+max_utterance_seconds = 15.0
+min_speech_seconds = 0.3
+energy_threshold = 0.0         # 0 = calibrazione automatica sul rumore di fondo
+
+[stt]
+model = "small"                # tiny | base | small | medium | large-v3 (più grande = più preciso, più lento)
+device = "cpu"                 # "cpu" oppure "cuda"
+compute_type = "int8"
+
+[tts]
+backend = "auto"               # auto | say (macOS) | espeak | powershell | command
+voice = ""                     # es. "Alice" o "Luca" su macOS (vedi `say -v ?`)
+rate = 0                       # 0 = predefinita
+# Con backend = "command": {text} viene sostituito dal testo
+# command = "piper --model it_IT-paola-medium --output-raw | aplay -r 22050 -f S16_LE"
+
+[brain]
+model = "claude-opus-5-5"
+effort = "low"                 # low | medium | high: risposte vocali rapide con "low"
+max_tokens = 4096
+fallbacks = true               # ripiego automatico lato server se una richiesta viene rifiutata
+web_search = true              # permette a Jarvis di cercare sul web
+max_tool_rounds = 8
+# Note personali che Jarvis deve sempre sapere (città, preferenze, nomi...)
+notes = """
+Vivo a Milano. Uso un Mac.
+"""
+
+[tools]
+allow_shell = false            # comandi di terminale a voce (sempre con conferma)
+allow_power = true             # blocco schermo, standby, spegnimento (con conferma)
+typing = true                  # Jarvis può scrivere testo al posto tuo nella finestra attiva
+
+[home_assistant]
+enabled = false
+url = "http://homeassistant.local:8123"
+token = ""                     # Long-lived access token dal profilo di Home Assistant
+
+[ui]
+enabled = true
+host = "127.0.0.1"
+port = 8765
+open = "browser"               # browser | window (serve pywebview) | none
