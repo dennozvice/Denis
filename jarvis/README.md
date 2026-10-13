@@ -42,10 +42,25 @@ microfono ──► parola di attivazione ──► registra la frase ──► 
 
 ## Installazione
 
+Serve Python 3.11 o superiore. Su Mac il Python di sistema è più vecchio: installa quello nuovo con Homebrew (`brew install python`) oppure da https://www.python.org/downloads/ e verifica con:
+
 ```bash
-cd jarvis
+python3 --version
+```
+
+Scarica il repository (se non l'hai già fatto) ed entra nella cartella del progetto:
+
+```bash
+git clone https://github.com/dennozvice/Denis.git
+cd Denis/jarvis
+```
+
+Crea l'ambiente e installa (su Windows il secondo comando è `.venv\Scripts\activate`):
+
+```bash
 python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
+source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
 ```
 
@@ -56,32 +71,43 @@ sudo apt install libportaudio2 espeak-ng
 pip install --no-deps openwakeword
 ```
 
-Poi le chiavi (mettile nel tuo `~/.zshrc` per non doverle ripetere):
+Poi le chiavi, sostituendo i puntini con le tue (da https://console.anthropic.com e https://console.picovoice.ai). Mettile anche nel tuo `~/.zshrc` per non doverle ripetere a ogni terminale:
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."
 export PICOVOICE_ACCESS_KEY="..."
 ```
 
-E la configurazione:
+E la configurazione (il file può stare anche in `~/.config/jarvis/config.toml`):
 
 ```bash
-cp config.example.toml config.toml   # oppure in ~/.config/jarvis/config.toml
-jarvis setup                          # scarica i modelli e controlla le chiavi
+cp config.example.toml config.toml
+jarvis setup
 ```
+
+`jarvis setup` scarica i modelli e controlla le chiavi.
 
 Al primo `setup` viene scaricato il modello di trascrizione (`small`, circa 500 MB). Con `model = "base"` è più leggero e veloce, con `medium` più preciso.
 
 ## Uso
 
-```bash
-jarvis run            # avvia tutto: microfono, parola di attivazione, voce e HUD nel browser
-jarvis run --text     # senza microfono: scrivi i comandi (utile per provare)
-jarvis chat --mute    # solo testo, senza voce
-jarvis devices        # elenca i microfoni
-jarvis say "Buongiorno" # prova la voce
-jarvis listen-test    # prova la parola di attivazione e tara la sensibilità
-```
+| Comando | Cosa fa |
+|---|---|
+| `jarvis run` | avvia tutto: microfono, parola di attivazione, voce e HUD nel browser |
+| `jarvis run --text` | senza microfono: scrivi i comandi (utile per provare) |
+| `jarvis chat --mute` | solo testo, senza voce |
+| `jarvis devices` | elenca i microfoni |
+| `jarvis say "Buongiorno"` | prova la voce |
+| `jarvis listen-test` | prova la parola di attivazione e tara la sensibilità |
+
+Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/activate` dalla cartella `jarvis`.
+
+### Problemi frequenti
+
+- **`cd: no such file or directory: jarvis`**: il repository non è stato scaricato, oppure sei nella cartella sbagliata. Esegui il `git clone` qui sopra e poi `cd Denis/jarvis`.
+- **`export: not valid in this context`**: il terminale ha letto un commento come parte del comando. Copia solo la riga `export ...="..."` senza testo dopo.
+- **`Directory cannot be installed in editable mode`** oppure `pip 21.x`: il `pip` è troppo vecchio, di solito perché è il Python di sistema. Installa Python 3.11+ e ricrea l'ambiente `.venv`.
+- **`PortAudio library not found`** su Linux: `sudo apt install libportaudio2`.
 
 Esempi di cose da dire dopo «Jarvis»:
 
