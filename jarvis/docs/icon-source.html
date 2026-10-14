@@ -2,79 +2,69 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <clipPath id="squircle"><path d="M 512 0 C 160 0 0 160 0 512 C 0 864 160 1024 512 1024 C 864 1024 1024 864 1024 512 C 1024 160 864 0 512 0 Z"/></clipPath>
-    <radialGradient id="bg" cx="50%" cy="38%" r="75%"><stop offset="0" stop-color="#0e3350"/><stop offset="0.55" stop-color="#061a2c"/><stop offset="1" stop-color="#020810"/></radialGradient>
-    <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9fb3c4"/><stop offset="0.5" stop-color="#3b4b5c"/><stop offset="1" stop-color="#121b26"/></linearGradient>
-    <linearGradient id="steelDark" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2a3744"/><stop offset="1" stop-color="#0b1219"/></linearGradient>
-    <linearGradient id="coil" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6d7f91"/><stop offset="0.35" stop-color="#26323e"/><stop offset="1" stop-color="#0d141b"/></linearGradient>
-    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#7a4a22"/><stop offset="0.5" stop-color="#e0995a"/><stop offset="1" stop-color="#7a4a22"/></linearGradient>
-    <radialGradient id="plasma" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffffff"/><stop offset="0.18" stop-color="#eafdff"/><stop offset="0.45" stop-color="#6fe9ff"/><stop offset="0.75" stop-color="#19a6dc"/><stop offset="1" stop-color="#0a4f7c"/></radialGradient>
-    <radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#4fe3ff" stop-opacity="0.55"/><stop offset="0.6" stop-color="#2ab8e8" stop-opacity="0.18"/><stop offset="1" stop-color="#2ab8e8" stop-opacity="0"/></radialGradient>
-    <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%"><stop offset="0.78" stop-color="#4fe3ff" stop-opacity="0"/><stop offset="0.9" stop-color="#4fe3ff" stop-opacity="0.7"/><stop offset="1" stop-color="#4fe3ff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.04"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
-    <filter id="blur8"><feGaussianBlur stdDeviation="8"/></filter>
-    <filter id="blur24"><feGaussianBlur stdDeviation="24"/></filter>
-    <filter id="blur2"><feGaussianBlur stdDeviation="2"/></filter>
-    <filter id="innerShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feOffset dx="0" dy="6"/><feGaussianBlur stdDeviation="8" result="o"/><feComposite operator="out" in="SourceGraphic" in2="o" result="inv"/><feFlood flood-color="#000" flood-opacity="0.7"/><feComposite operator="in" in2="inv"/><feComposite operator="over" in2="SourceGraphic"/>
-    </filter>
+    <clipPath id="orbClip"><circle cx="512" cy="512" r="200"/></clipPath>
+    <radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#121226"/><stop offset="0.6" stop-color="#07070f"/><stop offset="1" stop-color="#000000"/></radialGradient>
+    <radialGradient id="orbBase" cx="45%" cy="40%" r="62%"><stop offset="0" stop-color="#bfe9ff"/><stop offset="0.4" stop-color="#3f7dff"/><stop offset="1" stop-color="#2a1a7a"/></radialGradient>
+    <radialGradient id="c-purple" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#9b4dff"/><stop offset="1" stop-color="#9b4dff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c-pink" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff3d9a"/><stop offset="1" stop-color="#ff3d9a" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c-orange" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff9d3b"/><stop offset="1" stop-color="#ff9d3b" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c-cyan" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#5df3ff"/><stop offset="1" stop-color="#5df3ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="c-white" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <linearGradient id="ringA" gradientUnits="userSpaceOnUse" x1="132" y1="132" x2="892" y2="892"><stop offset="0" stop-color="#5df3ff"/><stop offset="0.5" stop-color="#9b4dff"/><stop offset="1" stop-color="#ff3d9a"/></linearGradient>
+    <linearGradient id="ringB" gradientUnits="userSpaceOnUse" x1="892" y1="132" x2="132" y2="892"><stop offset="0" stop-color="#ff9d3b"/><stop offset="0.5" stop-color="#ff3d9a"/><stop offset="1" stop-color="#2f6cff"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <filter id="b10" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
+    <filter id="b30" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter>
+    <filter id="b60" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="60"/></filter>
+    <filter id="b4"><feGaussianBlur stdDeviation="4"/></filter>
   </defs>
   <g clip-path="url(#squircle)">
     <rect width="1024" height="1024" fill="url(#bg)"/>
-    <!-- griglia tecnica sottile -->
-    <g stroke="#4fe3ff" stroke-opacity="0.07" stroke-width="2" fill="none">
-      <circle cx="512" cy="512" r="470"/><circle cx="512" cy="512" r="440" stroke-dasharray="6 18"/>
-      <path d="M 60 512 H 964 M 512 60 V 964" stroke-dasharray="4 14"/>
+
+    <!-- alone colorato diffuso dietro la sfera -->
+    <g filter="url(#b60)" opacity="0.45">
+      <circle cx="430" cy="440" r="230" fill="#2f6cff"/>
+      <circle cx="600" cy="460" r="200" fill="#9b4dff"/>
+      <circle cx="570" cy="610" r="170" fill="#ff3d9a"/>
+      <circle cx="440" cy="600" r="130" fill="#ff9d3b"/>
     </g>
-    <!-- alone di luce -->
-    <circle cx="512" cy="512" r="400" fill="url(#halo)"/>
-    <g transform="translate(512 512)">
-      <!-- cornice esterna metallica -->
-      <circle r="372" fill="url(#steel)"/>
-      <circle r="352" fill="url(#steelDark)" filter="url(#innerShadow)"/>
-      <!-- tacche sulla cornice -->
-      <g stroke="#0a1016" stroke-width="6" stroke-linecap="round">
-        <line x1="0" y1="-372" x2="0" y2="-356"/><line x1="0" y1="372" x2="0" y2="356" /><line x1="-372" y1="0" x2="-356" y2="0"/><line x1="372" y1="0" x2="356" y2="0"/>
-        <line x1="0" y1="-372" x2="0" y2="-356" transform="rotate(45)"/><line x1="0" y1="-372" x2="0" y2="-356" transform="rotate(135)"/><line x1="0" y1="-372" x2="0" y2="-356" transform="rotate(225)"/><line x1="0" y1="-372" x2="0" y2="-356" transform="rotate(315)"/>
+
+    <!-- anelli sottili come nella prima versione -->
+    <g fill="none" stroke-linecap="round">
+      <circle cx="512" cy="512" r="392" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2"/>
+      <circle cx="512" cy="512" r="340" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2" stroke-dasharray="3 22"/>
+      <g stroke-width="7" opacity="0.95" filter="url(#b4)">
+        <path d="M 512 146 A 366 366 0 0 1 829 329" stroke="url(#ringA)"/>
+        <path d="M 512 878 A 366 366 0 0 1 195 695" stroke="url(#ringB)"/>
       </g>
-      <!-- canale luminoso tra cornice e bobine -->
-      <circle r="330" fill="none" stroke="#4fe3ff" stroke-width="14" opacity="0.9" filter="url(#blur8)"/>
-      <circle r="330" fill="none" stroke="#dffbff" stroke-width="3"/>
-      <!-- fessure luminose tra le bobine -->
-      <g id="gap"><line x1="0" y1="-318" x2="0" y2="-208" stroke="#7fefff" stroke-width="14" stroke-linecap="round" opacity="0.95" filter="url(#blur8)" transform="rotate(18)"/><line x1="0" y1="-318" x2="0" y2="-208" stroke="#ffffff" stroke-width="3" stroke-linecap="round" transform="rotate(18)"/></g>
-      <use href="#gap" transform="rotate(36)"/><use href="#gap" transform="rotate(72)"/><use href="#gap" transform="rotate(108)"/><use href="#gap" transform="rotate(144)"/><use href="#gap" transform="rotate(180)"/><use href="#gap" transform="rotate(216)"/><use href="#gap" transform="rotate(252)"/><use href="#gap" transform="rotate(288)"/><use href="#gap" transform="rotate(324)"/>
-      <!-- bobine (10 segmenti) con avvolgimenti in rame -->
-      <g id="coils">
-        <g>
-          <path d="M -46 -316 L 46 -316 L 62 -212 L -62 -212 Z" fill="url(#coil)" stroke="#aebfcf" stroke-width="2.5"/>
-          <g stroke="#5a3418" stroke-width="9" stroke-linecap="round">
-            <path d="M -34 -298 L 34 -298"/><path d="M -37 -282 L 37 -282"/><path d="M -40 -266 L 40 -266"/><path d="M -43 -250 L 43 -250"/><path d="M -46 -234 L 46 -234"/>
-          </g>
-          <g stroke="#d9924f" stroke-width="5" stroke-linecap="round">
-            <path d="M -34 -299 L 34 -299"/><path d="M -37 -283 L 37 -283"/><path d="M -40 -267 L 40 -267"/><path d="M -43 -251 L 43 -251"/><path d="M -46 -235 L 46 -235"/>
-          </g>
-          <g stroke="#ffd9b0" stroke-width="1.5" stroke-linecap="round" opacity="0.8">
-            <path d="M -34 -301 L 34 -301"/><path d="M -37 -285 L 37 -285"/><path d="M -40 -269 L 40 -269"/><path d="M -43 -253 L 43 -253"/><path d="M -46 -237 L 46 -237"/>
-          </g>
-          <path d="M -46 -316 L 46 -316" stroke="#d8e6f2" stroke-width="3" opacity="0.8"/>
-        </g>
+      <g stroke-width="5" opacity="0.9">
+        <path d="M 512 146 A 366 366 0 0 1 829 329" stroke="url(#ringA)"/>
+        <path d="M 512 878 A 366 366 0 0 1 195 695" stroke="url(#ringB)"/>
       </g>
-      <use href="#coils" transform="rotate(36)"/><use href="#coils" transform="rotate(72)"/><use href="#coils" transform="rotate(108)"/><use href="#coils" transform="rotate(144)"/><use href="#coils" transform="rotate(180)"/><use href="#coils" transform="rotate(216)"/><use href="#coils" transform="rotate(252)"/><use href="#coils" transform="rotate(288)"/><use href="#coils" transform="rotate(324)"/>
-      <!-- anello interno metallico con bordo luminoso -->
-      <circle r="216" fill="none" stroke="#7fefff" stroke-width="10" opacity="0.8" filter="url(#blur8)"/>
-      <circle r="212" fill="url(#steel)"/>
-      <circle r="196" fill="#071726" filter="url(#innerShadow)"/>
-      <!-- plasma -->
-      <circle r="190" fill="url(#plasma)" filter="url(#blur2)"/>
-      <circle r="200" fill="url(#ringGlow)"/>
-      <!-- triangolo del Mark VI, appena accennato -->
-      <path d="M 0 -118 L 102 59 L -102 59 Z" fill="none" stroke="#ffffff" stroke-opacity="0.75" stroke-width="10" stroke-linejoin="round" filter="url(#blur2)"/>
-      <path d="M 0 -118 L 102 59 L -102 59 Z" fill="#ffffff" fill-opacity="0.12"/>
-      <circle r="150" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="4"/>
-      <!-- bagliore centrale -->
-      <circle r="70" fill="#ffffff" opacity="0.95" filter="url(#blur24)"/>
-      <circle r="26" fill="#ffffff"/>
+      <g stroke-width="3" opacity="0.5">
+        <path d="M 236 352 A 318 318 0 0 1 300 290" stroke="#5df3ff"/>
+        <path d="M 788 672 A 318 318 0 0 1 724 734" stroke="#ff3d9a"/>
+      </g>
+    </g>
+
+    <!-- sfera -->
+    <g>
+      <circle cx="512" cy="512" r="215" fill="#2f6cff" opacity="0.6" filter="url(#b30)"/>
+      <circle cx="512" cy="512" r="200" fill="url(#orbBase)"/>
+      <g clip-path="url(#orbClip)">
+        <circle cx="610" cy="420" r="190" fill="url(#c-purple)" filter="url(#b10)"/>
+        <circle cx="650" cy="600" r="190" fill="url(#c-pink)" filter="url(#b10)"/>
+        <circle cx="640" cy="600" r="120" fill="url(#c-pink)" filter="url(#b10)"/>
+        <circle cx="460" cy="670" r="160" fill="url(#c-orange)" filter="url(#b10)"/>
+        <circle cx="390" cy="430" r="170" fill="url(#c-cyan)" filter="url(#b10)"/>
+        <circle cx="400" cy="440" r="100" fill="url(#c-cyan)" filter="url(#b10)"/>
+        <circle cx="560" cy="380" r="130" fill="url(#c-white)" opacity="0.8" filter="url(#b30)"/>
+        <!-- bordo interno più scuro per dare volume -->
+        <circle cx="512" cy="512" r="200" fill="none" stroke="#0a0530" stroke-opacity="0.4" stroke-width="30" filter="url(#b30)"/>
+      </g>
       <!-- riflesso di vetro -->
-      <ellipse cx="0" cy="-150" rx="300" ry="190" fill="url(#glass)"/>
+      <ellipse cx="512" cy="392" rx="135" ry="72" fill="url(#glass)"/>
+      <circle cx="512" cy="512" r="200" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2.5"/>
     </g>
   </g>
 </svg></body></html>
