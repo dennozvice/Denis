@@ -1,70 +1,55 @@
 <!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:transparent}</style></head><body>
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
+    <clipPath id="inner"><circle cx="0" cy="0" r="300"/></clipPath>
+    <clipPath id="innerTight"><circle cx="0" cy="0" r="268"/></clipPath>
     <clipPath id="squircle"><path d="M 512 0 C 160 0 0 160 0 512 C 0 864 160 1024 512 1024 C 864 1024 1024 864 1024 512 C 1024 160 864 0 512 0 Z"/></clipPath>
-    <clipPath id="orbClip"><circle cx="512" cy="512" r="200"/></clipPath>
-    <radialGradient id="bg" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="#121226"/><stop offset="0.6" stop-color="#07070f"/><stop offset="1" stop-color="#000000"/></radialGradient>
-    <radialGradient id="orbBase" cx="45%" cy="40%" r="62%"><stop offset="0" stop-color="#bfe9ff"/><stop offset="0.4" stop-color="#3f7dff"/><stop offset="1" stop-color="#2a1a7a"/></radialGradient>
-    <radialGradient id="c-purple" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#9b4dff"/><stop offset="1" stop-color="#9b4dff" stop-opacity="0"/></radialGradient>
-    <radialGradient id="c-pink" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff3d9a"/><stop offset="1" stop-color="#ff3d9a" stop-opacity="0"/></radialGradient>
-    <radialGradient id="c-orange" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ff9d3b"/><stop offset="1" stop-color="#ff9d3b" stop-opacity="0"/></radialGradient>
-    <radialGradient id="c-cyan" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#5df3ff"/><stop offset="1" stop-color="#5df3ff" stop-opacity="0"/></radialGradient>
-    <radialGradient id="c-white" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
-    <linearGradient id="ringA" gradientUnits="userSpaceOnUse" x1="132" y1="132" x2="892" y2="892"><stop offset="0" stop-color="#5df3ff"/><stop offset="0.5" stop-color="#9b4dff"/><stop offset="1" stop-color="#ff3d9a"/></linearGradient>
-    <linearGradient id="ringB" gradientUnits="userSpaceOnUse" x1="892" y1="132" x2="132" y2="892"><stop offset="0" stop-color="#ff9d3b"/><stop offset="0.5" stop-color="#ff3d9a"/><stop offset="1" stop-color="#2f6cff"/></linearGradient>
-    <linearGradient id="glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/><stop offset="0.6" stop-color="#ffffff" stop-opacity="0.05"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
-    <filter id="b10" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10"/></filter>
-    <filter id="b30" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter>
-    <filter id="b60" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="60"/></filter>
-    <filter id="b4"><feGaussianBlur stdDeviation="4"/></filter>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfbfd"/><stop offset="1" stop-color="#e6e6ec"/></linearGradient>
+    <linearGradient id="waveGrad" gradientUnits="userSpaceOnUse" x1="-320" y1="0" x2="320" y2="0"><stop offset="0" stop-color="#6aa596"/><stop offset="0.4" stop-color="#3b4070"/><stop offset="0.7" stop-color="#8f7fc0"/><stop offset="1" stop-color="#bb95d6"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="0.08"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+    <filter id="b3"><feGaussianBlur stdDeviation="3"/></filter>
+    <filter id="b40" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="40"/></filter>
+    <linearGradient id="g1" gradientUnits="userSpaceOnUse" x1="-281.9" y1="-102.6" x2="102.6" y2="-281.9"><stop offset="0" stop-color="#5f9a8c"/><stop offset="0.45" stop-color="#2a3250"/><stop offset="1" stop-color="#3d3f74"/></linearGradient>
+    <linearGradient id="g2" gradientUnits="userSpaceOnUse" x1="102.6" y1="-281.9" x2="281.9" y2="102.6"><stop offset="0" stop-color="#3d3f74"/><stop offset="0.5" stop-color="#6f62b3"/><stop offset="1" stop-color="#b793d6"/></linearGradient>
+    <linearGradient id="g3" gradientUnits="userSpaceOnUse" x1="281.9" y1="102.6" x2="-102.6" y2="281.9"><stop offset="0" stop-color="#b793d6"/><stop offset="0.5" stop-color="#e9a3b6"/><stop offset="1" stop-color="#f0b56a"/></linearGradient>
+    <linearGradient id="g4" gradientUnits="userSpaceOnUse" x1="-102.6" y1="281.9" x2="-281.9" y2="-102.6"><stop offset="0" stop-color="#f0b56a"/><stop offset="0.5" stop-color="#9fcf92"/><stop offset="1" stop-color="#5f9a8c"/></linearGradient>
+    <linearGradient id="g5" gradientUnits="userSpaceOnUse" x1="-281.9" y1="-102.6" x2="-281.9" y2="-102.7"><stop offset="0" stop-color="#5f9a8c"/><stop offset="1" stop-color="#2a3250"/></linearGradient>
   </defs>
   <g clip-path="url(#squircle)">
     <rect width="1024" height="1024" fill="url(#bg)"/>
-
-    <!-- alone colorato diffuso dietro la sfera -->
-    <g filter="url(#b60)" opacity="0.45">
-      <circle cx="430" cy="440" r="230" fill="#2f6cff"/>
-      <circle cx="600" cy="460" r="200" fill="#9b4dff"/>
-      <circle cx="570" cy="610" r="170" fill="#ff3d9a"/>
-      <circle cx="440" cy="600" r="130" fill="#ff9d3b"/>
+    <!-- riflessi colorati appena accennati sullo sfondo -->
+    <g filter="url(#b40)" opacity="0.35">
+      <ellipse cx="420" cy="820" rx="260" ry="90" fill="#bfe3c9"/>
+      <ellipse cx="640" cy="800" rx="240" ry="80" fill="#f6d2c2"/>
+      <ellipse cx="560" cy="230" rx="260" ry="70" fill="#d9d4f4"/>
     </g>
-
-    <!-- anelli sottili come nella prima versione -->
-    <g fill="none" stroke-linecap="round">
-      <circle cx="512" cy="512" r="392" stroke="#ffffff" stroke-opacity="0.10" stroke-width="2"/>
-      <circle cx="512" cy="512" r="340" stroke="#ffffff" stroke-opacity="0.12" stroke-width="2" stroke-dasharray="3 22"/>
-      <g stroke-width="7" opacity="0.95" filter="url(#b4)">
-        <path d="M 512 146 A 366 366 0 0 1 829 329" stroke="url(#ringA)"/>
-        <path d="M 512 878 A 366 366 0 0 1 195 695" stroke="url(#ringB)"/>
+    <g transform="translate(512 512)">
+      <!-- ombra morbida sotto l'anello -->
+      <circle r="300" fill="none" stroke="#1b1f3a" stroke-opacity="0.22" stroke-width="76" transform="translate(0 14)" filter="url(#soft)"/>
+      <!-- onda -->
+      <g clip-path="url(#inner)">
+      <!-- onda -->
+        <path d="M -320.0 -20.0 L -310.0 -10.0 L -300.0 0.0 L -290.0 10.0 L -280.0 20.0 L -270.0 29.7 L -260.0 39.0 L -250.0 48.0 L -240.0 56.4 L -230.0 64.2 L -220.0 71.3 L -210.0 77.7 L -200.0 83.1 L -190.0 87.7 L -180.0 91.3 L -170.0 93.9 L -160.0 95.5 L -150.0 96.0 L -140.0 95.5 L -130.0 93.9 L -120.0 91.3 L -110.0 87.7 L -100.0 83.1 L -90.0 77.7 L -80.0 71.3 L -70.0 64.2 L -60.0 56.4 L -50.0 48.0 L -40.0 39.0 L -30.0 29.7 L -20.0 20.0 L -10.0 10.0 L 0.0 -0.0 L 10.0 -10.0 L 20.0 -20.0 L 30.0 -29.7 L 40.0 -39.0 L 50.0 -48.0 L 60.0 -56.4 L 70.0 -64.2 L 80.0 -71.3 L 90.0 -77.7 L 100.0 -83.1 L 110.0 -87.7 L 120.0 -91.3 L 130.0 -93.9 L 140.0 -95.5 L 150.0 -96.0 L 160.0 -95.5 L 170.0 -93.9 L 180.0 -91.3 L 190.0 -87.7 L 200.0 -83.1 L 210.0 -77.7 L 220.0 -71.3 L 230.0 -64.2 L 240.0 -56.4 L 250.0 -48.0 L 260.0 -39.0 L 270.0 -29.7 L 280.0 -20.0 L 290.0 -10.0 L 300.0 -0.0 L 310.0 10.0 L 320.0 20.0" fill="none" stroke="url(#waveGrad)" stroke-width="74" stroke-linecap="butt" stroke-linejoin="round"/>
       </g>
-      <g stroke-width="5" opacity="0.9">
-        <path d="M 512 146 A 366 366 0 0 1 829 329" stroke="url(#ringA)"/>
-        <path d="M 512 878 A 366 366 0 0 1 195 695" stroke="url(#ringB)"/>
+      <!-- anello iridescente -->
+      <g fill="none" stroke-width="74" stroke-linecap="butt">
+      <path d="M -285.3 -92.7 A 300 300 0 0 1 112.4 -278.2" stroke="url(#g1)"/>
+      <path d="M 92.7 -285.3 A 300 300 0 0 1 278.2 112.4" stroke="url(#g2)"/>
+      <path d="M 285.3 92.7 A 300 300 0 0 1 -112.4 278.2" stroke="url(#g3)"/>
+      <path d="M -92.7 285.3 A 300 300 0 0 1 -278.2 -112.4" stroke="url(#g4)"/>
+      <path d="M -281.9 -102.6 A 300 300 0 0 1 -281.9 -102.6" stroke="url(#g5)"/>
       </g>
-      <g stroke-width="3" opacity="0.5">
-        <path d="M 236 352 A 318 318 0 0 1 300 290" stroke="#5df3ff"/>
-        <path d="M 788 672 A 318 318 0 0 1 724 734" stroke="#ff3d9a"/>
+      <!-- bordo scuro interno ed esterno (vetro) -->
+      <circle r="337" fill="none" stroke="#000" stroke-opacity="0.08" stroke-width="2"/>
+      <circle r="263" fill="none" stroke="#000" stroke-opacity="0.10" stroke-width="2"/>
+      <!-- luce sul bordo superiore -->
+      <g clip-path="url(#ringClip)">
       </g>
-    </g>
-
-    <!-- sfera -->
-    <g>
-      <circle cx="512" cy="512" r="215" fill="#2f6cff" opacity="0.6" filter="url(#b30)"/>
-      <circle cx="512" cy="512" r="200" fill="url(#orbBase)"/>
-      <g clip-path="url(#orbClip)">
-        <circle cx="610" cy="420" r="190" fill="url(#c-purple)" filter="url(#b10)"/>
-        <circle cx="650" cy="600" r="190" fill="url(#c-pink)" filter="url(#b10)"/>
-        <circle cx="640" cy="600" r="120" fill="url(#c-pink)" filter="url(#b10)"/>
-        <circle cx="460" cy="670" r="160" fill="url(#c-orange)" filter="url(#b10)"/>
-        <circle cx="390" cy="430" r="170" fill="url(#c-cyan)" filter="url(#b10)"/>
-        <circle cx="400" cy="440" r="100" fill="url(#c-cyan)" filter="url(#b10)"/>
-        <circle cx="560" cy="380" r="130" fill="url(#c-white)" opacity="0.8" filter="url(#b30)"/>
-        <!-- bordo interno più scuro per dare volume -->
-        <circle cx="512" cy="512" r="200" fill="none" stroke="#0a0530" stroke-opacity="0.4" stroke-width="30" filter="url(#b30)"/>
+      <path d="M -300 0 A 300 300 0 0 1 300 0" fill="none" stroke="url(#sheen)" stroke-width="74" opacity="0.45" transform="translate(0 -6)" filter="url(#b3)"/>
+      <g clip-path="url(#innerTight)">
+        <path d="M -320.0 -20.0 L -310.0 -10.0 L -300.0 0.0 L -290.0 10.0 L -280.0 20.0 L -270.0 29.7 L -260.0 39.0 L -250.0 48.0 L -240.0 56.4 L -230.0 64.2 L -220.0 71.3 L -210.0 77.7 L -200.0 83.1 L -190.0 87.7 L -180.0 91.3 L -170.0 93.9 L -160.0 95.5 L -150.0 96.0 L -140.0 95.5 L -130.0 93.9 L -120.0 91.3 L -110.0 87.7 L -100.0 83.1 L -90.0 77.7 L -80.0 71.3 L -70.0 64.2 L -60.0 56.4 L -50.0 48.0 L -40.0 39.0 L -30.0 29.7 L -20.0 20.0 L -10.0 10.0 L 0.0 -0.0 L 10.0 -10.0 L 20.0 -20.0 L 30.0 -29.7 L 40.0 -39.0 L 50.0 -48.0 L 60.0 -56.4 L 70.0 -64.2 L 80.0 -71.3 L 90.0 -77.7 L 100.0 -83.1 L 110.0 -87.7 L 120.0 -91.3 L 130.0 -93.9 L 140.0 -95.5 L 150.0 -96.0 L 160.0 -95.5 L 170.0 -93.9 L 180.0 -91.3 L 190.0 -87.7 L 200.0 -83.1 L 210.0 -77.7 L 220.0 -71.3 L 230.0 -64.2 L 240.0 -56.4 L 250.0 -48.0 L 260.0 -39.0 L 270.0 -29.7 L 280.0 -20.0 L 290.0 -10.0 L 300.0 -0.0 L 310.0 10.0 L 320.0 20.0" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="18" stroke-linecap="round" transform="translate(0 -22)" filter="url(#b3)"/>
       </g>
-      <!-- riflesso di vetro -->
-      <ellipse cx="512" cy="392" rx="135" ry="72" fill="url(#glass)"/>
-      <circle cx="512" cy="512" r="200" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2.5"/>
     </g>
   </g>
 </svg></body></html>
