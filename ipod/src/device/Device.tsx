@@ -56,18 +56,19 @@ export interface FlatScale {
 /**
  * Senza cornice: schermo largo quanto lo spazio (agganciato ai pixel interi solo se costa pochissimo:
  * sui display da 460 ppi dell'iPhone la frazione non si vede), ghiera grande quanto resta in altezza.
- * Su iPhone 16e (390×844, 3×): schermo 366×275, ghiera ≈ 330 px, niente scorrimento.
+ * Su iPhone 16e (390×844, 3×): schermo 320×240 (3 pixel per punto, nitido), ghiera ≈ 290 px, niente scorrimento.
  */
 export function computeFlatScale(availW: number, availH: number, dpr: number): FlatScale {
-  const maxScale = Math.min(availW / 320, 1.6)
+  // Un po' d'aria ai lati: lo schermo non va a tutta larghezza.
+  const maxScale = Math.min((availW / 320) * 0.88, 1.6)
   const n = Math.floor(maxScale * dpr)
   let lcdScale = maxScale
   if (n >= 1) {
     const snapped = n / dpr
     if (snapped >= 0.96 * maxScale) lcdScale = snapped
   }
-  const rest = availH - 240 * lcdScale - 40
-  const wheelPx = Math.max(150, Math.min(availW * 0.92, rest, 400))
+  const rest = availH - 240 * lcdScale - 60
+  const wheelPx = Math.max(150, Math.min(availW * 0.8, rest, 380))
   return { lcdScale, wheelPx }
 }
 
