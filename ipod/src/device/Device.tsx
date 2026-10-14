@@ -30,17 +30,21 @@ export interface DeviceScale {
  * Calcola i pixel per millimetro in base allo spazio disponibile. Quando possibile
  * un pixel dell'LCD corrisponde a un numero intero di pixel fisici (testo nitido).
  */
-export function computeScale(availW: number, availH: number, dpr: number): DeviceScale {
+/**
+ * `preferSize` (telefoni): la grandezza conta più della nitidezza assoluta, perché a tutta larghezza
+ * l'iPod viene quasi a grandezza naturale; si aggancia ai pixel interi solo se costa poco spazio.
+ */
+export function computeScale(availW: number, availH: number, dpr: number, preferSize = false): DeviceScale {
   const maxMm = Math.max(1.5, Math.min(availW / BODY_W, availH / BODY_H, 9.6))
   const n = Math.floor(maxMm * MM_PER_LCD_PX * dpr)
-  let mm = maxMm
   if (n >= 1) {
     const snapped = n / (dpr * MM_PER_LCD_PX)
-    if (snapped >= 0.8 * maxMm) mm = snapped
+    // Si "aggancia" ai pixel interi quando non costa troppo spazio (o appena si arriva a 2 pixel per punto):
+    // la scala dell'LCD è esattamente n/dpr, così testo e linee da 1 px restano nitidi.
+    const ok = preferSize ? snapped >= 0.9 * maxMm : n >= 2 || snapped >= 0.6 * maxMm
+    if (ok) return { mm: snapped, lcdScale: n / dpr, grain: snapped * dpr >= 2 }
   }
-  const deviceW = Math.round(mm * BODY_W)
-  mm = deviceW / BODY_W
-  return { mm, lcdScale: mm * MM_PER_LCD_PX, grain: mm * dpr >= 2 }
+  return { mm: maxMm, lcdScale: maxMm * MM_PER_LCD_PX, grain: maxMm * dpr >= 2 }
 }
 
 function useDeviceScale(reserveBottom: number): DeviceScale {
@@ -49,7 +53,8 @@ function useDeviceScale(reserveBottom: number): DeviceScale {
     const update = () => {
       const w = window.innerWidth - 32
       const h = window.innerHeight - 40 - reserveBottom
-      setScale(computeScale(w, h, window.devicePixelRatio || 1))
+      const coarse = window.matchMedia('(pointer: coarse)').matches
+      setScale(computeScale(w, h, window.devicePixelRatio || 1, coarse))
     }
     update()
     window.addEventListener('resize', update)

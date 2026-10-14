@@ -100,7 +100,8 @@ export function isAudioFile(file: Pick<File, 'name' | 'type'>): boolean {
 
 /** Impronta del file sorgente: evita di reimportare lo stesso file a una nuova selezione. */
 export function fingerprintOf(file: Pick<FileInfo, 'name' | 'path' | 'size' | 'lastModified'>): string {
-  return `${file.path || file.name}|${file.size}|${file.lastModified}`
+  // Solo nome, dimensione e data: lo stesso file scelto da "file" o da "cartella" non si duplica.
+  return `${file.name}|${file.size}|${file.lastModified}`
 }
 
 /** uuid v4; crypto.randomUUID manca nei contesti non sicuri (http in LAN), quindi c'è un ripiego. */
@@ -154,9 +155,11 @@ export function tagsToTrack(
   labels: UnknownLabels,
   options: { id?: string; addedAt?: number } = {},
 ): Track {
-  const artist = text(parsed.artist) || labels.artist
+  // Artista e album mancanti restano vuoti: l'etichetta "sconosciuto" si aggiunge alla visualizzazione,
+  // nella lingua del momento (così cambiando lingua non nascono due artisti "sconosciuti").
+  const artist = text(parsed.artist)
   const albumArtist = text(parsed.albumartist) || artist
-  const album = text(parsed.album) || labels.album
+  const album = text(parsed.album)
   const genre = firstText(parsed.genre)
   const duration = parsed.duration
   return {

@@ -5,7 +5,8 @@
  */
 import { createStore, useStore } from '../core/store'
 import { db } from './db'
-import { buildIndex, type UnknownLabels } from './sort'
+import { buildIndex, groupKey, type UnknownLabels } from './sort'
+import { dictionaries } from '../i18n/strings'
 import type { Album, Artist, Playlist, Track } from './types'
 
 export interface LibraryIndex {
@@ -58,10 +59,24 @@ function rebuild(tracks: Map<string, Track>, playlists: Playlist[], labels: Unkn
 }
 
 /** Carica (o ricarica) tutto da IndexedDB. */
+/** Etichette "sconosciuto" in tutte le lingue: brani salvati da versioni precedenti le portavano dentro. */
+const UNKNOWN_STRINGS = new Set(Object.values(dictionaries).flatMap((d) => [d.unknownArtist, d.unknownAlbum]))
+
+function normalizeStored(t: Track): Track {
+  const artist = UNKNOWN_STRINGS.has(t.artist) ? '' : t.artist
+  const albumArtist = UNKNOWN_STRINGS.has(t.albumArtist) ? '' : t.albumArtist
+  const album = UNKNOWN_STRINGS.has(t.album) ? '' : t.album
+  if (artist === t.artist && albumArtist === t.albumArtist && album === t.album) return t
+  return { ...t, artist, albumArtist, album, albumId: groupKey(albumArtist || artist, album) }
+}
+
 export async function loadLibrary(labels?: UnknownLabels): Promise<void> {
   const lbl = labels ?? libraryStore.get().labels
   try {
-    const [tracks, playlists] = await Promise.all([db.getAllTracks(), db.getAllPlaylists()])
+    const [stored, playlists] = await Promise.all([db.getAllTracks(), db.getAllPlaylists()])
+    const tracks = stored.map(normalizeStored)
+    const changed = tracks.filter((t, i) => t !== stored[i])
+    if (changed.length) await db.putTracks(changed).catch(() => {})
     rebuild(new Map(tracks.map((t) => [t.id, t])), playlists, lbl)
   } catch (e) {
     rebuild(new Map(), [], lbl, e instanceof Error ? e.message : String(e))

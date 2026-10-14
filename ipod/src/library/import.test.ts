@@ -37,7 +37,7 @@ describe('tagsToTrack', () => {
     )
     expect(t).toMatchObject({
       id: 'id-1',
-      fingerprint: 'Musica/Mina/citta.mp3|99|5',
+      fingerprint: 'citta.mp3|99|5',
       title: 'Città vuota',
       artist: 'Mina',
       albumArtist: 'Mina',
@@ -63,13 +63,13 @@ describe('tagsToTrack', () => {
     })
   })
 
-  it('senza tag usa il nome del file e le etichette "sconosciuto"', () => {
+  it('senza tag usa il nome del file; artista e album restano vuoti (l’etichetta si aggiunge a schermo)', () => {
     const t = tagsToTrack(noTags, info(), labels)
     expect(t.title).toBe('01 - Titolo')
-    expect(t.artist).toBe(labels.artist)
-    expect(t.albumArtist).toBe(labels.artist)
-    expect(t.album).toBe(labels.album)
-    expect(t.albumId).toBe(groupKey(labels.artist, labels.album))
+    expect(t.artist).toBe('')
+    expect(t.albumArtist).toBe('')
+    expect(t.album).toBe('')
+    expect(t.albumId).toBe(groupKey('', ''))
     expect(t.year).toBeNull()
     expect(t.trackNo).toBeNull()
     expect(t.trackOf).toBeNull()
@@ -178,9 +178,10 @@ describe('tagsToTrack', () => {
     expect(guessMime('senza')).toBe('')
   })
 
-  it('impronta: percorso relativo se c’è, altrimenti il nome', () => {
+  it('impronta: nome, dimensione e data (indipendente dal percorso)', () => {
     expect(fingerprintOf({ name: 'a.mp3', path: '', size: 1, lastModified: 2 })).toBe('a.mp3|1|2')
-    expect(fingerprintOf({ name: 'a.mp3', path: 'Cartella/a.mp3', size: 1, lastModified: 2 })).toBe('Cartella/a.mp3|1|2')
+    // lo stesso file scelto da una cartella ha la stessa impronta: niente doppioni tra i due selettori
+    expect(fingerprintOf({ name: 'a.mp3', path: 'Cartella/a.mp3', size: 1, lastModified: 2 })).toBe('a.mp3|1|2')
   })
 
   it('id: uuid diversi a ogni chiamata, addedAt attuale', () => {
@@ -304,8 +305,8 @@ describe('catena completa: WAV con tag → music-metadata → Track', () => {
     const meta = await parseBuffer(bytes, { mimeType: 'audio/wav' }, { skipPostHeaders: true, duration: false })
     const t = tagsToTrack(toParsedTags(meta), info({ name: '03 - Senza tag.wav' }), labels)
     expect(t.title).toBe('03 - Senza tag')
-    expect(t.artist).toBe(labels.artist)
-    expect(t.album).toBe(labels.album)
+    expect(t.artist).toBe('')
+    expect(t.album).toBe('')
     expect(pickPicture(meta)).toBeNull()
   })
 })

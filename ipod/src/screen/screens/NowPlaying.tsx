@@ -41,7 +41,12 @@ export function nowPlayingInput(e: InputEvent, screen: Screen): boolean {
         nav.update({ params: { ...screen.params, scrub: String(scrubPos) } })
         if (scrubTimer) clearTimeout(scrubTimer)
         const target = scrubPos
-        scrubTimer = setTimeout(() => player.seek(target), 120)
+        scrubTimer = setTimeout(() => {
+          player.seek(target)
+          // Applicata la ricerca, tempi e rombo tornano a seguire la riproduzione.
+          scrubPos = null
+          if (nav.top().kind === 'nowPlaying') nav.update({ params: { ...nav.top().params, scrub: '' } })
+        }, 120)
         armModeTimeout(4000)
         return true
       }

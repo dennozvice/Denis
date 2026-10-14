@@ -33,18 +33,34 @@ export function Lcd() {
   const brightness = useSettings((s) => s.brightness)
   const toast = useUi((s) => s.toast)
   const prevRef = useRef<{ screen: Screen; depth: number } | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [transition, setTransition] = useState<{ from: Screen; to: number; dir: 'push' | 'pop'; fade: boolean } | null>(null)
+  const topKey = top.key
+  const depth = stack.length
 
   useEffect(() => {
     const prev = prevRef.current
-    prevRef.current = { screen: top, depth: stack.length }
-    if (!prev || prev.screen.key === top.key) return
-    const dir = stack.length >= prev.depth ? 'push' : 'pop'
+    prevRef.current = { screen: top, depth }
+    if (!prev || prev.screen.key === topKey) return
+    const dir = depth >= prev.depth ? 'push' : 'pop'
     const fade = screenDef(top.kind).transition === 'fade' || screenDef(prev.screen.kind).transition === 'fade'
-    setTransition({ from: prev.screen, to: top.key, dir, fade })
-    const id = setTimeout(() => setTransition(null), fade ? 300 : 220)
+    setTransition({ from: prev.screen, to: topKey, dir, fade })
+    // Il timer vive in un ref: un cambio di selezione durante l'animazione non deve annullarlo.
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setTransition(null), fade ? 300 : 220)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `top` cambia anche per sel/first: qui conta solo la chiave
+  }, [topKey, depth])
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+  }, [])
+
+  // L'avvio resta montato finché la dissolvenza (300 ms) non è finita.
+  const [bootGone, setBootGone] = useState(false)
+  useEffect(() => {
+    if (!booted) return
+    const id = setTimeout(() => setBootGone(true), 320)
     return () => clearTimeout(id)
-  }, [top, stack.length])
+  }, [booted])
 
   const title = screenDef(top.kind).title(top)
   const active = transition && transition.to === top.key ? transition : null
@@ -63,8 +79,8 @@ export function Lcd() {
       <div className="lcd-bright" style={{ opacity: 0.5 * (1 - brightness / 100) }} />
       <div className="lcd-dim" data-on={!backlight && !asleep ? 'true' : 'false'} />
       <div className="lcd-off" data-on={asleep ? 'true' : 'false'} />
-      {!booted && (
-        <div className="boot">
+      {!bootGone && (
+        <div className="boot" data-off={booted ? 'true' : 'false'}>
           <NoteIcon />
         </div>
       )}

@@ -5,6 +5,7 @@
  */
 import type { QueueItem, ShuffleMode } from '../audio/queue'
 import type { Screen, ScreenKind } from '../core/navigation'
+import { createStore } from '../core/store'
 
 export type PaneKind = 'slideshow' | 'nowPlaying' | 'extras' | 'settings' | 'podcasts' | 'videos' | 'photos' | 'none'
 
@@ -57,10 +58,13 @@ export function listDef(kind: ScreenKind): ListDef | undefined {
   return defs.get(kind)
 }
 
-/* Memo delle righe: invalidato quando cambia qualunque store (library, settings, player, system). */
+/* Memo delle righe: invalidato quando cambia qualunque store (library, settings, player, sync). */
 const cache = new Map<string, ListItem[]>()
+/** Contatore che cambia a ogni invalidazione: le schermate-lista lo osservano per ridisegnarsi. */
+export const listVersionStore = createStore(0)
 export function invalidateLists(): void {
   cache.clear()
+  listVersionStore.set(listVersionStore.get() + 1)
 }
 export function listItems(screen: Screen): ListItem[] {
   const def = defs.get(screen.kind)

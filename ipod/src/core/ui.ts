@@ -3,6 +3,8 @@ import { createStore, useStore } from './store'
 
 export interface UiState {
   letter: string | null
+  /** false durante la dissolvenza finale (150 ms), poi la lettera sparisce. */
+  letterVisible: boolean
   letterUntil: number
   /** Chiave che cambia per far lampeggiare la riga selezionata (aggiunta a On-The-Go). */
   blink: number
@@ -10,16 +12,21 @@ export interface UiState {
   toastUntil: number
 }
 
-export const uiStore = createStore<UiState>({ letter: null, letterUntil: 0, blink: 0, toast: null, toastUntil: 0 })
+export const uiStore = createStore<UiState>({ letter: null, letterVisible: false, letterUntil: 0, blink: 0, toast: null, toastUntil: 0 })
 
 let letterTimer: ReturnType<typeof setTimeout> | null = null
+let letterFadeTimer: ReturnType<typeof setTimeout> | null = null
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 export const ui = {
   showLetter(letter: string): void {
-    uiStore.patch({ letter, letterUntil: Date.now() + 600 })
+    uiStore.patch({ letter, letterVisible: true, letterUntil: Date.now() + 600 })
     if (letterTimer) clearTimeout(letterTimer)
-    letterTimer = setTimeout(() => uiStore.patch({ letter: null }), 600)
+    if (letterFadeTimer) clearTimeout(letterFadeTimer)
+    letterTimer = setTimeout(() => {
+      uiStore.patch({ letterVisible: false })
+      letterFadeTimer = setTimeout(() => uiStore.patch({ letter: null }), 160)
+    }, 600)
   },
   blinkRow(): void {
     uiStore.patch({ blink: uiStore.get().blink + 1 })

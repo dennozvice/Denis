@@ -68,7 +68,7 @@ export function listInput(e: InputEvent, screen: Screen): boolean {
     }
     case 'hold': {
       if (e.button !== 'center') return false
-      const item = items[screen.sel]
+      const item = items[Math.min(screen.sel, items.length - 1)]
       if (!item?.otgTrackIds?.length) return true
       const ids = item.otgTrackIds
       ui.blinkRow()

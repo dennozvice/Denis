@@ -71,9 +71,8 @@ let staleUrls: string[] = []
 let prefetched: { id: string; url: string } | null = null
 let primed = false
 
-/** 1/10 di secondo di silenzio WAV: serve a "sbloccare" l'elemento audio su iOS dentro un gesto dell'utente. */
-const SILENT_WAV =
-  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA='
+/** Otto campioni di silenzio WAV (8 bit, mono): servono a "sbloccare" l'elemento audio su iOS dentro un gesto dell'utente. */
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiwAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQgAAACAgICAgICAgA=='
 
 /**
  * Da chiamare dentro un gesto dell'utente (pointerup/keydown): su iOS play() è permesso solo
@@ -93,9 +92,12 @@ export function primeAudio(): void {
     const p = el.play()
     if (p) {
       p.then(() => {
-        el.pause()
+        // Solo se nel frattempo non è partito un brano vero.
+        if (el.src.startsWith('data:')) {
+          el.pause()
+          el.removeAttribute('src')
+        }
         el.muted = false
-        if (!playerStore.get().trackId) el.removeAttribute('src')
       }).catch(() => {
         el.muted = false
         primed = false
@@ -107,6 +109,7 @@ export function primeAudio(): void {
   }
 }
 let loadToken = 0
+let errorStreak = 0
 let eq: EqChain | null = null
 let gainNode: GainNode | null = null
 let useWebAudio = false
@@ -139,6 +142,8 @@ function ensureAudio(): HTMLAudioElement {
     setPlaybackState('playing')
   })
   el.addEventListener('playing', () => {
+    if (el.src.startsWith('data:')) return
+    errorStreak = 0 // un brano che suona azzera la serie di errori
     for (const u of staleUrls) URL.revokeObjectURL(u)
     staleUrls = []
   })
@@ -152,6 +157,7 @@ function ensureAudio(): HTMLAudioElement {
     void advance(false)
   })
   el.addEventListener('error', () => {
+    if (el.src.startsWith('data:') || !el.src) return // clip di sblocco o elemento svuotato
     const id = playerStore.get().trackId
     playerStore.patch({ error: id ?? 'unknown' })
     // brano non decodificabile: passa al successivo (una sola volta per brano per non ciclare all'infinito)
@@ -234,7 +240,9 @@ function setupMediaSession(): void {
 async function updateMetadata(track: Track): Promise<void> {
   if (!('mediaSession' in navigator)) return
   try {
+    const token = loadToken
     const art = await provider?.getArtworkUrl(track.artworkId, 'full')
+    if (token !== loadToken) return // nel frattempo è cambiato brano
     navigator.mediaSession.metadata = new MediaMetadata({
       title: track.title,
       artist: track.artist,
@@ -313,7 +321,6 @@ async function loadIndex(index: number, autoplay: boolean): Promise<void> {
   prefetchNext()
 }
 
-let errorStreak = 0
 async function advance(dueToError: boolean): Promise<void> {
   const st = playerStore.get()
   if (dueToError) {
@@ -325,7 +332,8 @@ async function advance(dueToError: boolean): Promise<void> {
       return
     }
   } else errorStreak = 0
-  const ni = nextIndex(st.index, st.queue.length, st.repeat, false)
+  // Un file illeggibile si salta anche con "Ripeti uno" (altrimenti si ritenterebbe all'infinito).
+  const ni = nextIndex(st.index, st.queue.length, st.repeat, dueToError)
   if (ni === null) {
     // fine coda senza ripetizione: torna all'inizio e si ferma (come l'iPod)
     playerStore.patch({ status: 'paused' })
@@ -351,6 +359,7 @@ export const player = {
       URL.revokeObjectURL(prefetched.url)
       prefetched = null
     }
+    errorStreak = 0
     playerStore.patch({ queue, source: items.slice(), index })
     await loadIndex(index, true)
   },
@@ -377,6 +386,7 @@ export const player = {
   },
   stop(): void {
     loadToken++
+    errorStreak = 0
     if (audio) {
       audio.pause()
       audio.removeAttribute('src')
@@ -417,7 +427,7 @@ export const player = {
       if (audio) audio.currentTime = 0
       return
     }
-    await loadIndex(pi, true)
+    await loadIndex(pi, st.status !== 'paused')
   },
   seek(seconds: number): void {
     if (!audio) return
@@ -431,8 +441,11 @@ export const player = {
       /* non ancora caricato */
     }
   },
+  /** Avanzamento tenendo premuto: non oltrepassa mai la fine del brano (resta a mezzo secondo dalla fine). */
   seekBy(delta: number): void {
-    player.seek((audio?.currentTime ?? 0) + delta)
+    const d = player.duration()
+    const target = (audio?.currentTime ?? 0) + delta
+    player.seek(d > 0 ? Math.min(target, d - 0.5) : target)
   },
   setVolume(volume: number): void {
     const v = Math.max(0, Math.min(100, Math.round(volume)))

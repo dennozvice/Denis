@@ -113,7 +113,16 @@ export function useClickWheel(ref: RefObject<HTMLElement | null>, opts: ClickWhe
       if (zone === 'center' && !scrolling) return // il tasto centrale non scorre
       const g = geometry()
       const angle = angleOf(g.cx, g.cy, ev.clientX, ev.clientY)
+      // Sul tasto centrale non si scorre: passando sopra il centro l'angolo salterebbe di ~180°.
+      if (normalizedRadius(g.cx, g.cy, ev.clientX, ev.clientY, g.radius) < centerRatio) {
+        lastAngle = angle
+        return
+      }
       const d = deltaAngle(lastAngle, angle)
+      if (Math.abs(d) > 90) {
+        lastAngle = angle
+        return
+      }
       const moved = Math.hypot(ev.clientX - startX, ev.clientY - startY)
       if (!scrolling) {
         const totalDeg = Math.abs(deltaAngle(angleOf(g.cx, g.cy, startX, startY), angle))

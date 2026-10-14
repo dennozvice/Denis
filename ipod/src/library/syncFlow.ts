@@ -33,13 +33,20 @@ export function supportsFolderPicker(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window
 }
 
-async function runImport(allFiles: File[]): Promise<void> {
+const EMPTY_COUNTS = { total: 0, done: 0, added: 0, skipped: 0, failed: 0, message: '' }
+
+/** Mostra la schermata Sync senza impilarne due (i pulsanti della pagina non passano dalla ghiera). */
+function showSyncScreen(): void {
+  if (nav.top().kind !== 'sync') nav.push('sync')
+}
+
+async function runImport(allFiles: File[], controller: AbortController): Promise<void> {
   const { importFiles } = await import('./import')
   // I file "._nome" sono metadati macOS (AppleDouble), non audio.
   const files = allFiles.filter((f) => !f.name.startsWith('._'))
   const existing = new Map<string, Track>()
   for (const tr of libraryStore.get().tracks.values()) existing.set(tr.fingerprint, tr)
-  abort = new AbortController()
+  abort = controller
   syncStore.patch({ phase: 'syncing', total: files.length, done: 0, added: 0, skipped: 0, failed: 0 })
   const result = await importFiles(files, {
     labels: unknownLabels(),
@@ -61,17 +68,21 @@ export async function startSync(source: SyncSource): Promise<void> {
   if (syncStore.get().phase === 'syncing' || syncStore.get().phase === 'generating') return
   const s = libraryStore.get()
   if (s.error) {
-    syncStore.patch({ phase: 'error', message: t('storageError') })
-    nav.push('sync')
+    syncStore.patch({ ...EMPTY_COUNTS, phase: 'error', message: t('storageError') })
+    showSyncScreen()
     return
   }
+  const controller = new AbortController()
+  abort = controller
   try {
     let files: File[] = []
     if (source === 'demo') {
-      nav.push('sync')
-      syncStore.patch({ phase: 'generating', total: 0, done: 0, message: '' })
+      showSyncScreen()
+      syncStore.patch({ ...EMPTY_COUNTS, phase: 'generating' })
       const { generateDemoLibrary } = await import('./demo')
       files = await generateDemoLibrary((done, total) => {
+        // MENU durante la generazione: ci si ferma al brano in corso.
+        if (controller.signal.aborted) throw new DOMException('Annullato', 'AbortError')
         syncStore.patch({ done, total })
         system.touch()
       })
@@ -84,19 +95,22 @@ export async function startSync(source: SyncSource): Promise<void> {
           : source === 'resync'
             ? imp.resyncFromStoredHandle().then((r) => r?.files ?? [])
             : imp.pickFiles(source === 'folder' ? 'folder' : 'files')
-      syncStore.patch({ phase: 'connected', message: '' })
-      nav.push('sync')
+      syncStore.patch({ ...EMPTY_COUNTS, phase: 'connected' })
+      showSyncScreen()
       files = await picking
       if (files.length === 0) {
         syncStore.patch({ phase: 'cancelled' })
         return
       }
     }
-    await runImport(files)
+    await runImport(files, controller)
     void refreshFolderName()
   } catch (e) {
-    syncStore.patch({ phase: 'error', message: e instanceof Error ? e.message : String(e) })
+    if (e instanceof DOMException && e.name === 'AbortError') syncStore.patch({ phase: 'cancelled' })
+    else syncStore.patch({ phase: 'error', message: e instanceof Error ? e.message : String(e) })
     system.touch()
+  } finally {
+    if (abort === controller) abort = null
   }
 }
 
@@ -113,14 +127,18 @@ export async function refreshFolderName(): Promise<void> {
   }
 }
 
-/** Chiude la schermata Sync (dopo "done"/"cancelled"/"error"). */
+/** Chiude la schermata Sync (dopo "done"/"cancelled"/"error"): prima la schermata scorre via, poi si azzera lo stato. */
 export function finishSync(): void {
-  syncStore.patch({ phase: 'idle' })
   if (nav.top().kind === 'sync') nav.pop()
+  setTimeout(() => {
+    const ph = syncStore.get().phase
+    if (ph === 'done' || ph === 'cancelled' || ph === 'error') syncStore.patch({ phase: 'idle' })
+  }, 260)
 }
 
 export async function eraseLibrary(): Promise<void> {
   await library.eraseAll()
+  await refreshFolderName() // la cartella ricordata è stata cancellata insieme al resto
 }
 
 export function useSync<S = SyncState>(selector?: (s: SyncState) => S): S {

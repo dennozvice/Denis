@@ -19,12 +19,11 @@ export function registerScreenInput(kind: ScreenKind, handler: ScreenInputHandle
   handlers.set(kind, handler)
 }
 
-/** Avanzamento veloce tenendo premuto prev/next: parte lento e accelera. */
+/** Avanzamento veloce tenendo premuto prev/next (un evento ogni 100 ms): 4 s/s, poi 16 s/s, poi 40 s/s come l'iPod. */
 export function seekStepFor(elapsedMs: number): number {
-  if (elapsedMs < 1500) return 2
-  if (elapsedMs < 4000) return 5
-  if (elapsedMs < 8000) return 15
-  return 40
+  if (elapsedMs < 2000) return 0.4
+  if (elapsedMs < 5000) return 1.6
+  return 4
 }
 
 let seeking = false
@@ -58,6 +57,8 @@ function defaultHandler(e: InputEvent): boolean {
         return true
       }
       if (e.button === 'play') {
+        // Sospensione: la musica si ferma e lo schermo si spegne.
+        player.pause()
         system.sleep()
         return true
       }
@@ -82,7 +83,14 @@ function defaultHandler(e: InputEvent): boolean {
 
 export function dispatch(e: InputEvent): void {
   const sys = systemStore.get()
+  // Il rilascio di prev/next sblocca sempre l'avanzamento, anche se Hold o la sospensione ignorano l'evento.
+  if (e.type === 'release' && (e.button === 'next' || e.button === 'prev')) {
+    queueMicrotask(() => {
+      seeking = false
+    })
+  }
   if (e.type === 'holdSwitch') {
+    seeking = false
     system.setHold(e.locked)
     return
   }
@@ -93,10 +101,8 @@ export function dispatch(e: InputEvent): void {
     if (e.type === 'press' || e.type === 'hold') system.wake()
     return
   }
-  const wasDark = !sys.backlight
+  // Schermo spento: l'input lo riaccende e viene comunque eseguito (come sull'iPod).
   system.touch()
-  // Con lo schermo spento il primo tocco lo riaccende soltanto (come sull'iPod).
-  if (wasDark && e.type !== 'release') return
   const screen = nav.top()
   let handled = handlers.get(screen.kind)?.(e, screen) === true
   if (!handled) handled = defaultHandler(e)

@@ -31,7 +31,7 @@ describe('dispatcher', () => {
     dispatch({ type: 'press', button: 'menu' })
     expect(nav.top().kind).toBe('main')
   })
-  it('in sospensione un tasto sveglia soltanto; con schermo spento il primo input riaccende soltanto', () => {
+  it('in sospensione un tasto sveglia soltanto; con schermo spento l’input riaccende ed esegue', () => {
     nav.push('music')
     system.sleep()
     dispatch({ type: 'press', button: 'menu' })
@@ -40,8 +40,6 @@ describe('dispatcher', () => {
     systemStore.patch({ backlight: false })
     dispatch({ type: 'press', button: 'menu' })
     expect(systemStore.get().backlight).toBe(true)
-    expect(nav.top().kind).toBe('music')
-    dispatch({ type: 'press', button: 'menu' })
     expect(nav.top().kind).toBe('main')
   })
   it('la schermata in cima può consumare l’evento', () => {

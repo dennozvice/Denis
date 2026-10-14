@@ -51,6 +51,7 @@ export function MenuList({
   width?: number
 }) {
   const letter = useUi((s) => s.letter)
+  const letterVisible = useUi((s) => s.letterVisible)
   const blink = useUi((s) => s.blink)
   const blinkRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -69,7 +70,7 @@ export function MenuList({
   const rowWidth = hasScrollbar ? listWidth - 15 : listWidth
   const visible = items.slice(first, first + VISIBLE_ROWS)
   const thumbH = Math.max(14, Math.round((213 * VISIBLE_ROWS) / Math.max(total, 1)))
-  const thumbTop = total > VISIBLE_ROWS ? Math.round(((213 - thumbH) * first) / (total - VISIBLE_ROWS)) : 0
+  const thumbTop = total > VISIBLE_ROWS ? Math.min(213 - thumbH, Math.round(((213 - thumbH) * first) / (total - VISIBLE_ROWS))) : 0
 
   return (
     <div className="list" data-split={split ? 'true' : 'false'} style={{ width: listWidth }}>
@@ -113,7 +114,7 @@ export function MenuList({
         </div>
       )}
       {letters && letter && hasScrollbar && (
-        <div className="letter-overlay" style={{ left: 160, top: 109 }}>
+        <div className="letter-overlay" style={{ left: 160, top: 109, opacity: letterVisible ? 1 : 0 }}>
           {letter}
         </div>
       )}

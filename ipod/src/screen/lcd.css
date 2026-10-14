@@ -124,15 +124,7 @@
 .list[data-split='true'] {
   width: 160px;
 }
-.list[data-split='true']::after {
-  content: '';
-  position: absolute;
-  left: 160px;
-  top: 0;
-  width: 1px;
-  height: 219px;
-  background: #c8c8c8;
-}
+
 .row {
   position: absolute;
   left: 0;
@@ -209,6 +201,7 @@
   border: 1px solid #8a8a8a;
   border-radius: 4.5px;
   background: linear-gradient(180deg, #ffffff, #e4e4e4);
+  overflow: hidden;
 }
 .scrollbar-thumb {
   position: absolute;
@@ -221,16 +214,26 @@
 /* Pannello destro dei menu divisi */
 .pane {
   position: absolute;
-  left: 161px;
+  left: 160px;
   top: 0;
-  width: 159px;
+  width: 160px;
   height: 219px;
   background: linear-gradient(180deg, #ffffff, #f2f2f2);
   overflow: hidden;
 }
+/* Linea di separazione tra lista e pannello (x = 160) */
+.pane::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 219px;
+  background: #c8c8c8;
+}
 .pane-art {
   position: absolute;
-  left: 15px;
+  left: 16px;
   top: 19px;
   width: 128px;
   height: 128px;
@@ -371,19 +374,22 @@
   justify-content: center;
   color: #ffffff;
   z-index: 25;
+  pointer-events: none;
   transition: opacity 300ms linear;
 }
+.boot[data-off='true'] {
+  opacity: 0;
+}
+/* Il glifo appare in dissolvenza e resta finché la libreria non è pronta; poi tutto l'avvio sfuma. */
 .boot svg {
   width: 48px;
   height: 64px;
   opacity: 0;
-  animation: boot-glyph 1.8s linear 200ms forwards;
+  animation: boot-glyph 300ms linear 200ms forwards;
 }
 @keyframes boot-glyph {
-  0% { opacity: 0; }
-  17% { opacity: 1; }
-  83% { opacity: 1; }
-  100% { opacity: 0; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* In riproduzione */

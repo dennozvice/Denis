@@ -5,6 +5,7 @@
  */
 import { useEffect } from 'react'
 import type { InputEvent, WheelButton } from '../core/input'
+import { systemStore } from '../core/system'
 
 const KEY_TO_BUTTON: Record<string, WheelButton> = {
   Enter: 'center',
@@ -24,7 +25,6 @@ const HOLD_DELAY: Record<WheelButton, number> = { menu: 600, center: 600, play: 
 export function useKeyboard(onInput: (e: InputEvent) => void, onGesture: () => void, onHoldSwitch: (locked: boolean) => void): void {
   useEffect(() => {
     const down = new Map<WheelButton, { at: number; held: boolean; timer: ReturnType<typeof setTimeout> | null; repeat: ReturnType<typeof setInterval> | null }>()
-    let holdLocked = false
     let rotateVelocity = 0
     let lastRotate = 0
 
@@ -47,8 +47,8 @@ export function useKeyboard(onInput: (e: InputEvent) => void, onGesture: () => v
       }
       if (ev.key === 'h' || ev.key === 'H') {
         if (ev.repeat) return
-        holdLocked = !holdLocked
-        onHoldSwitch(holdLocked)
+        // Unica fonte di verità: lo stato Hold del sistema (vale anche per l'interruttore sulla scocca).
+        onHoldSwitch(!systemStore.get().hold)
         return
       }
       const b = KEY_TO_BUTTON[ev.key]
