@@ -12,14 +12,32 @@ from pathlib import Path
 ICON = Path(__file__).parent / "ui" / "static" / "jarvis.icns"
 
 
-def launcher_script(project_dir: Path, python: Path, config: Path | None, log: Path) -> str:
-    config_arg = f' --config "{config}"' if config else ""
-    return f"""#!/bin/bash
-# Avviato da Jarvis.app: esegue Jarvis dall'ambiente del progetto e tiene un log.
-cd "{project_dir}"
-mkdir -p "{log.parent}"
-exec "{python}" -m jarvis run --window{config_arg} >> "{log}" 2>&1
+LAUNCHER_TEMPLATE = """#!/bin/bash
+# Avviato da @NAME@.app: esegue Jarvis dall'ambiente del progetto e tiene un log.
+# Se Jarvis termina subito con un errore, lo mostra in una finestra.
+cd "@PROJECT@"
+mkdir -p "@LOGDIR@"
+echo "=== avvio $(date) ===" >> "@LOG@"
+"@PYTHON@" -m jarvis run --window@CONFIG@ >> "@LOG@" 2>&1
+status=$?
+if [ "$status" -ne 0 ]; then
+  tail_text=$(tail -n 12 "@LOG@")
+  osascript -e 'on run argv' -e 'display alert (item 1 of argv) message (item 2 of argv) as critical' -e 'end run' "@NAME@ si è fermato (codice $status)" "$tail_text" >/dev/null 2>&1
+fi
+exit $status
 """
+
+
+def launcher_script(project_dir: Path, python: Path, config: Path | None, log: Path, name: str = "Jarvis") -> str:
+    config_arg = f' --config "{config}"' if config else ""
+    return (
+        LAUNCHER_TEMPLATE.replace("@NAME@", name)
+        .replace("@PROJECT@", str(project_dir))
+        .replace("@LOGDIR@", str(log.parent))
+        .replace("@LOG@", str(log))
+        .replace("@PYTHON@", str(python))
+        .replace("@CONFIG@", config_arg)
+    )
 
 
 def info_plist(name: str, bundle_id: str) -> dict:
@@ -60,12 +78,23 @@ def build_app(
         plistlib.dump(info_plist(name, bundle_id), handle)
     log = Path.home() / "Library" / "Logs" / "jarvis.log"
     launcher = contents / "MacOS" / "launch"
-    launcher.write_text(launcher_script(project_dir, python, config, log))
+    launcher.write_text(launcher_script(project_dir, python, config, log, name))
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     if ICON.exists():
         shutil.copy(ICON, contents / "Resources" / "jarvis.icns")
     (contents / "PkgInfo").write_text("APPL????")
+    codesign(app)
     return app
+
+
+def codesign(app: Path) -> bool:
+    """Firma locale (ad hoc): su Apple Silicon macOS rifiuta i pacchetti senza firma."""
+    if shutil.which("codesign") is None:
+        return False
+    import subprocess
+
+    result = subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(app)], capture_output=True, text=True)
+    return result.returncode == 0
 
 
 def default_dest() -> Path:
