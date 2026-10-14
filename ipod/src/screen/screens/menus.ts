@@ -391,6 +391,12 @@ defineList('settings', {
       { id: 'timeFormat', label: t('timeFormat'), value: t(s.clock24h ? 'h24' : 'h12'), action: { kind: 'run', run: () => updateSettings({ clock24h: !S().clock24h }) } },
       { id: 'language', label: t('language'), chevron: true, action: { kind: 'push', screen: 'option', params: { setting: 'language' } } },
       { id: 'color', label: t('color'), value: t(s.color === 'silver' ? 'silver' : 'black'), chevron: true, action: { kind: 'push', screen: 'option', params: { setting: 'color' } } },
+      {
+        id: 'frame',
+        label: t('frame'),
+        value: t(s.frame === 'auto' ? 'frameAuto' : s.frame === 'on' ? 'on' : 'off'),
+        action: { kind: 'run', run: () => updateSettings({ frame: cycle(['auto', 'on', 'off'] as const, S().frame) }) },
+      },
       { id: 'legal', label: t('legal'), chevron: true, action: { kind: 'push', screen: 'legal' } },
       { id: 'erase', label: t('eraseMusic'), chevron: true, action: { kind: 'push', screen: 'confirm', params: { action: 'erase' } } },
       { id: 'reset', label: t('resetSettings'), chevron: true, action: { kind: 'push', screen: 'confirm', params: { action: 'reset' } } },

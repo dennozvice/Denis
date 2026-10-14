@@ -12,6 +12,16 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif;
   background: radial-gradient(120% 90% at 50% 35%, #2a2c31 0%, #141518 55%, #08090b 100%) fixed;
   color: #c7c8cc;
+  transition: background-color 200ms;
+}
+/* Senza cornice: la pagina è tutta bianca o tutta nera, come l'iPod scelto */
+body[data-flat='light'] {
+  background: #ffffff;
+  color: #6b6b70;
+}
+body[data-flat='dark'] {
+  background: #000000;
+  color: #8e8e93;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -24,7 +34,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px 16px calc(12px + env(safe-area-inset-bottom));
+  padding: calc(24px + env(safe-area-inset-top)) 16px calc(12px + env(safe-area-inset-bottom));
   box-sizing: border-box;
   gap: 28px;
 }
@@ -77,8 +87,41 @@ body {
   background: rgba(255, 255, 255, 0.14);
   margin: 0 4px;
 }
+body[data-flat='light'] .dock-btn {
+  color: #6b6b70;
+}
+body[data-flat='light'] .dock-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #1d1d1f;
+}
+body[data-flat='light'] .dock-btn[data-active='true'] {
+  color: #1d1d1f;
+  background: rgba(0, 0, 0, 0.07);
+}
+body[data-flat='light'] .dock-btn-accent {
+  color: #0a66d6;
+}
+body[data-flat='light'] .dock-sep {
+  background: rgba(0, 0, 0, 0.12);
+}
 .dock-hint {
   font-size: 12px;
   color: #6c6d72;
   text-align: center;
+}
+
+/* Telefoni: comandi della pagina più compatti sotto la ghiera */
+@media (pointer: coarse) and (max-width: 700px) {
+  .page {
+    gap: 14px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .dock {
+    padding-top: 4px;
+  }
+  .dock-btn {
+    font-size: 12px;
+    padding: 5px 8px;
+  }
 }

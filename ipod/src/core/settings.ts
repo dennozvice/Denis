@@ -7,6 +7,8 @@ import type { Language } from '../i18n/types'
 import { createStore, useStore } from './store'
 
 export type DeviceColor = 'silver' | 'black'
+/** Cornice dell'iPod: automatica (niente cornice sui telefoni), sempre, mai. */
+export type FrameMode = 'auto' | 'on' | 'off'
 export type EqPreset = 'off' | 'acoustic' | 'bassBooster' | 'bassReducer' | 'classical' | 'dance' | 'deep' | 'electronic' | 'flat' | 'hipHop' | 'jazz' | 'latin' | 'loudness' | 'lounge' | 'piano' | 'pop' | 'rnb' | 'rock' | 'smallSpeakers' | 'spokenWord' | 'trebleBooster' | 'trebleReducer' | 'vocalBooster'
 
 export const EQ_PRESETS: readonly EqPreset[] = [
@@ -20,6 +22,7 @@ export const BACKLIGHT_OPTIONS = [2, 5, 10, 15, 20, 30, 0] as const
 export interface Settings {
   language: Language
   color: DeviceColor
+  frame: FrameMode
   clicker: boolean
   /** 0–100 */
   brightness: number
@@ -39,6 +42,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   language: 'it',
   color: 'silver',
+  frame: 'auto',
   clicker: true,
   brightness: 100,
   backlightSeconds: 10,
@@ -64,6 +68,7 @@ export function sanitizeSettings(raw: unknown): Settings {
   return {
     language: isOneOf(r.language, ['it', 'en'] as const) ? r.language : d.language,
     color: isOneOf(r.color, ['silver', 'black'] as const) ? r.color : d.color,
+    frame: isOneOf(r.frame, ['auto', 'on', 'off'] as const) ? r.frame : d.frame,
     clicker: bool(r.clicker, d.clicker),
     brightness: num(r.brightness, 10, 100, d.brightness),
     backlightSeconds: isOneOf(String(r.backlightSeconds), BACKLIGHT_OPTIONS.map(String)) ? Number(r.backlightSeconds) : d.backlightSeconds,

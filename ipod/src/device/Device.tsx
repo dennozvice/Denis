@@ -1,7 +1,10 @@
 /**
- * Il dispositivo: scocca, finestra con LCD, ghiera con etichette, interruttore Hold.
- * Gli input (dito/mouse sulla ghiera, rotella, tastiera) diventano InputEvent e vanno
- * al dispatcher; la grafica dello schermo è nel componente figlio (children).
+ * Il dispositivo in due vesti:
+ * - con cornice: la scocca completa (alluminio, finestra, ghiera, interruttore Hold);
+ * - senza cornice: solo schermo e ghiera su fondo tutto bianco (iPod argento) o tutto nero (iPod nero),
+ *   pensata per il telefono a tutto schermo. Sui telefoni è la modalità automatica.
+ * Gli input (dito/mouse sulla ghiera, rotella, tastiera) diventano InputEvent e vanno al dispatcher;
+ * la grafica dello schermo è nel componente figlio (children).
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { unlockAudio } from '../audio/clicker'
@@ -27,10 +30,6 @@ export interface DeviceScale {
 }
 
 /**
- * Calcola i pixel per millimetro in base allo spazio disponibile. Quando possibile
- * un pixel dell'LCD corrisponde a un numero intero di pixel fisici (testo nitido).
- */
-/**
  * `preferSize` (telefoni): la grandezza conta più della nitidezza assoluta, perché a tutta larghezza
  * l'iPod viene quasi a grandezza naturale; si aggancia ai pixel interi solo se costa poco spazio.
  */
@@ -47,30 +46,99 @@ export function computeScale(availW: number, availH: number, dpr: number, prefer
   return { mm: maxMm, lcdScale: maxMm * MM_PER_LCD_PX, grain: maxMm * dpr >= 2 }
 }
 
-function useDeviceScale(reserveBottom: number): DeviceScale {
-  const [scale, setScale] = useState<DeviceScale>(() => computeScale(360, 640, 1))
+export interface FlatScale {
+  /** Scala dello schermo 320×240. */
+  lcdScale: number
+  /** Diametro della ghiera in px. */
+  wheelPx: number
+}
+
+/**
+ * Senza cornice: schermo largo quanto lo spazio (agganciato ai pixel interi solo se costa pochissimo:
+ * sui display da 460 ppi dell'iPhone la frazione non si vede), ghiera grande quanto resta in altezza.
+ * Su iPhone 16e (390×844, 3×): schermo 366×275, ghiera ≈ 330 px, niente scorrimento.
+ */
+export function computeFlatScale(availW: number, availH: number, dpr: number): FlatScale {
+  const maxScale = Math.min(availW / 320, 1.6)
+  const n = Math.floor(maxScale * dpr)
+  let lcdScale = maxScale
+  if (n >= 1) {
+    const snapped = n / dpr
+    if (snapped >= 0.96 * maxScale) lcdScale = snapped
+  }
+  const rest = availH - 240 * lcdScale - 40
+  const wheelPx = Math.max(150, Math.min(availW * 0.92, rest, 400))
+  return { lcdScale, wheelPx }
+}
+
+function useViewport(): { w: number; h: number; dpr: number; coarse: boolean } {
+  const read = () => ({
+    w: window.innerWidth,
+    h: window.innerHeight,
+    dpr: window.devicePixelRatio || 1,
+    coarse: window.matchMedia('(pointer: coarse)').matches,
+  })
+  const [vp, setVp] = useState(read)
   useEffect(() => {
-    const update = () => {
-      const w = window.innerWidth - 32
-      const h = window.innerHeight - 40 - reserveBottom
-      const coarse = window.matchMedia('(pointer: coarse)').matches
-      setScale(computeScale(w, h, window.devicePixelRatio || 1, coarse))
-    }
-    update()
+    const update = () => setVp(read())
     window.addEventListener('resize', update)
     window.addEventListener('orientationchange', update)
     return () => {
       window.removeEventListener('resize', update)
       window.removeEventListener('orientationchange', update)
     }
-  }, [reserveBottom])
-  return scale
+  }, [])
+  return vp
+}
+
+/** true quando l'iPod va mostrato senza cornice (impostazione, o automatica sui telefoni). */
+export function useFlat(): boolean {
+  const frame = useSettings((s) => s.frame)
+  const vp = useViewport()
+  if (frame === 'off') return true
+  if (frame === 'on') return false
+  return vp.coarse && vp.w < 700
+}
+
+function Wheel({ wheelRef, zone }: { wheelRef: React.RefObject<HTMLDivElement | null>; zone: WheelButton | 'ring' | null }) {
+  return (
+    <div ref={wheelRef} className="ipod-wheel" aria-hidden="true">
+      <div className="ipod-wheel-press" data-zone={zone ?? ''} />
+      <div className="ipod-label ipod-label-menu">MENU</div>
+      <div className="ipod-label ipod-label-prev">
+        <PrevGlyph />
+      </div>
+      <div className="ipod-label ipod-label-next">
+        <NextGlyph />
+      </div>
+      <div className="ipod-label ipod-label-play">
+        <PlayPauseGlyph />
+      </div>
+      <div className="ipod-center" data-pressed={zone === 'center' ? 'true' : 'false'} />
+    </div>
+  )
+}
+
+function HoldSwitch() {
+  const hold = useSystem((s) => s.hold)
+  return (
+    <div
+      className="ipod-hold"
+      data-locked={hold ? 'true' : 'false'}
+      onPointerDown={(e) => {
+        e.preventDefault()
+        unlockAudio()
+        dispatch({ type: 'holdSwitch', locked: !hold })
+      }}
+      title="Hold"
+    />
+  )
 }
 
 export function Device({ children, reserveBottom = 96 }: { children: ReactNode; reserveBottom?: number }) {
   const color = useSettings((s) => s.color)
-  const hold = useSystem((s) => s.hold)
-  const scale = useDeviceScale(reserveBottom)
+  const flat = useFlat()
+  const vp = useViewport()
   const wheelRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
   const [zone, setZone] = useState<WheelButton | 'ring' | null>(null)
@@ -92,29 +160,36 @@ export function Device({ children, reserveBottom = 96 }: { children: ReactNode; 
       el.removeEventListener('pointerup', up)
       document.removeEventListener('gesturestart', noGesture)
     }
-  }, [onGesture])
+  }, [onGesture, flat])
   const onHoldSwitch = useCallback((locked: boolean) => dispatch({ type: 'holdSwitch', locked }), [])
 
   useClickWheel(wheelRef, { centerRatio: 8 / 20, onInput, onPointerDown: onGesture, onZoneChange: setZone })
   useMouseWheel(bodyRef, onInput, onGesture)
   useKeyboard(onInput, onGesture, onHoldSwitch)
 
-  const style = { '--mm': `${scale.mm}px`, '--lcd-scale': String(scale.lcdScale) } as React.CSSProperties
+  if (flat) {
+    const fs = computeFlatScale(vp.w - 24, vp.h - 24 - reserveBottom, vp.dpr)
+    const style = { '--mm': `${fs.wheelPx / 40}px`, '--lcd-scale': String(fs.lcdScale) } as React.CSSProperties
+    return (
+      <div ref={bodyRef} className="flat" data-color={color} style={style} role="application" aria-label="iPod">
+        <div className="flat-screen" style={{ width: Math.round(320 * fs.lcdScale), height: Math.round(240 * fs.lcdScale) }}>
+          <div className="ipod-lcd-inner">{children}</div>
+        </div>
+        <div className="flat-hold">
+          <HoldSwitch />
+        </div>
+        <Wheel wheelRef={wheelRef} zone={zone} />
+      </div>
+    )
+  }
 
+  const scale = computeScale(vp.w - 32, vp.h - 40 - reserveBottom, vp.dpr, vp.coarse)
+  const style = { '--mm': `${scale.mm}px`, '--lcd-scale': String(scale.lcdScale) } as React.CSSProperties
   return (
     <div className="ipod-stage" style={style}>
       <div ref={bodyRef} className="ipod" data-color={color} data-grain={scale.grain ? 'on' : 'off'} role="application" aria-label="iPod">
         <div className="ipod-top" aria-hidden="true">
-          <div
-            className="ipod-hold"
-            data-locked={hold ? 'true' : 'false'}
-            onPointerDown={(e) => {
-              e.preventDefault()
-              unlockAudio()
-              dispatch({ type: 'holdSwitch', locked: !hold })
-            }}
-            title="Hold"
-          />
+          <HoldSwitch />
           <div className="ipod-jack" />
         </div>
         <div className="ipod-window">
@@ -123,20 +198,7 @@ export function Device({ children, reserveBottom = 96 }: { children: ReactNode; 
           </div>
           <div className="ipod-gloss" />
         </div>
-        <div ref={wheelRef} className="ipod-wheel" aria-hidden="true">
-          <div className="ipod-wheel-press" data-zone={zone ?? ''} />
-          <div className="ipod-label ipod-label-menu">MENU</div>
-          <div className="ipod-label ipod-label-prev">
-            <PrevGlyph />
-          </div>
-          <div className="ipod-label ipod-label-next">
-            <NextGlyph />
-          </div>
-          <div className="ipod-label ipod-label-play">
-            <PlayPauseGlyph />
-          </div>
-          <div className="ipod-center" data-pressed={zone === 'center' ? 'true' : 'false'} />
-        </div>
+        <Wheel wheelRef={wheelRef} zone={zone} />
       </div>
     </div>
   )
