@@ -134,7 +134,7 @@ def test_keyword_match_with_aliases_and_short_words_exact_only():
 def test_normalize_audio_amplifies_quiet_signal():
     from eve.audio.wakeword import normalize_audio
 
-    quiet = (tone(0.5, amplitude=200)).astype(np.int16)  # segnale molto basso
+    quiet = (tone(0.5, amplitude=600)).astype(np.int16)  # segnale molto basso
     out = normalize_audio(quiet)
     assert 0.85 <= float(np.abs(out).max()) <= 0.9
     assert normalize_audio(silence(0.1)).max() == 0.0

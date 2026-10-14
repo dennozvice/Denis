@@ -143,7 +143,7 @@ def normalize_audio(audio: np.ndarray, peak: float = 0.9) -> np.ndarray:
     samples = audio.astype(np.float32) / 32768.0
     top = float(np.abs(samples).max()) if samples.size else 0.0
     if top > 1e-4:
-        samples = samples * min(peak / top, 40.0)
+        samples = samples * min(peak / top, 60.0)
     return samples
 TranscribeWords = Callable[[np.ndarray], list[Word]]
 
