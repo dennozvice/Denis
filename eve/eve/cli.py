@@ -74,9 +74,16 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     speaker = SystemSpeaker(config.tts.backend, config.tts.voice, config.tts.rate, config.tts.command, config.assistant.language) if speak else SilentSpeaker()
 
     if audio:
+        from eve import permissions
         from eve.audio.capture import Microphone
         from eve.audio.stt import WhisperTranscriber
 
+        granted = permissions.request_microphone()
+        if granted is False:
+            bus.notice(
+                f"Accesso al microfono negato: Impostazioni di Sistema › Privacy e sicurezza › Microfono, abilita {config.assistant.name}.",
+                "error",
+            )
         bus.notice("Carico il modello di trascrizione…")
         hint = " ".join(dict.fromkeys([config.assistant.name, config.assistant.pronunciation.capitalize()]))
         transcriber = WhisperTranscriber(config.stt.model, config.stt.device, config.stt.compute_type, config.assistant.language, hint=hint)

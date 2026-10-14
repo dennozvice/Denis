@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-window = ["pywebview>=5.0"]
+window = ["pywebview>=5.0", "pyobjc-framework-AVFoundation>=10; platform_system == 'Darwin'"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
