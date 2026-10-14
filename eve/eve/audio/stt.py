@@ -21,7 +21,9 @@ class WhisperTranscriber:
     def transcribe(self, audio: np.ndarray) -> str:
         if audio.size == 0:
             return ""
-        samples = audio.astype(np.float32) / 32768.0
+        from eve.audio.wakeword import normalize_audio
+
+        samples = normalize_audio(audio)
         segments, _info = self._model.transcribe(
             samples,
             language=self.language,

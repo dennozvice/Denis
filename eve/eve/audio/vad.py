@@ -45,7 +45,7 @@ class EndpointDetector:
     def threshold(self) -> float:
         if self.energy_threshold > 0:
             return self.energy_threshold
-        return max(0.01, self.noise_floor * 3.0)
+        return max(0.005, self.noise_floor * 3.0)
 
     def feed(self, frame: np.ndarray) -> None:
         if self.finished:

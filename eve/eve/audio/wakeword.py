@@ -135,6 +135,16 @@ class OpenWakeWordDetector:
 
 
 Word = tuple[str, float, float]  # testo, inizio, fine (secondi)
+
+
+def normalize_audio(audio: np.ndarray, peak: float = 0.9) -> np.ndarray:
+    """Porta l'audio a un livello pieno prima della trascrizione: i microfoni dei portatili
+    spesso consegnano un segnale molto basso, e Whisper capisce meglio se amplificato."""
+    samples = audio.astype(np.float32) / 32768.0
+    top = float(np.abs(samples).max()) if samples.size else 0.0
+    if top > 1e-4:
+        samples = samples * min(peak / top, 40.0)
+    return samples
 TranscribeWords = Callable[[np.ndarray], list[Word]]
 
 
@@ -221,7 +231,7 @@ class WhisperWakeDetector:
         engine = WhisperModel(model, device=device, compute_type=compute_type)
 
         def transcribe(audio: np.ndarray) -> list[Word]:
-            samples = audio.astype(np.float32) / 32768.0
+            samples = normalize_audio(audio)
             segments, _ = engine.transcribe(
                 samples,
                 language=language,
@@ -244,7 +254,7 @@ class WhisperWakeDetector:
         energy = frame_energy(frame)
         # Rumore di fondo adattivo: scende subito, risale piano.
         self._noise_floor = min(self._noise_floor * 1.002, energy) if energy > 0 else self._noise_floor
-        if energy >= max(0.01, self._noise_floor * 3.0):
+        if energy >= max(0.004, self._noise_floor * 3.0):
             self._speech_frames += 1
         self._buffer = np.concatenate([self._buffer, frame.astype(np.int16)])[-self._window :]
         self._since_run += frame.size

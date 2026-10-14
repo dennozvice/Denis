@@ -129,3 +129,14 @@ def test_keyword_match_with_aliases_and_short_words_exact_only():
     assert keyword_match([("vivi", 0.0, 0.4)], keys, 0.5) is None
     assert keyword_match([("Eva", 0.0, 0.4)], keys, 0.5) is None
     assert keyword_match([("lì", 0.0, 0.2), ("vi", 0.2, 0.4)], keys, 0.75) is None
+
+
+def test_normalize_audio_amplifies_quiet_signal():
+    from eve.audio.wakeword import normalize_audio
+
+    quiet = (tone(0.5, amplitude=200)).astype(np.int16)  # segnale molto basso
+    out = normalize_audio(quiet)
+    assert 0.85 <= float(np.abs(out).max()) <= 0.9
+    assert normalize_audio(silence(0.1)).max() == 0.0
+    loud = tone(0.5, amplitude=30000)
+    assert float(np.abs(normalize_audio(loud)).max()) <= 0.9
