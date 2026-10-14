@@ -5,8 +5,9 @@
  *   quindi una nuova versione ha file con nomi nuovi e non c'è rischio di usare file vecchi.
  * La musica dell'utente NON passa da qui: resta nei file locali che ha scelto.
  */
-const CACHE = 'ipod-v1'
-const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.svg', './icon-192.png', './icon-512.png']
+// Il numero cambia quando cambiano le icone: così iPhone e browser scaricano quelle nuove.
+const CACHE = 'ipod-v2'
+const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon-v2.svg', './icon-192-v2.png', './icon-512-v2.png']
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
