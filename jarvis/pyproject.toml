@@ -38,7 +38,7 @@ jarvis = "jarvis.cli:main"
 include = ["jarvis*"]
 
 [tool.setuptools.package-data]
-"jarvis.ui" = ["static/*"]
+"jarvis.ui" = ["static/*", "static/*.icns"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

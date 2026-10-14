@@ -18,7 +18,12 @@ log = logging.getLogger("jarvis")
 
 def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     """Costruisce tutti i componenti. `audio=False` -> modalità testo (niente microfono né parola)."""
+    from jarvis import secrets
     from jarvis.assistant import Assistant
+
+    if not secrets.export_to_environment():
+        bus.notice("Chiave di Claude non trovata: esegui `jarvis key` oppure esporta ANTHROPIC_API_KEY", "error")
+
     from jarvis.audio.tts import SilentSpeaker, SystemSpeaker
     from jarvis.audio.wakeword import ManualTrigger, build_detector
     from jarvis.brain.client import Brain
@@ -115,7 +120,7 @@ def console_logger(bus: EventBus) -> None:
     bus.subscribe(listener)
 
 
-def start_hud(config: Config, bus: EventBus, assistant) -> None:  # noqa: ANN001
+def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) -> None:  # noqa: ANN001
     from jarvis.ui.server import HudServer
 
     server = HudServer(
@@ -129,6 +134,8 @@ def start_hud(config: Config, bus: EventBus, assistant) -> None:  # noqa: ANN001
     )
     server.start()
     print(f"HUD: {server.url}", flush=True)
+    if window:
+        config.ui.open = "window"
     if config.ui.open == "browser":
         webbrowser.open(server.url)
     elif config.ui.open == "window":
@@ -152,7 +159,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     assistant.start()
     try:
         if config.ui.enabled:
-            start_hud(config, bus, assistant)
+            start_hud(config, bus, assistant, window=getattr(args, "window", False))
         if args.text:
             return chat_loop(assistant)
         print("Pronto. Premi Invio per attivare senza parola, Ctrl+C per uscire.", flush=True)
@@ -218,10 +225,60 @@ def cmd_setup(args: argparse.Namespace) -> int:
     detector.close()
     print("    ok", flush=True)
     print("3/3 Chiave di Claude…", flush=True)
-    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
-        print("    trovata nelle variabili d'ambiente", flush=True)
+    from jarvis import secrets
+
+    source = secrets.key_source()
+    if source:
+        print(f"    trovata: {source}", flush=True)
+    elif os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+        print("    trovata: ANTHROPIC_AUTH_TOKEN", flush=True)
     else:
-        print("    non trovata: esporta ANTHROPIC_API_KEY oppure esegui `ant auth login`", flush=True)
+        print("    non trovata: esegui `jarvis key` per salvarla, oppure esporta ANTHROPIC_API_KEY", flush=True)
+    return 0
+
+
+def cmd_key(args: argparse.Namespace) -> int:
+    """Salva la chiave di Claude nel Portachiavi (macOS) o in un file privato."""
+    import getpass
+
+    from jarvis import secrets
+
+    if args.show:
+        source = secrets.key_source()
+        print(f"Chiave trovata: {source}" if source else "Nessuna chiave salvata.")
+        return 0
+    value = args.value or getpass.getpass("Incolla la chiave di Claude (non viene mostrata): ")
+    try:
+        where = secrets.set_api_key(value)
+    except ValueError:
+        print("Nessuna chiave inserita.")
+        return 1
+    print(f"Chiave salvata in: {where}")
+    return 0
+
+
+def cmd_app(args: argparse.Namespace) -> int:
+    """Crea Jarvis.app nella cartella Applicazioni dell'utente."""
+    from pathlib import Path
+
+    from jarvis import macapp
+
+    if not macapp.is_macos():
+        print("Questo comando funziona solo su macOS.")
+        return 1
+    try:
+        import webview  # noqa: F401
+    except ImportError:
+        print("Serve pywebview per la finestra dell'app: esegui  pip install -e \".[window]\"  e riprova.")
+        return 1
+    config = load_config(args.config)
+    config_path = Path(config.source) if config.source.startswith("/") else None
+    project_dir = Path(__file__).resolve().parents[1]
+    dest = Path(args.dest).expanduser() if args.dest else macapp.default_dest()
+    app = macapp.build_app(dest, project_dir, config=config_path, name=config.assistant.name)
+    print(f"Creata: {app}")
+    print("Aprila dal Finder (cartella Applicazioni della tua home) oppure con:  open \"" + str(app) + "\"")
+    print("Al primo avvio macOS chiederà il permesso per il microfono. Per tenerla nel Dock: tasto destro sull'icona › Opzioni › Mantieni nel Dock.")
     return 0
 
 
@@ -258,6 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     run = sub.add_parser("run", help="avvia Jarvis (microfono, parola di attivazione, HUD)")
     run.add_argument("--text", action="store_true", help="senza microfono: comandi scritti")
     run.add_argument("--mute", action="store_true", help="non parlare (solo testo)")
+    run.add_argument("--window", action="store_true", help="HUD in una finestra dedicata (serve pywebview)")
     run.set_defaults(func=cmd_run)
 
     chat = sub.add_parser("chat", help="solo testo: prova il cervello senza audio")
@@ -270,6 +328,13 @@ def main(argv: list[str] | None = None) -> int:
     say.set_defaults(func=cmd_say)
     sub.add_parser("setup", help="scarica i modelli e verifica le chiavi").set_defaults(func=cmd_setup)
     sub.add_parser("listen-test", help="prova la parola di attivazione").set_defaults(func=cmd_listen_test)
+    key = sub.add_parser("key", help="salva la chiave di Claude (Portachiavi o file privato)")
+    key.add_argument("value", nargs="?", help="la chiave; se omessa viene chiesta senza mostrarla")
+    key.add_argument("--show", action="store_true", help="dice solo dove è salvata")
+    key.set_defaults(func=cmd_key)
+    app = sub.add_parser("app", help="crea Jarvis.app per avviarlo dal Dock (macOS)")
+    app.add_argument("--dest", help="cartella di destinazione (predefinita: ~/Applications)")
+    app.set_defaults(func=cmd_app)
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING, format="%(name)s: %(message)s")

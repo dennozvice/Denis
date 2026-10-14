@@ -99,6 +99,8 @@ Al primo `setup` viene scaricato il modello di trascrizione (`small`, circa 500 
 | `jarvis devices` | elenca i microfoni |
 | `jarvis say "Buongiorno"` | prova la voce |
 | `jarvis listen-test` | prova la parola di attivazione e tara la sensibilità |
+| `jarvis key` | salva la chiave di Claude nel Portachiavi (macOS) o in un file privato |
+| `jarvis app` | crea `Jarvis.app` per avviarlo dal Dock (macOS) |
 
 Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/activate` dalla cartella `jarvis`.
 
@@ -125,17 +127,30 @@ Esempi di cose da dire dopo «Jarvis»:
 
 Nell'HUD: **Spazio** attiva l'ascolto senza dire la parola, **Esc** interrompe la voce, e la casella in basso accetta comandi scritti.
 
-### Finestra dedicata invece del browser
+### Usarlo come app (macOS)
 
-```bash
-pip install -e ".[window]"
-```
+Jarvis può diventare una vera app con icona nel Dock: si avvia con un doppio clic, senza terminale, e l'HUD si apre in una finestra propria.
 
-e in `config.toml` metti `[ui] open = "window"`.
+1. Salva la chiave di Claude nel Portachiavi, così l'app la trova anche se non passa dal terminale (viene chiesta senza mostrarla):
 
-### Avvio automatico all'accesso (macOS)
+   ```bash
+   jarvis key
+   ```
 
-Crea `~/Library/LaunchAgents/it.jarvis.plist` con il comando `.../.venv/bin/jarvis run --config /percorso/config.toml` e caricalo con `launchctl load`. In alternativa, aggiungi un'app Automator che lancia lo script agli Elementi login.
+2. Installa il supporto per la finestra e crea l'app:
+
+   ```bash
+   pip install -e ".[window]"
+   jarvis app
+   ```
+
+   L'app viene creata in `~/Applications/Jarvis.app` (cartella Applicazioni dentro la tua home). Trascinala nel Dock per tenerla a portata di mano.
+
+3. Al primo avvio macOS chiede il permesso per il microfono: accettalo. Per la scrittura automatica serve anche il permesso di Accessibilità, che macOS propone la prima volta che Jarvis prova a scrivere.
+
+Chiudendo la finestra Jarvis si ferma. Il registro di ciò che succede è in `~/Library/Logs/jarvis.log`. Per avviarlo da solo all'accesso: Impostazioni di Sistema › Generali › Elementi login › aggiungi Jarvis.
+
+L'app è un involucro che usa l'ambiente `.venv` del progetto: se sposti o cancelli la cartella del progetto, rilancia `jarvis app`. Per la stessa finestra senza creare l'app: `jarvis run --window`.
 
 ## Configurazione
 
@@ -179,7 +194,7 @@ Su macOS, al primo avvio il sistema chiede il permesso per il **microfono** e, p
 ## Sicurezza e privacy
 
 - Comandi di terminale e spegnimento richiedono sempre una conferma a voce, e i comandi di terminale sono disattivati finché non imposti `allow_shell = true`.
-- Le chiavi API stanno nelle variabili d'ambiente, mai nel codice né nel file di configurazione versionato (`config.toml` è nel `.gitignore`).
+- La chiave API sta nella variabile d'ambiente, nel Portachiavi di macOS oppure in `~/.config/jarvis/secrets.toml` (leggibile solo dal tuo utente): mai nel codice né nel file di configurazione.
 - Audio e trascrizione non lasciano il computer. A Claude vanno il testo delle richieste, le note in `brain.notes` e i fatti memorizzati con «ricorda che…» (file `~/.config/jarvis/memory.json`, che puoi cancellare quando vuoi).
 - L'HUD è raggiungibile solo da questo computer (`127.0.0.1`).
 
