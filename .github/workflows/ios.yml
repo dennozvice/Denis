@@ -24,7 +24,10 @@ concurrency:
 jobs:
   xcode:
     name: Compila con Xcode
-    runs-on: macos-26
+    # Runner Intel: i runner Apple Silicon (macos-26) hanno code lunghe e GitHub annulla i job dopo 15 minuti in coda.
+    # Xcode 26 compila per iPhone anche da x64; ha 4 CPU e 14 GB di RAM.
+    runs-on: macos-26-intel
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: ipod

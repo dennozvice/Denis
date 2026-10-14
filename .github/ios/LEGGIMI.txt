@@ -19,4 +19,5 @@ Da sapere
   Con l'Apple Developer Program (99 € l'anno) la firma dura un anno e si può distribuire con TestFlight o sull'App Store.
 - iPod-senza-firma.ipa (nella stessa release) è la stessa app senza firma, per chi la installa con AltStore o Sideloadly (anche da Windows): stesso limite dei 7 giorni con l'Apple ID gratuito.
 - Per aggiornare l'app: scarica di nuovo iPod-Xcode.zip dalla release e ripeti dal passo 1. Oppure, dal repository: cd ipod && npm install && npm run ios.
+  Se la prima volta hai cambiato il Bundle Identifier, riscrivi esattamente lo stesso: con un identificatore diverso l'iPhone installa una seconda app, senza la tua musica.
 - La musica si aggiunge dentro l'app con "Aggiungi musica" (file dall'app File dell'iPhone). Resta salvata nell'app.

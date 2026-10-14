@@ -69,7 +69,7 @@ Il modo più semplice, senza installare nulla oltre a Xcode:
 5. Collega l'iPhone, attiva la **Modalità sviluppatore** (Impostazioni › Privacy e sicurezza), scegli l'iPhone come destinazione e premi **▶ Run**.
 6. Alla prima apertura: Impostazioni › Generali › **VPN e gestione dispositivi** › il tuo Apple ID › **Autorizza**.
 
-Le stesse istruzioni sono nel file `LEGGIMI.txt` dentro lo zip. Nella release c'è anche **iPod-senza-firma.ipa**, per chi preferisce AltStore o Sideloadly (anche da Windows; stesso limite dei 7 giorni con l'Apple ID gratuito).
+Per aggiornare l'app si ripetono gli stessi passaggi con lo zip nuovo (se avevi cambiato il *Bundle Identifier*, riscrivi lo stesso, altrimenti l'iPhone installa una seconda app senza la tua musica). Le stesse istruzioni sono nel file `LEGGIMI.txt` dentro lo zip. Nella release c'è anche **iPod-senza-firma.ipa**, per chi preferisce AltStore o Sideloadly (anche da Windows; stesso limite dei 7 giorni con l'Apple ID gratuito).
 
 Per chi lavora sul codice: `npm run ios` compila l'app web, la copia nel progetto Xcode (`npx cap sync ios`) e apre Xcode. Il workflow `.github/workflows/ios.yml` compila il progetto su un runner macOS a ogni pull request e aggiorna la release a ogni push su `main`.
 
