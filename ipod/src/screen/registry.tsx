@@ -14,6 +14,7 @@ import { AboutScreen, aboutInput, BrightnessScreen, brightnessInput, LegalScreen
 import { coverFlowInput, CoverFlowScreen } from './screens/CoverFlow'
 import { clockInput, ClockScreen } from './screens/Clock'
 import { stopwatchInput, StopwatchScreen } from './screens/Stopwatch'
+import { searchInput, SearchScreen } from './screens/Search'
 import './screens/menus'
 
 export interface ScreenDef {
@@ -35,6 +36,7 @@ const custom: Partial<Record<ScreenKind, ScreenDef>> = {
   coverflow: { Component: CoverFlowScreen, input: coverFlowInput, title: () => t('coverFlow'), transition: 'fade', dark: true },
   clock: { Component: ClockScreen, input: clockInput, title: () => t('clocks') },
   stopwatch: { Component: StopwatchScreen, input: stopwatchInput, title: () => t('stopwatch') },
+  search: { Component: SearchScreen, input: searchInput, title: () => t('search') },
 }
 
 const listScreen: ScreenDef = {
@@ -57,7 +59,7 @@ export function registerScreen(kind: ScreenKind, def: ScreenDef): void {
 export function registerAllInputs(): void {
   const kinds: ScreenKind[] = [
     'main', 'music', 'videos', 'photos', 'empty', 'podcasts', 'extras', 'settings', 'playlists', 'playlist', 'artists', 'artist', 'albums', 'album', 'songs', 'genres', 'genre',
-    'composers', 'composer', 'audiobooks', 'coverflow', 'nowPlaying', 'about', 'option', 'brightness', 'clock', 'stopwatch', 'games', 'sync', 'legal',
+    'composers', 'composer', 'audiobooks', 'search', 'coverflow', 'nowPlaying', 'about', 'option', 'brightness', 'clock', 'stopwatch', 'games', 'sync', 'legal',
     'confirm', 'message',
   ]
   for (const k of kinds) {

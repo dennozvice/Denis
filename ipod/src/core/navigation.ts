@@ -26,6 +26,7 @@ export type ScreenKind =
   | 'composers'
   | 'composer'
   | 'audiobooks'
+  | 'search'
   | 'coverflow'
   | 'nowPlaying'
   | 'about'

@@ -101,6 +101,7 @@ defineList('music', {
       { id: 'genres', label: t('genres'), chevron: true, action: { kind: 'push', screen: 'genres' } },
       { id: 'composers', label: t('composers'), chevron: true, action: { kind: 'push', screen: 'composers' } },
       { id: 'audiobooks', label: t('audiobooks'), chevron: true, action: { kind: 'push', screen: 'audiobooks' } },
+      { id: 'search', label: t('search'), chevron: true, action: { kind: 'push', screen: 'search' } },
     ]
     return items.map((i) => ({ ...i, pane: 'slideshow' as const }))
   },

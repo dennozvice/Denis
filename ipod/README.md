@@ -35,12 +35,15 @@ I file vengono copiati dentro il browser. Lo spazio disponibile si vede in **Imp
 
 ## Menu
 
-- **Musica**: Cover Flow, Playlist (con On-The-Go), Artisti, Album, Brani, Generi, Compositori, Audiolibri.
+- **Musica**: Cover Flow, Playlist (con On-The-Go, che si può salvare come playlist), Artisti, Album, Brani, Generi, Compositori, Audiolibri, Cerca (si scrive con la ghiera scegliendo le lettere; ⏭ inserisce uno spazio, ⏮ cancella).
+- **Video** e **Foto**: ci sono come sul vero iPod, ma vuoti (nel browser non ci sono video né foto).
 - **Podcast**: i file con genere "Podcast".
 - **Extra**: Orologi (fusi orari diversi), Cronometro.
 - **Impostazioni**: Info, sincronizzazione, Casuale (brani/album), Ripeti (uno/tutti), EQ (i preset dell'iPod), Retroilluminazione, Luminosità, Clicker (il tic della ghiera), formato ora, Lingua (italiano/inglese), colore dell'iPod, note legali, cancellazione della musica, ripristino.
 - **Brani casuali**: tutta la libreria in ordine casuale.
 - **In riproduzione**: compare quando c'è un brano caricato.
+
+Alla prima accensione (e dopo **Ripristina impostazioni**) l'iPod chiede la lingua, come l'originale.
 
 ## Installarla come app
 
@@ -62,6 +65,8 @@ npm run typecheck  # tsc
 ```
 
 `scripts/screenshot.mjs` fotografa l'app con Chromium (richiede Playwright): `node scripts/screenshot.mjs http://localhost:4173 ./shots`.
+
+`scripts/smoke.mjs` è una prova end-to-end (brani dimostrativi, navigazione, riproduzione, Cover Flow, Extra, importazione di file veri, persistenza): `node --experimental-strip-types scripts/smoke.mjs http://localhost:4173` con la build in anteprima.
 
 Struttura di `src/`:
 
