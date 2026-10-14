@@ -308,12 +308,14 @@
 /*
  * Senza cornice: solo schermo e ghiera, su fondo bianco (argento) o nero (nero).
  * --mm è ricavato dal diametro voluto della ghiera (40 mm), così le etichette restano in proporzione.
+ * Fra schermo e ghiera ci sono due stacchi da 5 mm (in mezzo c'è la riga, alta zero, dell'interruttore Hold):
+ * 10 mm in tutto, come sull'iPod vero.
  */
 .flat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 26px;
+  gap: calc(5 * var(--mm));
   width: 100%;
   user-select: none;
   -webkit-user-select: none;
@@ -363,7 +365,7 @@
 .flat-hold .ipod-hold {
   position: absolute;
   right: 4px;
-  top: calc(-14px - 0.65 * var(--mm));
+  top: calc(-3.6 * var(--mm));
   left: auto;
   width: calc(7.6 * var(--mm) * 0.6);
   height: calc(1.3 * var(--mm) * 0.6);
