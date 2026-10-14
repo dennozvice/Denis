@@ -337,6 +337,10 @@ def cmd_app(args: argparse.Namespace) -> int:
     dest = Path(args.dest).expanduser() if args.dest else macapp.default_dest()
     app = macapp.build_app(dest, project_dir, config=config_path, name=config.assistant.name, bundle_id=f"it.denis.{config.assistant.name.lower()}")
     print(f"Creata: {app}")
+    if getattr(macapp.build_app, "last_native", False):
+        print("Eseguibile nativo compilato: macOS chiederà il microfono a nome dell'app.")
+    else:
+        print("Attenzione: eseguibile nativo non compilato (serve clang, incluso negli strumenti da riga di comando di Xcode: xcode-select --install). Con lo script di avvio macOS potrebbe non concedere il microfono.")
     print("Aprila dal Finder (cartella Applicazioni della tua home) oppure con:  open \"" + str(app) + "\"")
     print("Al primo avvio macOS chiederà il permesso per il microfono. Per tenerla nel Dock: tasto destro sull'icona › Opzioni › Mantieni nel Dock.")
     return 0

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 ICON = Path(__file__).parent / "ui" / "static" / "eve.icns"
+LAUNCHER_SOURCE = Path(__file__).parent / "launcher.c"
 
 
 LAUNCHER_TEMPLATE = """#!/bin/bash
@@ -65,8 +66,14 @@ def build_app(
     config: Path | None = None,
     name: str = "Eve",
     bundle_id: str = "it.denis.eve",
+    native: bool | None = None,
 ) -> Path:
-    """Crea (o aggiorna) `<dest_dir>/<name>.app` e ritorna il percorso."""
+    """Crea (o aggiorna) `<dest_dir>/<name>.app` e ritorna il percorso.
+
+    Con `native` (predefinito: su macOS con clang disponibile) l'eseguibile è compilato da
+    launcher.c e incorpora Python: è ciò che permette a macOS di chiedere e concedere il
+    microfono all'app. Altrimenti si ripiega su uno script di shell.
+    """
     python = python or Path(sys.executable)
     app = dest_dir / f"{name}.app"
     contents = app / "Contents"
@@ -78,13 +85,80 @@ def build_app(
         plistlib.dump(info_plist(name, bundle_id), handle)
     log = Path.home() / "Library" / "Logs" / f"{name.lower()}.log"
     launcher = contents / "MacOS" / "launch"
-    launcher.write_text(launcher_script(project_dir, python, config, log, name))
-    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    if native is None:
+        native = is_macos() and shutil.which("clang") is not None
+    compiled = native and compile_launcher(launcher, python, project_dir, config, log, name)
+    if not compiled:
+        launcher.write_text(launcher_script(project_dir, python, config, log, name))
+        launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+    build_app.last_native = bool(compiled)  # type: ignore[attr-defined]
     if ICON.exists():
         shutil.copy(ICON, contents / "Resources" / "eve.icns")
     (contents / "PkgInfo").write_text("APPL????")
     codesign(app)
     return app
+
+
+def python_config_tool(python: Path) -> Path | None:
+    """Lo strumento pythonX.Y-config dell'installazione di base (non della .venv)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            [str(python), "-c", "import sys; print(sys.base_prefix); print(sys.version_info[0]); print(sys.version_info[1])"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.split()
+        base, major, minor = Path(out[0]), out[1], out[2]
+    except (OSError, IndexError, subprocess.TimeoutExpired):
+        return None
+    for candidate in (base / "bin" / f"python{major}.{minor}-config", base / "bin" / "python3-config"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def compile_launcher(target: Path, python: Path, project_dir: Path, config: Path | None, log: Path, name: str) -> bool:
+    """Compila launcher.c in `target`. Ritorna False (senza eccezioni) se non è possibile."""
+    import subprocess
+
+    tool = python_config_tool(python)
+    if tool is None or not LAUNCHER_SOURCE.exists():
+        return False
+    try:
+        cflags = subprocess.run([str(tool), "--cflags"], capture_output=True, text=True, timeout=30).stdout.split()
+        ldflags = subprocess.run([str(tool), "--ldflags", "--embed"], capture_output=True, text=True, timeout=30).stdout.split()
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    try:
+        info = subprocess.run(
+            [str(python), "-c", "import sys, sysconfig; print(sysconfig.get_paths()['purelib']); print(sys.prefix)"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.split()
+        site_dir, venv_dir = info[0], info[1]
+    except (OSError, IndexError, subprocess.TimeoutExpired):
+        return False
+    defines = [
+        f'-DEVE_PYTHON="{python}"',
+        f'-DEVE_SITE="{site_dir}"',
+        f'-DEVE_VENV="{venv_dir}"',
+        f'-DEVE_PROJECT="{project_dir}"',
+        f'-DEVE_CONFIG="{config or ""}"',
+        f'-DEVE_LOG="{log}"',
+        f'-DEVE_NAME="{name}"',
+    ]
+    command = ["clang", "-O2", *cflags, *defines, str(LAUNCHER_SOURCE), "-o", str(target), *ldflags]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        print("Compilazione dell'eseguibile fallita, uso lo script di avvio:\n" + result.stderr[-1500:])
+        return False
+    return True
 
 
 def codesign(app: Path) -> bool:

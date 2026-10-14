@@ -39,6 +39,7 @@ include = ["eve*"]
 
 [tool.setuptools.package-data]
 "eve.ui" = ["static/*", "static/*.icns"]
+"eve" = ["launcher.c"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
