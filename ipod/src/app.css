@@ -1,0 +1,84 @@
+/* Sfondo scuro da foto di prodotto; tutto il resto è il dispositivo. */
+:root {
+  color-scheme: dark;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overscroll-behavior: none;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  background: radial-gradient(120% 90% at 50% 35%, #2a2c31 0%, #141518 55%, #08090b 100%) fixed;
+  color: #c7c8cc;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+#root {
+  min-height: 100%;
+}
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px calc(12px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  gap: 28px;
+}
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 auto;
+}
+.dock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+}
+.dock-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px 4px;
+}
+.dock-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #9a9ba0;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.dock-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e6e7ea;
+}
+.dock-btn[data-active='true'] {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.dock-btn-accent {
+  color: #8fc1ff;
+}
+.dock-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.14);
+  margin: 0 4px;
+}
+.dock-hint {
+  font-size: 12px;
+  color: #6c6d72;
+  text-align: center;
+}

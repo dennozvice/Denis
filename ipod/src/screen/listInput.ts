@@ -1,0 +1,91 @@
+/**
+ * Gestore di input comune a tutte le liste: rotazione = selezione (con accelerazione
+ * e lettera grande), centro = azione della riga, centro prolungato = On-The-Go.
+ */
+import { player } from '../audio/player'
+import type { InputEvent } from '../core/input'
+import { nav, type Screen } from '../core/navigation'
+import { ui } from '../core/ui'
+import { library } from '../library/index'
+import { t } from '../i18n/strings'
+import { moveSelection, rowsPerDetent, scrollWindow } from '../device/wheelMath'
+import { listDef, listItems, VISIBLE_ROWS, type ItemAction } from './listModel'
+
+/** Esegue l'azione di una riga; restituisce false se non c'era nulla da fare (così il clicker tace). */
+export function runAction(action: ItemAction): boolean {
+  switch (action.kind) {
+    case 'push':
+      nav.push(action.screen, action.params ?? {})
+      return true
+    case 'play': {
+      const items = action.items()
+      if (items.length === 0) return false
+      void player.playList(items, action.startId, action.shuffle)
+      nav.push('nowPlaying')
+      return true
+    }
+    case 'run':
+      action.run()
+      return true
+    default:
+      return false
+  }
+}
+
+export function listInput(e: InputEvent, screen: Screen): boolean {
+  const def = listDef(screen.kind)
+  if (!def) return false
+  const items = listItems(screen)
+  const length = items.length
+  switch (e.type) {
+    case 'rotate': {
+      if (length === 0) return false
+      const rows = rowsPerDetent(e.velocity, length)
+      const sel = moveSelection(screen.sel, e.steps * rows, length)
+      if (sel === screen.sel) return false
+      const first = scrollWindow(screen.first, sel, VISIBLE_ROWS, length)
+      nav.update({ sel, first })
+      if (def.letters && length > VISIBLE_ROWS && Math.abs(e.velocity) >= 8) {
+        const letter = items[sel]?.letter
+        if (letter) ui.showLetter(letter)
+      }
+      return true
+    }
+    case 'press': {
+      const item = items[screen.sel]
+      if (e.button === 'play' && item) {
+        // Play su una riga evidenziata (brano, album, artista, playlist…) la riproduce subito.
+        if (item.action.kind === 'play') return runAction(item.action)
+        if (item.otgTrackIds && item.otgTrackIds.length > 0) {
+          const ids = item.otgTrackIds
+          return runAction({ kind: 'play', items: () => library.tracksOf(ids).map((tr) => ({ id: tr.id, albumId: tr.albumId })), startId: ids[0] ?? null })
+        }
+        return false
+      }
+      if (e.button !== 'center') return false
+      if (!item) return false
+      return runAction(item.action)
+    }
+    case 'hold': {
+      if (e.button !== 'center') return false
+      const item = items[Math.min(screen.sel, items.length - 1)]
+      if (!item?.otgTrackIds?.length) return true
+      const ids = item.otgTrackIds
+      ui.blinkRow()
+      if (ids.length === 1) {
+        void library.toggleOnTheGo(ids[0]!, t('onTheGo')).then((added) => ui.toast(t(added ? 'addedToOnTheGo' : 'removedFromOnTheGo')))
+      } else {
+        void (async () => {
+          for (const id of ids) {
+            const p = library.playlist('otg')
+            if (!p || !p.trackIds.includes(id)) await library.toggleOnTheGo(id, t('onTheGo'))
+          }
+          ui.toast(t('addedToOnTheGo'))
+        })()
+      }
+      return true
+    }
+    default:
+      return false
+  }
+}
