@@ -583,3 +583,15 @@
   text-align: center;
   z-index: 6;
 }
+
+/* Chi preferisce meno animazioni: niente scorrimenti tra schermate (il contenuto cambia e basta). */
+@media (prefers-reduced-motion: reduce) {
+  .screen[data-anim] {
+    animation-duration: 1ms;
+  }
+  .cf-cover,
+  .cf-flip,
+  .cf-stage {
+    transition-duration: 1ms;
+  }
+}

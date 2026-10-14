@@ -11,6 +11,8 @@ const KEY_TO_BUTTON: Record<string, WheelButton> = {
   Escape: 'menu',
   Backspace: 'menu',
   ' ': 'play',
+  p: 'play',
+  P: 'play',
   ArrowLeft: 'prev',
   ArrowRight: 'next',
   MediaPlayPause: 'play',
@@ -26,7 +28,9 @@ export function useKeyboard(onInput: (e: InputEvent) => void, onGesture: () => v
     let rotateVelocity = 0
     let lastRotate = 0
 
-    const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+    // Campi di testo e pulsanti della pagina tengono i loro tasti (Invio/Spazio attivano il pulsante, non la ghiera).
+    const isTyping = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'BUTTON' || t.tagName === 'A' || t.isContentEditable)
 
     const onKeyDown = (ev: KeyboardEvent) => {
       if (isTyping(ev.target) || ev.metaKey || ev.ctrlKey || ev.altKey) return

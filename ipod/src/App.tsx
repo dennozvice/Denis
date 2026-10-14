@@ -16,6 +16,8 @@ export function App() {
   const ready = useLibrary((s) => s.ready)
   const install = useInstallPrompt()
   const [coarse] = useState(() => window.matchMedia('(pointer: coarse)').matches)
+  // Dopo un clic il pulsante perde il fuoco: Spazio e Invio tornano subito alla ghiera.
+  const blur = (e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.blur()
   return (
     <div className="page">
       <main className="stage">
@@ -25,28 +27,28 @@ export function App() {
       </main>
       <footer className="dock">
         <div className="dock-row">
-          <button type="button" className="dock-btn" onClick={() => void startSync('files')}>
+          <button type="button" className="dock-btn" onClick={(e) => { blur(e); void startSync('files') }}>
             {t('pageAddMusic', lang)}
           </button>
-          <button type="button" className="dock-btn" onClick={() => void startSync(supportsFolderPicker() ? 'picker' : 'folder')}>
+          <button type="button" className="dock-btn" onClick={(e) => { blur(e); void startSync(supportsFolderPicker() ? 'picker' : 'folder') }}>
             {t('pageAddFolder', lang)}
           </button>
           {ready && count === 0 && (
-            <button type="button" className="dock-btn dock-btn-accent" onClick={() => void startSync('demo')}>
+            <button type="button" className="dock-btn dock-btn-accent" onClick={(e) => { blur(e); void startSync('demo') }}>
               {t('pageDemo', lang)}
             </button>
           )}
           <span className="dock-sep" />
-          <button type="button" className="dock-btn" data-active={color === 'silver'} onClick={() => updateSettings({ color: 'silver' })}>
+          <button type="button" className="dock-btn" data-active={color === 'silver'} onClick={(e) => { blur(e); updateSettings({ color: 'silver' }) }}>
             {t('pageSilver', lang)}
           </button>
-          <button type="button" className="dock-btn" data-active={color === 'black'} onClick={() => updateSettings({ color: 'black' })}>
+          <button type="button" className="dock-btn" data-active={color === 'black'} onClick={(e) => { blur(e); updateSettings({ color: 'black' }) }}>
             {t('pageBlack', lang)}
           </button>
           {install && (
             <>
               <span className="dock-sep" />
-              <button type="button" className="dock-btn" onClick={() => void install()}>
+              <button type="button" className="dock-btn" onClick={(e) => { blur(e); void install() }}>
                 {t('pageInstall', lang)}
               </button>
             </>

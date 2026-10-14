@@ -20,7 +20,7 @@ Versione pubblicata: <https://dennozvice.github.io/Denis/ipod/>
 - **Interruttore Hold** (in alto): blocca i tasti; compare il lucchetto.
 - Sopra l'iPod funziona anche la **rotella del mouse** o il trackpad.
 
-**Da tastiera**: frecce su/giù = ghiera, Invio = centro, Esc o Backspace = MENU, Spazio = play/pausa, frecce sinistra/destra = ⏮/⏭ (tenute premute: avanzamento veloce), H = interruttore Hold.
+**Da tastiera**: frecce su/giù = ghiera, Invio = centro, Esc o Backspace = MENU, Spazio o P = play/pausa, frecce sinistra/destra = ⏮/⏭ (tenute premute: avanzamento veloce), H = interruttore Hold.
 
 **Nella schermata In riproduzione**: ruotare la ghiera regola il volume; il tasto centrale passa alla modalità di scorrimento (il rombo sulla barra, ruota per spostarti nel brano), poi alla valutazione a stelle, poi di nuovo alla barra.
 

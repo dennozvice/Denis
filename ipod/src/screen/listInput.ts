@@ -11,23 +11,24 @@ import { t } from '../i18n/strings'
 import { moveSelection, rowsPerDetent, scrollWindow } from '../device/wheelMath'
 import { listDef, listItems, VISIBLE_ROWS, type ItemAction } from './listModel'
 
-export function runAction(action: ItemAction): void {
+/** Esegue l'azione di una riga; restituisce false se non c'era nulla da fare (così il clicker tace). */
+export function runAction(action: ItemAction): boolean {
   switch (action.kind) {
     case 'push':
       nav.push(action.screen, action.params ?? {})
-      break
+      return true
     case 'play': {
       const items = action.items()
-      if (items.length === 0) return
+      if (items.length === 0) return false
       void player.playList(items, action.startId, action.shuffle)
       nav.push('nowPlaying')
-      break
+      return true
     }
     case 'run':
       action.run()
-      break
+      return true
     default:
-      break
+      return false
   }
 }
 
@@ -54,21 +55,16 @@ export function listInput(e: InputEvent, screen: Screen): boolean {
       const item = items[screen.sel]
       if (e.button === 'play' && item) {
         // Play su una riga evidenziata (brano, album, artista, playlist…) la riproduce subito.
-        if (item.action.kind === 'play') {
-          runAction(item.action)
-          return true
-        }
+        if (item.action.kind === 'play') return runAction(item.action)
         if (item.otgTrackIds && item.otgTrackIds.length > 0) {
           const ids = item.otgTrackIds
-          runAction({ kind: 'play', items: () => library.tracksOf(ids).map((tr) => ({ id: tr.id, albumId: tr.albumId })), startId: ids[0] ?? null })
-          return true
+          return runAction({ kind: 'play', items: () => library.tracksOf(ids).map((tr) => ({ id: tr.id, albumId: tr.albumId })), startId: ids[0] ?? null })
         }
         return false
       }
       if (e.button !== 'center') return false
       if (!item) return false
-      runAction(item.action)
-      return true
+      return runAction(item.action)
     }
     case 'hold': {
       if (e.button !== 'center') return false
