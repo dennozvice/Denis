@@ -36,7 +36,7 @@ def test_index_and_static(server):
             async with session.get(hud.url) as resp:
                 assert resp.status == 200
                 html = await resp.text()
-                assert "Denis HUD" in html and "{{NAME}}" not in html
+                assert "<title>Denis</title>" in html and "{{NAME}}" not in html and "{{TAGLINE}}" not in html
             async with session.get(hud.url + "static/hud.js") as resp:
                 assert resp.status == 200
 

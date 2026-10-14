@@ -63,8 +63,8 @@ def build_app(
     project_dir: Path,
     python: Path | None = None,
     config: Path | None = None,
-    name: str = "Jarvis",
-    bundle_id: str = "it.denis.jarvis",
+    name: str = "Eve",
+    bundle_id: str = "it.denis.eve",
 ) -> Path:
     """Crea (o aggiorna) `<dest_dir>/<name>.app` e ritorna il percorso."""
     python = python or Path(sys.executable)
@@ -76,7 +76,7 @@ def build_app(
     (contents / "Resources").mkdir(parents=True)
     with open(contents / "Info.plist", "wb") as handle:
         plistlib.dump(info_plist(name, bundle_id), handle)
-    log = Path.home() / "Library" / "Logs" / "jarvis.log"
+    log = Path.home() / "Library" / "Logs" / f"{name.lower()}.log"
     launcher = contents / "MacOS" / "launch"
     launcher.write_text(launcher_script(project_dir, python, config, log, name))
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

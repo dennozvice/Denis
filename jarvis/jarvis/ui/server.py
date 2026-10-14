@@ -27,12 +27,14 @@ class HudServer:
         on_text: Callable[[str], None] | None = None,
         on_trigger: Callable[[], None] | None = None,
         on_stop: Callable[[], None] | None = None,
-        name: str = "Jarvis",
+        name: str = "Eve",
+        tagline: str = "Assistente personale",
     ):
         self.bus = bus
         self.host = host
         self.port = port
         self.name = name
+        self.tagline = tagline
         self.on_text = on_text
         self.on_trigger = on_trigger
         self.on_stop = on_stop
@@ -99,14 +101,14 @@ class HudServer:
     # Handler HTTP
 
     async def _index(self, request: web.Request) -> web.Response:
-        html = (STATIC / "index.html").read_text(encoding="utf-8").replace("{{NAME}}", self.name)
+        html = (STATIC / "index.html").read_text(encoding="utf-8").replace("{{NAME}}", self.name).replace("{{TAGLINE}}", self.tagline)
         return web.Response(text=html, content_type="text/html")
 
     async def _websocket(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=20)
         await ws.prepare(request)
         self._clients.add(ws)
-        await ws.send_str(json.dumps({"type": "hello", "name": self.name, "state": self.bus.state, "history": list(self._history)}, ensure_ascii=False))
+        await ws.send_str(json.dumps({"type": "hello", "name": self.name, "tagline": self.tagline, "state": self.bus.state, "history": list(self._history)}, ensure_ascii=False))
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:

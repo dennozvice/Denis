@@ -3,59 +3,54 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{NAME}} HUD</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <title>{{NAME}}</title>
   <link rel="stylesheet" href="/static/hud.css">
 </head>
-<body>
-  <div class="scanlines"></div>
-  <div class="vignette"></div>
+<body data-state="offline">
+  <div class="bg"></div>
 
   <header class="top">
     <div class="brand">
       <div class="brand-name" id="brand">{{NAME}}</div>
-      <div class="brand-sub">Just A Rather Very Intelligent System</div>
+      <div class="brand-sub" id="tagline">{{TAGLINE}}</div>
     </div>
-    <div class="state-badge" id="state-badge"><span class="dot"></span><span id="state-label">OFFLINE</span></div>
+    <div class="status" id="status"><span class="dot"></span><span id="state-label">Offline</span></div>
     <div class="clock">
       <div class="time" id="clock">--:--</div>
-      <div class="date" id="date">—</div>
+      <div class="date" id="date"></div>
     </div>
   </header>
 
-  <main class="grid">
-    <aside class="panel left">
-      <div class="panel-title">SISTEMI</div>
-      <div class="row"><span>Collegamento</span><span id="link" class="val warn">in attesa</span></div>
-      <div class="row"><span>Modalità</span><span id="mode" class="val">—</span></div>
-      <div class="row"><span>Microfono</span><div class="bars" id="bars"></div></div>
-      <div class="row"><span>Ultimo strumento</span><span id="last-tool" class="val">—</span></div>
-      <div class="panel-title small">STATO</div>
-      <div class="detail" id="detail">—</div>
-      <div class="hint">Di' «<span class="accent">{{NAME}}</span>» per parlare<br>Spazio: attiva · Esc: zittisci</div>
+  <main class="stage">
+    <aside class="card left">
+      <div class="card-title">Sistema</div>
+      <div class="row"><span>Collegamento</span><span id="link" class="val muted">in attesa</span></div>
+      <div class="row"><span>Modalità</span><span id="mode" class="val">vocale</span></div>
+      <div class="row"><span>Microfono</span><div class="meter" id="meter"><i></i></div></div>
+      <div class="row"><span>Ultima azione</span><span id="last-tool" class="val">—</span></div>
+      <div class="hint">Di' «<span class="accent" id="hint-name">{{NAME}}</span>» per parlare.<br>Spazio attiva, Esc zittisce.</div>
     </aside>
 
     <section class="center">
-      <canvas id="reactor"></canvas>
-      <div class="center-caption" id="caption"></div>
+      <canvas id="orb"></canvas>
+      <div class="caption" id="caption"></div>
+      <div class="wave" id="wave"></div>
     </section>
 
-    <aside class="panel right">
-      <div class="panel-title">ATTIVITÀ</div>
+    <aside class="card right">
+      <div class="card-title">Attività</div>
       <ul class="tools" id="tools"></ul>
-      <div class="panel-title small">NOTIFICHE</div>
       <ul class="notices" id="notices"></ul>
     </aside>
   </main>
 
   <footer class="bottom">
     <div class="transcript" id="transcript"></div>
-    <form class="input-row" id="form" autocomplete="off">
-      <button type="button" class="icon" id="trigger" title="Attiva (Spazio)">◉</button>
-      <input id="input" type="text" placeholder="Scrivi un comando oppure parla…" spellcheck="false">
-      <button type="submit" class="icon" title="Invia">➤</button>
-      <button type="button" class="icon" id="stop" title="Interrompi la voce (Esc)">■</button>
+    <form class="composer" id="form" autocomplete="off">
+      <button type="button" class="round" id="trigger" title="Attiva (Spazio)"><span class="mic"></span></button>
+      <input id="input" type="text" placeholder="Scrivi oppure parla…" spellcheck="false">
+      <button type="submit" class="round" title="Invia"><span class="arrow"></span></button>
+      <button type="button" class="round ghost" id="stop" title="Interrompi la voce (Esc)"><span class="square"></span></button>
     </form>
   </footer>
 

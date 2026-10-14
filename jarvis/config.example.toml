@@ -5,8 +5,10 @@
 # oppure accedi una volta con `ant auth login`.
 
 [assistant]
-name = "Jarvis"
-user_name = "Signore"          # come Jarvis si rivolge a te
+name = "Eve"
+pronunciation = "ivi"          # come pronunci il nome: aiuta Eve a riconoscersi nelle trascrizioni
+tagline = "Assistente personale"
+user_name = "Signore"          # come Eve si rivolge a te
 language = "it"
 # Secondi in cui Jarvis resta in ascolto dopo una risposta, senza parola di attivazione.
 follow_up_seconds = 6.0
@@ -16,16 +18,16 @@ conversation_timeout_seconds = 180
 chime = true
 
 [wakeword]
-# "whisper" (predefinito): riconosce "Jarvis" da solo, senza chiavi, con il modello di
+# "whisper" (predefinito): riconosce il nome da solo, senza chiavi, con il modello di
 #   trascrizione locale su una finestra di un paio di secondi. Usa un po' di CPU solo
 #   quando c'è voce nella stanza. threshold = somiglianza richiesta (0.6 = tollerante, 0.9 = rigido).
-# "porcupine": più leggero e preciso, ma serve una AccessKey di Picovoice
-#   (https://console.picovoice.ai, concessa su richiesta): access_key qui sotto oppure
-#   variabile d'ambiente PICOVOICE_ACCESS_KEY. threshold = sensibilità 0-1.
-# "openwakeword": gratuito e senza registrazione, ma il modello pronto riconosce
-#   solo "hey Jarvis" (oppure un modello .onnx personalizzato, vedi README).
+#   "Eve" pronunciato "ivi" può essere trascritto in vari modi: aliases li elenca tutti.
+# "porcupine": più leggero e preciso, ma serve una AccessKey di Picovoice e, per una parola
+#   non in catalogo come "Eve", un modello .ppn creato su https://console.picovoice.ai.
+# "openwakeword": gratuito e senza registrazione, ma solo con un modello .onnx personalizzato.
 backend = "whisper"
-model = "jarvis"               # whisper/porcupine: la parola; openwakeword: "hey_jarvis" o percorso .onnx
+model = "eve"                  # whisper: la parola; porcupine: parola di catalogo o percorso .ppn; openwakeword: percorso .onnx
+aliases = ["ivi", "ivy", "evi", "evie", "ivie", "eevee"]
 threshold = 0.75
 access_key = ""
 whisper_model = "tiny"         # solo per backend whisper: tiny (veloce) o base (più preciso)

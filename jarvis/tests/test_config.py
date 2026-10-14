@@ -9,7 +9,9 @@ def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     config = load_config()
     assert config.wakeword.backend == "whisper"
-    assert config.wakeword.model == "jarvis"
+    assert config.wakeword.model == "eve"
+    assert "ivi" in config.wakeword.aliases
+    assert config.assistant.name == "Eve"
     assert config.brain.model == "claude-opus-5-5"
 
 
@@ -41,6 +43,7 @@ def test_example_config_is_valid():
     from pathlib import Path
 
     config = load_config(Path(__file__).resolve().parents[1] / "config.example.toml")
-    assert config.wakeword.model == "jarvis"
+    assert config.wakeword.model == "eve"
+    assert config.wakeword.aliases[0] == "ivi"
     assert config.home_assistant.enabled is False
     assert config.ui.show_on_wake is True and config.ui.start_hidden is False

@@ -32,6 +32,7 @@ window = ["pywebview>=5.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
+eve = "jarvis.cli:main"
 jarvis = "jarvis.cli:main"
 
 [tool.setuptools.packages.find]

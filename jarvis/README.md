@@ -1,20 +1,20 @@
-# Jarvis: assistente vocale sempre in ascolto
+# Eve: assistente vocale sempre in ascolto
 
-Un assistente personale in stile J.A.R.V.I.S. che gira sul tuo computer:
+Un'assistente personale nello spirito di J.A.R.V.I.S., che gira sul tuo computer. Si chiama Eve e la chiami pronunciando «ivi»:
 
-- **sempre in ascolto**: basta dire «**Jarvis**» (senza "hey", senza bottoni, senza chiavi da richiedere) e poi la richiesta;
+- **sempre in ascolto**: basta dire «**Eve**» (pronunciato «ivi», senza "hey", senza bottoni, senza chiavi da richiedere) e poi la richiesta;
 - **cervello**: Claude (Anthropic) con uso di strumenti, in italiano, con risposte brevi pensate per la voce;
 - **agisce davvero**: apre e chiude applicazioni, siti e file, regola il volume, blocca lo schermo, fa screenshot, scrive al posto tuo, imposta timer, ricorda le tue preferenze, cerca sul web, comanda la casa tramite Home Assistant, e (se lo abiliti) esegue comandi di terminale;
 - **conferma a voce** prima delle azioni delicate (spegnere, riavviare, comandi di terminale);
 - **conversazione naturale**: dopo una risposta resta in ascolto qualche secondo, così puoi continuare senza ripetere la parola;
-- **HUD olografico** in stile Iron Man: reattore animato che reagisce alla voce, stato, trascrizione in tempo reale, log delle azioni;
+- **interfaccia elegante**, grafite e argento: una sfera di luce che respira e reagisce alla voce, stato, trascrizione in tempo reale, registro delle azioni;
 - **privacy**: parola di attivazione e trascrizione girano in locale; in rete va solo il testo della richiesta, verso l'API di Claude.
 
 | In attesa | Mentre risponde |
 |---|---|
 | ![HUD in attesa](docs/hud-idle.jpg) | ![HUD mentre parla](docs/hud-speaking.jpg) |
 
-> È un progetto separato dalla dashboard Advisor Desk che sta nella radice di questo repository. Vive nella cartella `jarvis/` e si può spostare in un repository tutto suo senza modifiche.
+> È un progetto separato dalla dashboard Advisor Desk che sta nella radice di questo repository. Vive nella cartella `jarvis/` (il nome interno del pacchetto è rimasto `jarvis`; i comandi `eve` e `jarvis` sono equivalenti) e si può spostare in un repository tutto suo senza modifiche.
 
 ## Come funziona
 
@@ -27,11 +27,11 @@ microfono ──► parola di attivazione ──► registra la frase ──► 
                                         HUD (browser, WebSocket)
 ```
 
-1. Il microfono è aperto in continuazione; ogni 80 ms il frame audio passa al rilevatore della parola di attivazione. Nulla viene registrato né inviato finché non dici «Jarvis».
-2. Al riconoscimento suona un breve segnale, l'HUD passa a "Ti ascolto" e la frase viene registrata finché fai una pausa.
+1. Il microfono è aperto in continuazione; ogni 80 ms il frame audio passa al rilevatore della parola di attivazione. Nulla viene registrato né inviato finché non dici «Eve».
+2. Al riconoscimento suona un breve segnale, l'interfaccia passa a "Ti ascolto" e la frase viene registrata finché fai una pausa.
 3. La frase è trascritta in locale con faster-whisper (modello scaricato una volta sola).
 4. Il testo va a Claude, che risponde o chiama gli strumenti necessari; i risultati tornano al modello finché la risposta è completa.
-5. La risposta viene letta dalla voce di sistema. Per qualche secondo Jarvis resta in ascolto per il seguito.
+5. La risposta viene letta dalla voce di sistema. Per qualche secondo Eve resta in ascolto per il seguito.
 
 ## Requisiti
 
@@ -100,7 +100,7 @@ Al primo `setup` viene scaricato il modello di trascrizione (`small`, circa 500 
 | `jarvis say "Buongiorno"` | prova la voce |
 | `jarvis listen-test` | prova la parola di attivazione e tara la sensibilità |
 | `jarvis key` | salva la chiave di Claude nel Portachiavi (macOS) o in un file privato |
-| `jarvis app` | crea `Jarvis.app` per avviarlo dal Dock (macOS) |
+| `jarvis app` | crea `Eve.app` per avviarlo dal Dock (macOS) |
 
 Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/activate` dalla cartella `jarvis`.
 
@@ -113,7 +113,7 @@ Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/ac
 - **`fatal: destination path 'Denis' already exists`**: hai già una copia del repository. Entra con `cd ~/Denis`, poi `git fetch origin` e `git checkout claude/financial-advisor-dashboard-lbiycx`.
 - **`PortAudio library not found`** su Linux: `sudo apt install libportaudio2`.
 
-Esempi di cose da dire dopo «Jarvis»:
+Esempi di cose da dire dopo «Eve»:
 
 - «che ore sono?», «come va la batteria?»
 - «apri Safari», «chiudi Spotify», «apri la cartella Download», «vai su repubblica.it»
@@ -123,13 +123,13 @@ Esempi di cose da dire dopo «Jarvis»:
 - «accendi le luci del soggiorno», «metti il riscaldamento a ventuno gradi» (con Home Assistant)
 - «scrivi: Buongiorno, confermo l'appuntamento di domani» (digita nella finestra attiva)
 - «quanto è alto il Monte Bianco?» (ricerca sul web)
-- «spegni il computer» → Jarvis chiede conferma: rispondi «sì» o «no»
+- «spegni il computer» → Eve chiede conferma: rispondi «sì» o «no»
 
-Nell'HUD: **Spazio** attiva l'ascolto senza dire la parola, **Esc** interrompe la voce, e la casella in basso accetta comandi scritti.
+Nell'interfaccia: **Spazio** attiva l'ascolto senza dire la parola, **Esc** interrompe la voce, e la casella in basso accetta comandi scritti.
 
 ### Usarlo come app (macOS)
 
-Jarvis può diventare una vera app con icona nel Dock: si avvia con un doppio clic, senza terminale, e l'HUD si apre in una finestra propria.
+Eve può diventare una vera app con icona nel Dock: si avvia con un doppio clic, senza terminale, e l'HUD si apre in una finestra propria.
 
 1. Salva la chiave di Claude nel Portachiavi, così l'app la trova anche se non passa dal terminale (viene chiesta senza mostrarla):
 
@@ -144,15 +144,15 @@ Jarvis può diventare una vera app con icona nel Dock: si avvia con un doppio cl
    jarvis app
    ```
 
-   L'app viene creata in `~/Applications/Jarvis.app` (cartella Applicazioni dentro la tua home). Trascinala nel Dock per tenerla a portata di mano.
+   L'app viene creata in `~/Applications/Eve.app` (cartella Applicazioni dentro la tua home). Trascinala nel Dock per tenerla a portata di mano.
 
-3. Al primo avvio macOS chiede il permesso per il microfono: accettalo. Per la scrittura automatica serve anche il permesso di Accessibilità, che macOS propone la prima volta che Jarvis prova a scrivere.
+3. Al primo avvio macOS chiede il permesso per il microfono: accettalo. Per la scrittura automatica serve anche il permesso di Accessibilità, che macOS propone la prima volta che Eve prova a scrivere.
 
-**Chiudere la finestra non ferma Jarvis**: resta in sottofondo ad ascoltare, e la finestra ricompare da sola quando dici «Jarvis» (o «ciao Jarvis», «ehi Jarvis»: la parola viene cercata dentro la frase). Per fermarlo davvero: tasto destro sull'icona nel Dock › Esci. Il registro di ciò che succede è in `~/Library/Logs/jarvis.log`.
+**Chiudere la finestra non ferma Eve**: resta in sottofondo ad ascoltare, e la finestra ricompare da sola quando dici «Eve» (o «ciao Eve», «ehi Eve»: la parola viene cercata dentro la frase). Per fermarlo davvero: tasto destro sull'icona nel Dock › Esci. Il registro di ciò che succede è in `~/Library/Logs/eve.log`.
 
-Per avere Jarvis sempre in ascolto dall'accensione del Mac, senza aprirlo a mano:
+Per avere Eve sempre in ascolto dall'accensione del Mac, senza aprirlo a mano:
 
-1. Impostazioni di Sistema › Generali › Elementi login › aggiungi Jarvis.
+1. Impostazioni di Sistema › Generali › Elementi login › aggiungi Eve.
 2. In `config.toml`, sezione `[ui]`, metti `start_hidden = true` così parte senza mostrare la finestra, e se vuoi `hide_after_seconds = 20` perché la finestra si nasconda da sola dopo venti secondi di inattività.
 
 L'app è un involucro che usa l'ambiente `.venv` del progetto: se sposti o cancelli la cartella del progetto, rilancia `jarvis app`. Per la stessa finestra senza creare l'app: `jarvis run --window`.
@@ -165,22 +165,22 @@ Tutte le opzioni sono commentate in `config.example.toml`. Le più utili:
 |---|---|---|
 | `assistant` | `name`, `user_name` | come si chiama lui e come chiama te |
 | `assistant` | `follow_up_seconds` | per quanti secondi resta in ascolto dopo una risposta (0 per disattivare) |
-| `wakeword` | `backend`, `threshold` | `whisper` (predefinito) riconosce «Jarvis» senza chiavi; `porcupine` è più leggero ma serve una chiave Picovoice; `openwakeword` riconosce solo «hey Jarvis» |
+| `wakeword` | `backend`, `threshold` | `whisper` (predefinito) riconosce «Eve» senza chiavi; `porcupine` è più leggero ma serve una chiave Picovoice; `openwakeword` riconosce solo «hey Eve» |
 | `audio` | `input_device`, `silence_seconds` | microfono e pausa che chiude la frase |
 | `stt` | `model` | `base` veloce, `small` equilibrato, `medium` preciso |
 | `tts` | `voice` | su macOS `say -v ?` elenca le voci; «Alice» e «Luca» sono italiane |
-| `brain` | `effort`, `web_search`, `notes` | profondità di ragionamento, ricerca web, cose che Jarvis deve sapere di te |
+| `brain` | `effort`, `web_search`, `notes` | profondità di ragionamento, ricerca web, cose che Eve deve sapere di te |
 | `tools` | `allow_shell`, `allow_power`, `typing` | abilita comandi di terminale, spegnimento, scrittura automatica |
 | `home_assistant` | `url`, `token` | token "a lunga durata" dal tuo profilo di Home Assistant |
 
-### Come viene riconosciuta la parola «Jarvis»
+### Come viene riconosciuta la parola «Eve»
 
-Il backend predefinito (`whisper`) trascrive in locale, con il modello `tiny`, una finestra scorrevole di circa due secondi, e solo quando nella stanza c'è voce. Se tra le parole compare «Jarvis» (anche pronunciato «Giarvis» o simili) scatta l'ascolto, e l'audio detto subito dopo la parola non va perso. Costa un po' di CPU mentre qualcuno parla, nulla nel silenzio; se è troppo sensibile alza `threshold` a 0.85, se non ti sente abbassalo a 0.65. `jarvis listen-test` mostra in tempo reale quando scatta.
+Il backend predefinito (`whisper`) trascrive in locale, con il modello `tiny`, una finestra scorrevole di circa due secondi, e solo quando nella stanza c'è voce. «Eve» pronunciato «ivi» può essere trascritto come «ivi», «Ivy», «Evie» o «Eve»: tutte le grafie sono elencate in `aliases` e scatta l'ascolto con una qualsiasi, anche dentro una frase («ciao Eve», «ehi Eve»). L'audio detto subito dopo la parola non va perso. Se vuoi un altro nome, cambia `assistant.name`, `assistant.pronunciation`, `wakeword.model` e `wakeword.aliases`. Costa un po' di CPU mentre qualcuno parla, nulla nel silenzio; se è troppo sensibile alza `threshold` a 0.85, se non ti sente abbassalo a 0.65. `jarvis listen-test` mostra in tempo reale quando scatta.
 
 Alternative:
 
-- `backend = "porcupine"`: motore dedicato di Picovoice, più leggero e preciso. Serve una AccessKey da https://console.picovoice.ai, che Picovoice concede su richiesta dopo una verifica: mettila in `access_key` o nella variabile `PICOVOICE_ACCESS_KEY`.
-- `backend = "openwakeword"`, `model = "hey_jarvis"`: gratuito e senza registrazione, ma la parola diventa «hey Jarvis». Puoi addestrare un modello personalizzato per «Jarvis» con il notebook del progetto openWakeWord e indicare il file: `model = "/percorso/jarvis.onnx"`.
+- `backend = "porcupine"`: motore dedicato di Picovoice, più leggero e preciso. Serve una AccessKey da https://console.picovoice.ai, che Picovoice concede su richiesta dopo una verifica, e per una parola fuori catalogo come «Eve» un modello `.ppn` creato nella loro console: `model = "/percorso/eve.ppn"`.
+- `backend = "openwakeword"`: gratuito e senza registrazione, con un modello `.onnx` personalizzato addestrato con il notebook del progetto openWakeWord: `model = "/percorso/eve.onnx"`.
 
 ## Cosa funziona dove
 

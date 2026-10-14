@@ -38,9 +38,10 @@ class Brain:
         self,
         registry: ToolRegistry,
         *,
-        name: str = "Jarvis",
+        name: str = "Eve",
         user_name: str = "Signore",
         language: str = "it",
+        pronunciation: str = "",
         model: str = "claude-opus-5-5",
         effort: str = "low",
         max_tokens: int = 4096,
@@ -64,7 +65,7 @@ class Brain:
         self.facts_provider = facts_provider or (lambda: [])
         self.conversation_timeout = conversation_timeout
         self.on_tool = on_tool or (lambda *_: None)
-        self._system = system_prompt(name, user_name, language)
+        self._system = system_prompt(name, user_name, language, pronunciation)
         self._client = client
         self.messages: list[dict[str, Any]] = []
         self.last_activity = 0.0

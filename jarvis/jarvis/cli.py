@@ -58,6 +58,7 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
         name=config.assistant.name,
         user_name=config.assistant.user_name,
         language=config.assistant.language,
+        pronunciation=config.assistant.pronunciation,
         model=config.brain.model,
         effort=config.brain.effort,
         max_tokens=config.brain.max_tokens,
@@ -98,6 +99,7 @@ def make_detector(config: Config):  # noqa: ANN201
         config.wakeword.model,
         config.wakeword.threshold,
         config.wakeword.access_key,
+        aliases=list(config.wakeword.aliases),
         whisper_model=config.wakeword.whisper_model,
         device=config.stt.device,
         compute_type=config.stt.compute_type,
@@ -105,12 +107,12 @@ def make_detector(config: Config):  # noqa: ANN201
     )
 
 
-def console_logger(bus: EventBus) -> None:
+def console_logger(bus: EventBus, name: str = "Eve") -> None:
     def listener(event) -> None:  # noqa: ANN001
         if event.type == "state" and event.data.get("detail"):
             print(f"[{event.data['state']}] {event.data['detail']}", flush=True)
         elif event.type == "transcript":
-            who = "Tu" if event.data["role"] == "user" else "Jarvis"
+            who = "Tu" if event.data["role"] == "user" else name
             print(f"{who}: {event.data['text']}", flush=True)
         elif event.type == "tool":
             print(f"  · {event.data['name']} {event.data['status']} {event.data.get('detail', '')}", flush=True)
@@ -131,6 +133,7 @@ def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) ->
         on_trigger=assistant.trigger,
         on_stop=assistant.speaker.stop,
         name=config.assistant.name,
+        tagline=config.assistant.tagline,
     )
     server.start()
     print(f"HUD: {server.url}", flush=True)
@@ -202,8 +205,8 @@ def run_window(config: Config, bus: EventBus, url: str) -> None:
 def cmd_run(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     bus = EventBus()
-    console_logger(bus)
-    print(f"Jarvis {__version__} · configurazione: {config.source}", flush=True)
+    console_logger(bus, config.assistant.name)
+    print(f"{config.assistant.name} {__version__} · configurazione: {config.source}", flush=True)
     assistant = build(config, bus, audio=not args.text, speak=not args.mute)
     assistant.start()
     try:
@@ -324,7 +327,7 @@ def cmd_app(args: argparse.Namespace) -> int:
     config_path = Path(config.source) if config.source.startswith("/") else None
     project_dir = Path(__file__).resolve().parents[1]
     dest = Path(args.dest).expanduser() if args.dest else macapp.default_dest()
-    app = macapp.build_app(dest, project_dir, config=config_path, name=config.assistant.name)
+    app = macapp.build_app(dest, project_dir, config=config_path, name=config.assistant.name, bundle_id=f"it.denis.{config.assistant.name.lower()}")
     print(f"Creata: {app}")
     print("Aprila dal Finder (cartella Applicazioni della tua home) oppure con:  open \"" + str(app) + "\"")
     print("Al primo avvio macOS chiederà il permesso per il microfono. Per tenerla nel Dock: tasto destro sull'icona › Opzioni › Mantieni nel Dock.")
@@ -364,7 +367,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jarvis", description="Assistente vocale sempre in ascolto.", parents=[common])
     sub = parser.add_subparsers(dest="command", parser_class=lambda **kw: argparse.ArgumentParser(parents=[common], **kw))
 
-    run = sub.add_parser("run", help="avvia Jarvis (microfono, parola di attivazione, HUD)")
+    run = sub.add_parser("run", help="avvia l'assistente (microfono, parola di attivazione, HUD)")
     run.add_argument("--text", action="store_true", help="senza microfono: comandi scritti")
     run.add_argument("--mute", action="store_true", help="non parlare (solo testo)")
     run.add_argument("--window", action="store_true", help="HUD in una finestra dedicata (serve pywebview)")
@@ -384,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
     key.add_argument("value", nargs="?", help="la chiave; se omessa viene chiesta senza mostrarla")
     key.add_argument("--show", action="store_true", help="dice solo dove è salvata")
     key.set_defaults(func=cmd_key)
-    app = sub.add_parser("app", help="crea Jarvis.app per avviarlo dal Dock (macOS)")
+    app = sub.add_parser("app", help="crea l'app per avviarlo dal Dock (macOS)")
     app.add_argument("--dest", help="cartella di destinazione (predefinita: ~/Applications)")
     app.set_defaults(func=cmd_app)
 

@@ -11,7 +11,9 @@ from typing import Any
 
 @dataclass
 class AssistantConfig:
-    name: str = "Jarvis"
+    name: str = "Eve"
+    pronunciation: str = "ivi"       # come l'utente pronuncia il nome (serve al modello per riconoscerlo)
+    tagline: str = "Assistente personale"
     user_name: str = "Signore"
     language: str = "it"
     follow_up_seconds: float = 6.0
@@ -22,7 +24,9 @@ class AssistantConfig:
 @dataclass
 class WakewordConfig:
     backend: str = "whisper"
-    model: str = "jarvis"
+    model: str = "eve"
+    # Altre grafie con cui la trascrizione può scrivere la parola (backend whisper).
+    aliases: list = field(default_factory=lambda: ["ivi", "ivy", "evi", "evie", "ivie", "eevee"])
     threshold: float = 0.75
     access_key: str = ""
     whisper_model: str = "tiny"

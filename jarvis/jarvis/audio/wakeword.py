@@ -149,9 +149,14 @@ def normalize_word(word: str) -> str:
     return re.sub(r"(.)\1", r"\1", text)
 
 
-def keyword_match(words: list[Word], keyword: str, threshold: float) -> tuple[float, float] | None:
-    """Cerca la parola chiave (anche pronunciata male): ritorna (somiglianza, istante di fine)."""
-    keyword = normalize_word(keyword)
+def keyword_match(words: list[Word], keyword: str | list[str], threshold: float) -> tuple[float, float] | None:
+    """Cerca la parola chiave (o una delle sue grafie): ritorna (somiglianza, istante di fine).
+
+    Le parole corte (meno di cinque lettere) devono coincidere esattamente, altrimenti
+    "ivi" scatterebbe anche su "vivi" o "lì".
+    """
+    keywords = [normalize_word(k) for k in ([keyword] if isinstance(keyword, str) else keyword)]
+    keywords = [k for k in keywords if k]
     candidates: list[tuple[str, float]] = []
     normalized = [(normalize_word(w), end) for w, _start, end in words]
     for index, (text, end) in enumerate(normalized):
@@ -161,12 +166,17 @@ def keyword_match(words: list[Word], keyword: str, threshold: float) -> tuple[fl
             candidates.append((text + normalized[index + 1][0], normalized[index + 1][1]))
     best: tuple[float, float] | None = None
     for text, end in candidates:
-        if keyword in text and len(text) <= len(keyword) + 3:
-            score = 1.0
-        else:
-            score = difflib.SequenceMatcher(None, text, keyword).ratio()
-        if score >= threshold and (best is None or score > best[0]):
-            best = (score, end)
+        for keyword in keywords:
+            if text == keyword:
+                score = 1.0
+            elif len(keyword) < 5:
+                continue
+            elif keyword in text and len(text) <= len(keyword) + 3:
+                score = 1.0
+            else:
+                score = difflib.SequenceMatcher(None, text, keyword).ratio()
+            if score >= threshold and (best is None or score > best[0]):
+                best = (score, end)
     return best
 
 
@@ -177,7 +187,7 @@ class WhisperWakeDetector:
 
     def __init__(
         self,
-        keyword: str = "jarvis",
+        keyword: str | list[str] = "jarvis",
         threshold: float = 0.75,
         model: str = "tiny",
         device: str = "cpu",
@@ -300,14 +310,16 @@ def build_detector(
     threshold: float,
     access_key: str = "",
     *,
+    aliases: list[str] | None = None,
     whisper_model: str = "tiny",
     device: str = "cpu",
     compute_type: str = "int8",
     language: str = "it",
 ) -> WakeWordDetector:
     backend = backend.lower()
+    aliases = aliases or []
     if backend == "whisper":
-        return WhisperWakeDetector(keyword=model, threshold=threshold, model=whisper_model, device=device, compute_type=compute_type, language=language)
+        return WhisperWakeDetector(keyword=[model, *aliases], threshold=threshold, model=whisper_model, device=device, compute_type=compute_type, language=language)
     if backend == "porcupine":
         return PorcupineDetector(keyword=model, sensitivity=threshold, access_key=access_key)
     if backend == "openwakeword":

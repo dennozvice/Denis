@@ -38,7 +38,7 @@ def test_build_app_bundle(tmp_path):
     script = launcher.read_text()
     assert f'cd "{project}"' in script
     assert '-m jarvis --config "' in script and 'config.toml" run --window' in script
-    assert "display alert" in script and "jarvis.log" in script
+    assert "display alert" in script and "denis.log" in script
     assert (app / "Contents" / "Resources" / "jarvis.icns").stat().st_size > 10000
     # ricostruire sovrascrive senza errori
     macapp.build_app(tmp_path / "apps", project, python=tmp_path / "py", name="Denis")

@@ -117,3 +117,15 @@ def test_whisper_wake_detector_runs_only_on_speech_and_carries_tail():
 def test_whisper_wake_detector_ignores_other_words():
     detector = WhisperWakeDetector(keyword="jarvis", window_seconds=1.0, hop_seconds=0.5, transcribe=lambda a: [("buongiorno", 0.0, 0.8)])
     assert all(detector.feed(frame) is False for frame in frames(tone(2.0)))
+
+
+def test_keyword_match_with_aliases_and_short_words_exact_only():
+    keys = ["eve", "ivi", "ivy", "evie"]
+    assert keyword_match([("Ivi,", 0.0, 0.4)], keys, 0.75) == (1.0, 0.4)
+    assert keyword_match([("Ivy", 0.0, 0.4)], keys, 0.75) == (1.0, 0.4)
+    assert keyword_match([("Eve", 0.0, 0.4)], keys, 0.75) == (1.0, 0.4)
+    assert keyword_match([("Evie", 0.0, 0.4)], keys, 0.75) == (1.0, 0.4)
+    # parole corte: niente somiglianza approssimata
+    assert keyword_match([("vivi", 0.0, 0.4)], keys, 0.5) is None
+    assert keyword_match([("Eva", 0.0, 0.4)], keys, 0.5) is None
+    assert keyword_match([("lì", 0.0, 0.2), ("vi", 0.2, 0.4)], keys, 0.75) is None
