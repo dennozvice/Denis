@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from jarvis.brain.tools.base import NeedsConfirmation, Tool, ToolRegistry, current_os, osascript, run
+from eve.brain.tools.base import NeedsConfirmation, Tool, ToolRegistry, current_os, osascript, run
 
 
 def get_datetime(args: dict[str, Any]) -> str:

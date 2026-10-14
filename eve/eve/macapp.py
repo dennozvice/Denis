@@ -1,4 +1,4 @@
-"""Crea Jarvis.app: un'app macOS che avvia Jarvis dal Dock con l'HUD in una finestra."""
+"""Crea Eve.app: un'app macOS che avvia Eve dal Dock con l'HUD in una finestra."""
 
 from __future__ import annotations
 
@@ -9,16 +9,16 @@ import stat
 import sys
 from pathlib import Path
 
-ICON = Path(__file__).parent / "ui" / "static" / "jarvis.icns"
+ICON = Path(__file__).parent / "ui" / "static" / "eve.icns"
 
 
 LAUNCHER_TEMPLATE = """#!/bin/bash
-# Avviato da @NAME@.app: esegue Jarvis dall'ambiente del progetto e tiene un log.
-# Se Jarvis termina subito con un errore, lo mostra in una finestra.
+# Avviato da @NAME@.app: esegue Eve dall'ambiente del progetto e tiene un log.
+# Se Eve termina subito con un errore, lo mostra in una finestra.
 cd "@PROJECT@"
 mkdir -p "@LOGDIR@"
 echo "=== avvio $(date) ===" >> "@LOG@"
-"@PYTHON@" -m jarvis@CONFIG@ run --window >> "@LOG@" 2>&1
+"@PYTHON@" -m eve@CONFIG@ run --window >> "@LOG@" 2>&1
 status=$?
 if [ "$status" -ne 0 ]; then
   tail_text=$(tail -n 12 "@LOG@")
@@ -28,7 +28,7 @@ exit $status
 """
 
 
-def launcher_script(project_dir: Path, python: Path, config: Path | None, log: Path, name: str = "Jarvis") -> str:
+def launcher_script(project_dir: Path, python: Path, config: Path | None, log: Path, name: str = "Eve") -> str:
     config_arg = f' --config "{config}"' if config else ""
     return (
         LAUNCHER_TEMPLATE.replace("@NAME@", name)
@@ -49,7 +49,7 @@ def info_plist(name: str, bundle_id: str) -> dict:
         "CFBundleShortVersionString": "0.1.0",
         "CFBundlePackageType": "APPL",
         "CFBundleExecutable": "launch",
-        "CFBundleIconFile": "jarvis.icns",
+        "CFBundleIconFile": "eve.icns",
         "LSMinimumSystemVersion": "12.0",
         "NSHighResolutionCapable": True,
         "NSMicrophoneUsageDescription": f"{name} ascolta la parola di attivazione e le tue richieste.",
@@ -81,7 +81,7 @@ def build_app(
     launcher.write_text(launcher_script(project_dir, python, config, log, name))
     launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     if ICON.exists():
-        shutil.copy(ICON, contents / "Resources" / "jarvis.icns")
+        shutil.copy(ICON, contents / "Resources" / "eve.icns")
     (contents / "PkgInfo").write_text("APPL????")
     codesign(app)
     return app

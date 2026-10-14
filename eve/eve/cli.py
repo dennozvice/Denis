@@ -1,4 +1,4 @@
-"""Riga di comando: `jarvis run`, `jarvis chat`, `jarvis devices`, `jarvis say`, `jarvis setup`."""
+"""Riga di comando: `eve run`, `eve chat`, `eve devices`, `eve say`, `eve setup`."""
 
 from __future__ import annotations
 
@@ -9,27 +9,27 @@ import threading
 import time
 import webbrowser
 
-from jarvis import __version__
-from jarvis.config import Config, data_dir, load_config
-from jarvis.events import EventBus
+from eve import __version__
+from eve.config import Config, data_dir, load_config
+from eve.events import EventBus
 
-log = logging.getLogger("jarvis")
+log = logging.getLogger("eve")
 
 
 def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     """Costruisce tutti i componenti. `audio=False` -> modalità testo (niente microfono né parola)."""
-    from jarvis import secrets
-    from jarvis.assistant import Assistant
+    from eve import secrets
+    from eve.assistant import Assistant
 
     if not secrets.export_to_environment():
-        bus.notice("Chiave di Claude non trovata: esegui `jarvis key` oppure esporta ANTHROPIC_API_KEY", "error")
+        bus.notice("Chiave di Claude non trovata: esegui `eve key` oppure esporta ANTHROPIC_API_KEY", "error")
 
-    from jarvis.audio.tts import SilentSpeaker, SystemSpeaker
-    from jarvis.audio.wakeword import ManualTrigger, build_detector
-    from jarvis.brain.client import Brain
-    from jarvis.brain.tools import ToolRegistry
-    from jarvis.brain.tools import apps, memory as memory_tools, system, timers
-    from jarvis.brain.tools.memory import Memory
+    from eve.audio.tts import SilentSpeaker, SystemSpeaker
+    from eve.audio.wakeword import ManualTrigger, build_detector
+    from eve.brain.client import Brain
+    from eve.brain.tools import ToolRegistry
+    from eve.brain.tools import apps, memory as memory_tools, system, timers
+    from eve.brain.tools.memory import Memory
 
     registry = ToolRegistry()
     apps.register(registry)
@@ -47,7 +47,7 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     timers.register(registry, timer_service)
 
     if config.home_assistant.enabled:
-        from jarvis.brain.tools import home
+        from eve.brain.tools import home
 
         if not config.home_assistant.token:
             raise SystemExit("home_assistant.enabled è true ma manca il token")
@@ -74,8 +74,8 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
     speaker = SystemSpeaker(config.tts.backend, config.tts.voice, config.tts.rate, config.tts.command, config.assistant.language) if speak else SilentSpeaker()
 
     if audio:
-        from jarvis.audio.capture import Microphone
-        from jarvis.audio.stt import WhisperTranscriber
+        from eve.audio.capture import Microphone
+        from eve.audio.stt import WhisperTranscriber
 
         bus.notice("Carico il modello di trascrizione…")
         transcriber = WhisperTranscriber(config.stt.model, config.stt.device, config.stt.compute_type, config.assistant.language)
@@ -92,7 +92,7 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
 
 
 def make_detector(config: Config):  # noqa: ANN201
-    from jarvis.audio.wakeword import build_detector
+    from eve.audio.wakeword import build_detector
 
     return build_detector(
         config.wakeword.backend,
@@ -123,7 +123,7 @@ def console_logger(bus: EventBus, name: str = "Eve") -> None:
 
 
 def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) -> None:  # noqa: ANN001
-    from jarvis.ui.server import HudServer
+    from eve.ui.server import HudServer
 
     server = HudServer(
         bus,
@@ -145,7 +145,7 @@ def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) ->
         try:
             import webview  # pywebview
         except ImportError:
-            print("pywebview non installato (pip install 'jarvis-assistant[window]'): apro il browser", flush=True)
+            print("pywebview non installato (pip install 'eve-assistant[window]'): apro il browser", flush=True)
             webbrowser.open(server.url)
             return
         run_window(config, bus, server.url)
@@ -153,7 +153,7 @@ def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) ->
 
 
 def run_window(config: Config, bus: EventBus, url: str) -> None:
-    """Finestra dell'HUD (pywebview). Chiuderla la nasconde soltanto: Jarvis resta in ascolto.
+    """Finestra dell'HUD (pywebview). Chiuderla la nasconde soltanto: Eve resta in ascolto.
 
     Blocca il thread principale finché l'app non viene chiusa dal Dock (Esci) o con Ctrl+C.
     """
@@ -244,7 +244,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
 
 def cmd_devices(args: argparse.Namespace) -> int:
-    from jarvis.audio.capture import list_input_devices
+    from eve.audio.capture import list_input_devices
 
     for device in list_input_devices():
         mark = "*" if device["default"] else " "
@@ -254,7 +254,7 @@ def cmd_devices(args: argparse.Namespace) -> int:
 
 
 def cmd_say(args: argparse.Namespace) -> int:
-    from jarvis.audio.tts import SystemSpeaker
+    from eve.audio.tts import SystemSpeaker
 
     config = load_config(args.config)
     speaker = SystemSpeaker(config.tts.backend, config.tts.voice, config.tts.rate, config.tts.command, config.assistant.language)
@@ -277,7 +277,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     detector.close()
     print("    ok", flush=True)
     print("3/3 Chiave di Claude…", flush=True)
-    from jarvis import secrets
+    from eve import secrets
 
     source = secrets.key_source()
     if source:
@@ -285,7 +285,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
     elif os.environ.get("ANTHROPIC_AUTH_TOKEN"):
         print("    trovata: ANTHROPIC_AUTH_TOKEN", flush=True)
     else:
-        print("    non trovata: esegui `jarvis key` per salvarla, oppure esporta ANTHROPIC_API_KEY", flush=True)
+        print("    non trovata: esegui `eve key` per salvarla, oppure esporta ANTHROPIC_API_KEY", flush=True)
     return 0
 
 
@@ -293,7 +293,7 @@ def cmd_key(args: argparse.Namespace) -> int:
     """Salva la chiave di Claude nel Portachiavi (macOS) o in un file privato."""
     import getpass
 
-    from jarvis import secrets
+    from eve import secrets
 
     if args.show:
         source = secrets.key_source()
@@ -310,10 +310,10 @@ def cmd_key(args: argparse.Namespace) -> int:
 
 
 def cmd_app(args: argparse.Namespace) -> int:
-    """Crea Jarvis.app nella cartella Applicazioni dell'utente."""
+    """Crea Eve.app nella cartella Applicazioni dell'utente."""
     from pathlib import Path
 
-    from jarvis import macapp
+    from eve import macapp
 
     if not macapp.is_macos():
         print("Questo comando funziona solo su macOS.")
@@ -337,7 +337,7 @@ def cmd_app(args: argparse.Namespace) -> int:
 def cmd_listen_test(args: argparse.Namespace) -> int:
     """Mostra in tempo reale il punteggio della parola di attivazione: utile per tarare la soglia."""
     config = load_config(args.config)
-    from jarvis.audio.capture import Microphone, rms_level
+    from eve.audio.capture import Microphone, rms_level
 
     detector = make_detector(config)
     mic = Microphone(config.audio.sample_rate, config.audio.input_device or None)
@@ -359,12 +359,12 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    # Opzioni comuni, accettate sia prima sia dopo il sottocomando (jarvis --config x run / jarvis run --config x)
+    # Opzioni comuni, accettate sia prima sia dopo il sottocomando (eve --config x run / eve run --config x)
     common = argparse.ArgumentParser(add_help=False)
     # SUPPRESS: il sottocomando non sovrascrive con un default il valore letto prima di esso
     common.add_argument("--config", default=argparse.SUPPRESS, help="percorso del file config.toml")
     common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
-    parser = argparse.ArgumentParser(prog="jarvis", description="Assistente vocale sempre in ascolto.", parents=[common])
+    parser = argparse.ArgumentParser(prog="eve", description="Assistente vocale sempre in ascolto.", parents=[common])
     sub = parser.add_subparsers(dest="command", parser_class=lambda **kw: argparse.ArgumentParser(parents=[common], **kw))
 
     run = sub.add_parser("run", help="avvia l'assistente (microfono, parola di attivazione, HUD)")

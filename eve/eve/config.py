@@ -108,20 +108,20 @@ class Config:
 
 
 def data_dir() -> Path:
-    """Cartella dove Jarvis salva memoria e stato (creata se manca)."""
-    base = os.environ.get("JARVIS_HOME")
+    """Cartella dove Eve salva memoria e stato (creata se manca)."""
+    base = os.environ.get("EVE_HOME")
     path = Path(base) if base else Path.home() / ".config" / "jarvis"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def candidate_paths() -> list[Path]:
-    env = os.environ.get("JARVIS_CONFIG")
+    env = os.environ.get("EVE_CONFIG")
     paths: list[Path] = []
     if env:
         paths.append(Path(env))
     paths.append(Path.cwd() / "config.toml")
-    paths.append(Path.home() / ".config" / "jarvis" / "config.toml")
+    paths.append(Path.home() / ".config" / "eve" / "config.toml")
     return paths
 
 

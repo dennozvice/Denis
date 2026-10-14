@@ -9,14 +9,14 @@ from typing import Any
 
 import numpy as np
 
-from jarvis.audio.capture import Microphone, rms_level
-from jarvis.audio.vad import EndpointDetector
-from jarvis.audio.wakeword import carry_audio
-from jarvis.brain.client import Brain, classify_confirmation
-from jarvis.config import Config
-from jarvis.events import EventBus
+from eve.audio.capture import Microphone, rms_level
+from eve.audio.vad import EndpointDetector
+from eve.audio.wakeword import carry_audio
+from eve.brain.client import Brain, classify_confirmation
+from eve.config import Config
+from eve.events import EventBus
 
-log = logging.getLogger("jarvis")
+log = logging.getLogger("eve")
 
 
 class Assistant:
@@ -50,7 +50,7 @@ class Assistant:
         self._running.set()
         if self.microphone is not None:
             self.microphone.start()
-            self._thread = threading.Thread(target=self._loop, name="jarvis-audio", daemon=True)
+            self._thread = threading.Thread(target=self._loop, name="eve-audio", daemon=True)
             self._thread.start()
             self.bus.set_state("idle", f'In ascolto della parola "{self.config.assistant.name}"')
         else:
@@ -140,7 +140,7 @@ class Assistant:
         try:
             self.bus.publish("wake")
             if self.config.assistant.chime:
-                from jarvis.audio import sounds
+                from eve.audio import sounds
 
                 sounds.play("wake")
             self.bus.set_state("listening", "Ti ascolto")

@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from jarvis.brain.tools.base import Tool, ToolRegistry
+from eve.brain.tools.base import Tool, ToolRegistry
 
 
 @dataclass
@@ -89,7 +89,7 @@ def register(registry: ToolRegistry, service: TimerService) -> None:
     registry.add(
         Tool(
             "set_timer",
-            "Imposta un timer o un promemoria: allo scadere Jarvis lo annuncia a voce.",
+            "Imposta un timer o un promemoria: allo scadere Eve lo annuncia a voce.",
             set_timer,
             properties={
                 "seconds": {"type": "integer", "description": "Durata in secondi."},

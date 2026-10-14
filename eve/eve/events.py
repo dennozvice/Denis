@@ -46,7 +46,7 @@ class EventBus:
         for listener in listeners:
             try:
                 listener(event)
-            except Exception:  # un ascoltatore rotto non deve fermare Jarvis
+            except Exception:  # un ascoltatore rotto non deve fermare Eve
                 pass
         return event
 

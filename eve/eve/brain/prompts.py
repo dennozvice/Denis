@@ -1,4 +1,4 @@
-"""Istruzioni di sistema per Jarvis."""
+"""Istruzioni di sistema per Eve."""
 
 from __future__ import annotations
 

@@ -7,7 +7,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from jarvis.brain.tools.base import Tool, ToolRegistry
+from eve.brain.tools.base import Tool, ToolRegistry
 
 
 class HomeAssistant:

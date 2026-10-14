@@ -9,7 +9,7 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from jarvis.brain.tools.base import Tool, ToolRegistry, current_os, osascript, run
+from eve.brain.tools.base import Tool, ToolRegistry, current_os, osascript, run
 
 
 def open_app(args: dict[str, Any]) -> str:

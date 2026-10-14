@@ -2,11 +2,11 @@
 
 Tre backend:
 - Whisper (predefinito): nessuna chiave. Trascrive in locale una finestra di un paio di
-  secondi, solo quando c'è voce, e scatta se tra le parole c'è "Jarvis" (o simile).
-- Porcupine (Picovoice): parola "Jarvis" integrata, più leggero e preciso; richiede una
+  secondi, solo quando c'è voce, e scatta se tra le parole c'è "Eve" (o simile).
+- Porcupine (Picovoice): parola "Eve" integrata, più leggero e preciso; richiede una
   AccessKey, che Picovoice concede su richiesta.
-- openWakeWord: gratuito e senza registrazione; il modello pronto è "hey jarvis",
-  oppure un modello .onnx personalizzato addestrato con i notebook del progetto.
+- openWakeWord: gratuito e senza registrazione, con un modello .onnx personalizzato
+  addestrato con i notebook del progetto (quello pronto riconosce solo "hey jarvis").
 """
 
 from __future__ import annotations
@@ -238,7 +238,7 @@ class WhisperWakeDetector:
         return transcribe
 
     def feed(self, frame: np.ndarray) -> bool:
-        from jarvis.audio.vad import frame_energy
+        from eve.audio.vad import frame_energy
 
         energy = frame_energy(frame)
         # Rumore di fondo adattivo: scende subito, risale piano.

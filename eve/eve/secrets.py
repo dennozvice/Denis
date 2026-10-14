@@ -1,6 +1,6 @@
-"""Dove Jarvis trova la chiave API quando non è nell'ambiente (app lanciata dal Dock).
+"""Dove Eve trova la chiave API quando non è nell'ambiente (app lanciata dal Dock).
 
-Ordine: variabile d'ambiente -> Portachiavi di macOS -> file ~/.config/jarvis/secrets.toml
+Ordine: variabile d'ambiente -> Portachiavi di macOS -> file ~/.config/eve/secrets.toml
 """
 
 from __future__ import annotations
@@ -11,10 +11,11 @@ import subprocess
 import tomllib
 from pathlib import Path
 
-from jarvis.config import data_dir
+from eve.config import data_dir
 
 ENV_VAR = "ANTHROPIC_API_KEY"
-KEYCHAIN_SERVICE = "jarvis-anthropic"
+KEYCHAIN_SERVICE = "eve-anthropic"
+LEGACY_KEYCHAIN_SERVICE = "jarvis-anthropic"  # chiavi salvate con il vecchio nome
 KEYCHAIN_ACCOUNT = "api-key"
 
 
@@ -25,16 +26,19 @@ def secrets_file() -> Path:
 def _keychain_get() -> str:
     if platform.system() != "Darwin":
         return ""
-    try:
-        result = subprocess.run(
-            ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-w"],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return ""
-    return result.stdout.strip() if result.returncode == 0 else ""
+    for service in (KEYCHAIN_SERVICE, LEGACY_KEYCHAIN_SERVICE):
+        try:
+            result = subprocess.run(
+                ["security", "find-generic-password", "-s", service, "-a", KEYCHAIN_ACCOUNT, "-w"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return ""
 
 
 def _keychain_set(value: str) -> bool:

@@ -1,4 +1,4 @@
-"""HUD: server web locale che trasmette gli eventi di Jarvis via WebSocket."""
+"""HUD: server web locale che trasmette gli eventi di Eve via WebSocket."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from typing import Any, Callable
 
 from aiohttp import WSMsgType, web
 
-from jarvis.events import Event, EventBus
+from eve.events import Event, EventBus
 
-log = logging.getLogger("jarvis.ui")
+log = logging.getLogger("eve.ui")
 STATIC = Path(__file__).parent / "static"
 
 
@@ -52,7 +52,7 @@ class HudServer:
 
     def start(self) -> None:
         self.bus.subscribe(self._on_event)
-        self._thread = threading.Thread(target=self._run, name="jarvis-hud", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="eve-hud", daemon=True)
         self._thread.start()
         if not self._ready.wait(timeout=5):
             raise RuntimeError("HUD non avviato")

@@ -8,10 +8,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from jarvis.brain.prompts import context_block, system_prompt
-from jarvis.brain.tools.base import NeedsConfirmation, Tool, ToolRegistry
+from eve.brain.prompts import context_block, system_prompt
+from eve.brain.tools.base import NeedsConfirmation, Tool, ToolRegistry
 
-log = logging.getLogger("jarvis.brain")
+log = logging.getLogger("eve.brain")
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 

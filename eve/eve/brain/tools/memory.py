@@ -1,4 +1,4 @@
-"""Memoria a lungo termine: fatti che Jarvis ricorda tra una sessione e l'altra."""
+"""Memoria a lungo termine: fatti che Eve ricorda tra una sessione e l'altra."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from jarvis.brain.tools.base import Tool, ToolRegistry
+from eve.brain.tools.base import Tool, ToolRegistry
 
 
 class Memory:

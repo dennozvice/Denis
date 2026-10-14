@@ -80,7 +80,7 @@ class Microphone:
             return None
 
     def drain(self) -> None:
-        """Scarta l'audio accumulato (per esempio mentre Jarvis parla)."""
+        """Scarta l'audio accumulato (per esempio mentre Eve parla)."""
         while True:
             try:
                 self._queue.get_nowait()
