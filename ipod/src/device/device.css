@@ -313,7 +313,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 22px;
+  gap: 18px;
   width: 100%;
   user-select: none;
   -webkit-user-select: none;
@@ -339,7 +339,7 @@
   left: auto;
   top: auto;
   flex: 0 0 auto;
-  margin-bottom: calc(2 * var(--mm));
+  margin-bottom: calc(0.5 * var(--mm));
 }
 /* Ghiera chiara su bianco: un filo di contorno in più, altrimenti si perde */
 .flat[data-color='silver'] .ipod-wheel {

@@ -29,7 +29,7 @@ export function App() {
   return (
     <div className="page">
       <main className="stage">
-        <Device reserveBottom={flat ? 136 : 110}>
+        <Device reserveBottom={flat ? 118 : 110}>
           <Lcd />
         </Device>
       </main>

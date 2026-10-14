@@ -53,17 +53,21 @@ export interface FlatScale {
   wheelPx: number
 }
 
-/** Senza cornice: schermo largo quanto lo spazio (agganciato ai pixel interi se costa poco), ghiera con ciò che resta. */
+/**
+ * Senza cornice: schermo largo quanto lo spazio (agganciato ai pixel interi solo se costa pochissimo:
+ * sui display da 460 ppi dell'iPhone la frazione non si vede), ghiera grande quanto resta in altezza.
+ * Su iPhone 16e (390×844, 3×): schermo 366×275, ghiera ≈ 330 px, niente scorrimento.
+ */
 export function computeFlatScale(availW: number, availH: number, dpr: number): FlatScale {
   const maxScale = Math.min(availW / 320, 1.6)
   const n = Math.floor(maxScale * dpr)
   let lcdScale = maxScale
   if (n >= 1) {
     const snapped = n / dpr
-    if (snapped >= 0.85 * maxScale) lcdScale = snapped
+    if (snapped >= 0.96 * maxScale) lcdScale = snapped
   }
-  const rest = availH - 240 * lcdScale - 48
-  const wheelPx = Math.max(150, Math.min(availW * 0.82, rest, 380))
+  const rest = availH - 240 * lcdScale - 40
+  const wheelPx = Math.max(150, Math.min(availW * 0.92, rest, 400))
   return { lcdScale, wheelPx }
 }
 
@@ -164,7 +168,7 @@ export function Device({ children, reserveBottom = 96 }: { children: ReactNode; 
   useKeyboard(onInput, onGesture, onHoldSwitch)
 
   if (flat) {
-    const fs = computeFlatScale(vp.w - 32, vp.h - 24 - reserveBottom, vp.dpr)
+    const fs = computeFlatScale(vp.w - 24, vp.h - 24 - reserveBottom, vp.dpr)
     const style = { '--mm': `${fs.wheelPx / 40}px`, '--lcd-scale': String(fs.lcdScale) } as React.CSSProperties
     return (
       <div ref={bodyRef} className="flat" data-color={color} style={style} role="application" aria-label="iPod">
