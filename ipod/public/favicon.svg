@@ -1,72 +1,103 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <!--
-    Icona dell'app: un iPod Classic argento su sfondo scuro.
-    Il dispositivo è disegnato in millimetri reali (corpo 61,8 × 103,5 mm, schermo 4:3 da 2,5",
-    ghiera da 40 mm, pulsante centrale da 15 mm) e poi scalato con il transform del gruppo.
+    Icona dell'app: un iPod Classic nero su sfondo bianco, come un oggetto vero.
+    Il dispositivo è disegnato in millimetri reali (corpo 61,8 × 103,5 mm, finestra 54 × 41,5 mm,
+    ghiera Ø 40 mm, tasto centrale Ø 16 mm) e poi scalato con il transform del gruppo.
   -->
   <defs>
-    <!-- Sfondo: dal carbone al nero -->
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#303034"/>
-      <stop offset="1" stop-color="#09090a"/>
+    <!-- Alluminio anodizzato nero: luce da in alto a sinistra -->
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b3c40"/>
+      <stop offset="0.45" stop-color="#1f2023"/>
+      <stop offset="1" stop-color="#0f0f11"/>
     </linearGradient>
-    <!-- Corpo in alluminio: leggera sfumatura verticale -->
-    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#f1f2f4"/>
-      <stop offset="0.5" stop-color="#d8dbdf"/>
-      <stop offset="1" stop-color="#b9bdc3"/>
+    <!-- Bordo lucido d'acciaio: più chiaro in alto, più scuro in basso -->
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9a9b9f"/>
+      <stop offset="0.5" stop-color="#5a5b5f"/>
+      <stop offset="1" stop-color="#3a3b3e"/>
     </linearGradient>
-    <!-- Bordo del corpo: più chiaro in alto, più scuro in basso -->
-    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#a7abb1"/>
-      <stop offset="1" stop-color="#5f646b"/>
-    </linearGradient>
-    <!-- Schermo spento -->
-    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#272b31"/>
-      <stop offset="1" stop-color="#0b0d10"/>
+    <!-- Pannello LCD spento: grigio-verde scuro, appena più chiaro della mascherina -->
+    <linearGradient id="lcd" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#23262a"/>
+      <stop offset="1" stop-color="#141618"/>
     </linearGradient>
     <!-- Riflesso del vetro -->
-    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.03"/>
+    <linearGradient id="gloss" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0"/>
     </linearGradient>
-    <!-- Ghiera cliccabile: grigio chiaro, appena più scura verso il bordo -->
-    <radialGradient id="wheel" cx="0.5" cy="0.42" r="0.6">
-      <stop offset="0" stop-color="#f4f5f7"/>
-      <stop offset="0.75" stop-color="#e6e8eb"/>
-      <stop offset="1" stop-color="#d3d6da"/>
+    <!-- Ghiera nera leggermente concava -->
+    <radialGradient id="wheel" cx="0.5" cy="0.44" r="0.6">
+      <stop offset="0" stop-color="#2d2e31"/>
+      <stop offset="0.6" stop-color="#1c1c1e"/>
+      <stop offset="1" stop-color="#111112"/>
     </radialGradient>
-    <!-- Pulsante centrale: un po' più scuro della ghiera -->
-    <radialGradient id="button" cx="0.5" cy="0.4" r="0.6">
-      <stop offset="0" stop-color="#d9dce0"/>
-      <stop offset="1" stop-color="#bbbfc5"/>
+    <!-- Tasto centrale convesso -->
+    <radialGradient id="btn" cx="0.42" cy="0.36" r="0.65">
+      <stop offset="0" stop-color="#3f4043"/>
+      <stop offset="0.55" stop-color="#242528"/>
+      <stop offset="1" stop-color="#141416"/>
     </radialGradient>
-    <!-- Ombra morbida sotto il dispositivo -->
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="1.6"/>
+    <!-- Ombra morbida sotto l'oggetto -->
+    <filter id="shadow" x="-30%" y="-20%" width="160%" height="150%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+    <filter id="contact" x="-30%" y="-50%" width="160%" height="300%">
+      <feGaussianBlur stdDeviation="2"/>
     </filter>
   </defs>
 
-  <rect id="sfondo" width="512" height="512" rx="115" fill="url(#bg)"/>
+  <!-- Sfondo bianco (rx=115 = angoli arrotondati del 22,5 %; nella variante maskable rx=0) -->
+  <rect width="512" height="512" rx="115" fill="#ffffff"/>
 
-  <g id="dispositivo" transform="translate(124.7 36.1) scale(4.25)">
-    <rect x="0.4" y="1.6" width="61" height="103" rx="6" fill="#000" opacity="0.55" filter="url(#shadow)"/>
-    <rect x="0" y="0" width="61.8" height="103.5" rx="6" fill="url(#body)" stroke="url(#edge)" stroke-width="0.5"/>
-    <rect x="0.55" y="0.55" width="60.7" height="102.4" rx="5.6" fill="none" stroke="#ffffff" stroke-opacity="0.45" stroke-width="0.3"/>
+  <g transform="translate(139.5 61) scale(3.77)">
+    <!-- Ombra: una larga e tenue, una di contatto sotto il bordo inferiore -->
+    <rect x="1.5" y="4" width="58.8" height="102" rx="8" fill="#000000" opacity="0.22" filter="url(#shadow)"/>
+    <rect x="4" y="100" width="53.8" height="5" rx="2.5" fill="#000000" opacity="0.35" filter="url(#contact)"/>
 
-    <rect x="5.5" y="8" width="50.8" height="38.1" rx="1.6" fill="url(#screen)" stroke="#3a3e45" stroke-width="0.4"/>
-    <path d="M6 8.5 H56 V18.5 Q31 26 6 31 Z" fill="url(#gloss)"/>
+    <!-- Bordo in acciaio, poi la piastra anodizzata -->
+    <rect x="-0.5" y="-0.5" width="62.8" height="104.5" rx="8.5" fill="url(#rim)"/>
+    <rect x="0" y="0" width="61.8" height="103.5" rx="8" fill="url(#body)"/>
+    <!-- Luce sullo spigolo superiore -->
+    <path d="M8 0.35 H53.8" stroke="#ffffff" stroke-opacity="0.18" stroke-width="0.4" stroke-linecap="round"/>
 
-    <circle cx="30.9" cy="75.5" r="20" fill="url(#wheel)" stroke="#b1b5bb" stroke-width="0.45"/>
-    <circle cx="30.9" cy="75.5" r="7.5" fill="url(#button)" stroke="#a1a5ab" stroke-width="0.4"/>
+    <!-- Finestra con mascherina nera, LCD spento, riflesso -->
+    <rect x="3.9" y="4.9" width="54" height="41.5" rx="1" fill="#09090a"/>
+    <rect x="5.94" y="6.93" width="49.92" height="37.44" fill="url(#lcd)"/>
+    <rect x="3.9" y="4.9" width="54" height="41.5" rx="1" fill="url(#gloss)"/>
+    <rect x="3.9" y="4.9" width="54" height="41.5" rx="1" fill="none" stroke="#000000" stroke-opacity="0.55" stroke-width="0.3"/>
 
-    <!-- Simboli della ghiera, molto discreti -->
-    <g fill="#9ea2a8">
-      <text x="30.9" y="62.2" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="2.6" font-weight="700" letter-spacing="0.15">MENU</text>
-      <path d="M28.6 88.6 L32.6 90.6 L28.6 92.6 Z M33.3 88.6 H34.2 V92.6 H33.3 Z M34.9 88.6 H35.8 V92.6 H34.9 Z" transform="translate(-1.3 0)"/>
-      <path d="M13.2 73.9 H14.1 V77.1 H13.2 Z M14.6 75.5 L17.6 73.9 V77.1 Z M17.9 75.5 L20.9 73.9 V77.1 Z"/>
-      <path d="M48.6 73.9 H47.7 V77.1 H48.6 Z M47.2 75.5 L44.2 73.9 V77.1 Z M43.9 75.5 L40.9 73.9 V77.1 Z"/>
+    <!-- Ghiera: scanalatura, superficie, tasto centrale -->
+    <circle cx="30.9" cy="73.5" r="20.3" fill="#050505"/>
+    <circle cx="30.9" cy="73.5" r="20" fill="url(#wheel)"/>
+    <circle cx="30.9" cy="73.5" r="19.6" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="0.4"/>
+    <circle cx="30.9" cy="73.5" r="8.3" fill="#060607"/>
+    <circle cx="30.9" cy="73.5" r="8" fill="url(#btn)"/>
+    <circle cx="30.9" cy="73.5" r="7.7" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="0.3"/>
+
+    <!-- Etichette serigrafate, grigio medio come sull'iPod nero -->
+    <g fill="#8d8e91" fill-opacity="0.9">
+      <text x="30.9" y="59.1" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="2.2" font-weight="600" letter-spacing="0.15" text-anchor="middle">MENU</text>
+      <!-- prev |◀◀ : 4,0 × 1,7 mm centrato in (15.6, 73.5) -->
+      <g transform="translate(13.6 72.65)">
+        <rect x="0" y="0" width="0.5" height="1.7"/>
+        <polygon points="0.8,0.85 2.3,0 2.3,1.7"/>
+        <polygon points="2.5,0.85 4,0 4,1.7"/>
+      </g>
+      <!-- next ▶▶| -->
+      <g transform="translate(44.2 72.65)">
+        <polygon points="0,0 1.5,0.85 0,1.7"/>
+        <polygon points="1.7,0 3.2,0.85 1.7,1.7"/>
+        <rect x="3.5" y="0" width="0.5" height="1.7"/>
+      </g>
+      <!-- play/pausa ▶ ‖ -->
+      <g transform="translate(29.2 87.95)">
+        <polygon points="0,0 1.6,0.85 0,1.7"/>
+        <rect x="2" y="0" width="0.5" height="1.7"/>
+        <rect x="2.85" y="0" width="0.5" height="1.7"/>
+      </g>
     </g>
   </g>
 </svg>
