@@ -1,0 +1,110 @@
+/*
+ * Cerca: elenco dei risultati (6 righe da 24 px), campo di testo con cursore lampeggiante,
+ * nastro di lettere su grigio. Sfumature e colori come le liste in lcd.css.
+ */
+.se {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+}
+
+/* ---------- risultati ---------- */
+.se-results {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 320px;
+  height: 144px;
+  overflow: hidden;
+}
+/* Riga scelta mentre il fuoco è sul nastro: evidenziazione grigia, come una finestra inattiva. */
+.se-results .row[data-sel='dim'] {
+  background: #e6e6e6;
+}
+.se-scrollbar {
+  left: 308px;
+  top: 2px;
+  height: 140px;
+}
+.se-empty {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 62px;
+  text-align: center;
+  font-size: 14px;
+  color: #6e6e6e;
+}
+
+/* ---------- campo di testo ---------- */
+.se-field {
+  position: absolute;
+  left: 0;
+  top: 144px;
+  width: 320px;
+  height: 24px;
+  background: #ffffff;
+  border-top: 1px solid #b5b5b5;
+  overflow: hidden;
+}
+/* Ancorato a destra con larghezza minima piena: il testo parte da sinistra e, se è più lungo del campo, resta visibile la coda col cursore. */
+.se-text {
+  position: absolute;
+  right: 8px;
+  top: 0;
+  min-width: 304px;
+  width: max-content;
+  height: 23px;
+  line-height: 23px;
+  font-size: 16px;
+  color: #000000;
+  text-align: left;
+  white-space: pre;
+}
+.se-caret {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  margin-left: 1px;
+  vertical-align: -3px;
+  background: #000000;
+  animation: se-caret 1060ms steps(1, end) infinite;
+}
+/* Cursore acceso 530 ms e spento 530 ms (il ritmo dei campi di testo Apple). */
+@keyframes se-caret {
+  0%, 49.9% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+/* ---------- nastro di lettere ---------- */
+.se-ribbon {
+  position: absolute;
+  left: 0;
+  top: 168px;
+  width: 320px;
+  height: 51px;
+  background: #ececec;
+  border-top: 1px solid #c4c4c4;
+}
+.se-key {
+  position: absolute;
+  width: 15px;
+  height: 22px;
+  line-height: 22px;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 14px;
+  color: #000000;
+  white-space: nowrap;
+}
+.se-key[data-done='true'] {
+  width: 40px;
+}
+.se-key[data-sel='true'] {
+  background: linear-gradient(180deg, #9cd0ff 0, #9cd0ff 1px, #6eb1f9 1px, #2466dc 100%);
+  color: #ffffff;
+}
+/* Lettera corrente mentre il fuoco è sull'elenco: si vede dove si tornerà con MENU. */
+.se-key[data-sel='dim'] {
+  background: #cdcdcd;
+}

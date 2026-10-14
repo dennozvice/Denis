@@ -1,5 +1,7 @@
-# Verifica e pubblica la dashboard su GitHub Pages.
-# - Su ogni pull request: lint, controllo dei tipi, test e build.
+# Verifica e pubblica su GitHub Pages i progetti web del repository:
+# - la dashboard "Advisor Desk" (radice) → https://<utente>.github.io/Denis/
+# - l'app "iPod" (cartella ipod/)        → https://<utente>.github.io/Denis/ipod/
+# - Su ogni pull request: lint, controllo dei tipi, test e build di entrambi.
 # - Su push al branch principale (o avvio manuale): pubblicazione su GitHub Pages.
 # Prima volta: Settings › Pages › Build and deployment › Source: "GitHub Actions".
 name: Verifica e pubblica
@@ -26,10 +28,31 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ipod/package-lock.json
+
+      # Dashboard (radice)
       - run: npm ci
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+      # iPod (ipod/)
+      - run: npm ci
+        working-directory: ipod
+      - run: npm run lint
+        working-directory: ipod
+      - run: npm test
+        working-directory: ipod
+      - run: npm run build
+        working-directory: ipod
+
+      - name: Unisce i due siti in un'unica cartella
+        if: github.event_name != 'pull_request'
+        run: |
+          rm -rf dist/ipod
+          cp -R ipod/dist dist/ipod
       - name: Prepara il sito per GitHub Pages
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
