@@ -157,6 +157,9 @@
   window.addEventListener("resize", resize);
   resize();
 
+  const ICE = "207, 233, 255";
+  const SILVER = "235, 240, 246";
+
   function ring(cx, cy, r, width, alpha, dash, rot) {
     ctx.save();
     ctx.translate(cx, cy);
@@ -164,10 +167,148 @@
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.lineWidth = width;
-    ctx.strokeStyle = "rgba(235, 240, 246, " + alpha + ")";
+    ctx.strokeStyle = "rgba(" + SILVER + ", " + alpha + ")";
     if (dash) ctx.setLineDash(dash);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /* Orbite inclinate: cerchi in 3D proiettati sullo schermo */
+  const ORBITS = [
+    { r: 0.64, tilt: 0.95, roll: -0.42, spin: 0.35, phase: 0.0, n: 5 },
+    { r: 0.52, tilt: 1.25, roll: 0.75, spin: -0.5, phase: 1.3, n: 4 },
+  ];
+  function orbitPoint(o, R, theta, rot) {
+    // cerchio nel piano XZ che gira attorno all'asse verticale (rot), visto da un punto
+    // di vista inclinato (tilt) e con il piano ruotato sullo schermo (roll)
+    const x0 = Math.cos(theta), z0 = Math.sin(theta);
+    const x = x0 * Math.cos(rot) - z0 * Math.sin(rot);
+    const z = x0 * Math.sin(rot) + z0 * Math.cos(rot);
+    const px = x * R * o.r, py = z * R * o.r * Math.sin(o.tilt) * 0.5;
+    return { x: px * Math.cos(o.roll) - py * Math.sin(o.roll), y: px * Math.sin(o.roll) + py * Math.cos(o.roll), zr: z };
+  }
+  function drawOrbitRing(cx, cy, o, R, rot, alpha) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    for (let i = 0; i <= 90; i++) {
+      const p = orbitPoint(o, R, (i / 90) * Math.PI * 2, rot);
+      if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(" + SILVER + ", " + alpha + ")";
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawParticles(cx, cy, o, R, rot, t, speed, energy, front) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    for (let k = 0; k < o.n; k++) {
+      const theta = t * o.spin * speed + o.phase + (k / o.n) * Math.PI * 2;
+      const p = orbitPoint(o, R, theta, rot);
+      const isFront = p.zr > 0;
+      if (isFront !== front) continue;
+      const scale = 0.6 + 0.4 * (p.zr + 1) / 2;
+      const size = (1.2 + 1.6 * scale) * (1 + energy * 0.6);
+      const a = (0.25 + 0.6 * scale) * (0.5 + energy * 0.6);
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, size * 4);
+      g.addColorStop(0, "rgba(255, 255, 255, " + a + ")");
+      g.addColorStop(0.3, "rgba(" + ICE + ", " + a * 0.5 + ")");
+      g.addColorStop(1, "rgba(" + ICE + ", 0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size * 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(255, 255, 255, " + Math.min(1, a + 0.2) + ")";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* Luce che scorre dentro la sfera: macchie morbide su traiettorie lente */
+  const BLOBS = [
+    { ax: 0.55, ay: 0.35, fx: 0.31, fy: 0.47, ph: 0.0, r: 0.75 },
+    { ax: 0.45, ay: 0.55, fx: 0.23, fy: 0.37, ph: 2.1, r: 0.65 },
+    { ax: 0.35, ay: 0.45, fx: 0.41, fy: 0.29, ph: 4.0, r: 0.55 },
+    { ax: 0.60, ay: 0.25, fx: 0.17, fy: 0.53, ph: 1.0, r: 0.5 },
+  ];
+  function drawSphere(cx, cy, core, t, energy, flash, speed) {
+    // corpo di vetro
+    const body = ctx.createRadialGradient(cx - core * 0.3, cy - core * 0.35, core * 0.1, cx, cy, core);
+    body.addColorStop(0, "rgba(255, 255, 255, " + (0.32 + energy * 0.22) + ")");
+    body.addColorStop(0.5, "rgba(" + ICE + ", " + (0.18 + energy * 0.18) + ")");
+    body.addColorStop(0.92, "rgba(70, 100, 140, 0.45)");
+    body.addColorStop(1, "rgba(40, 60, 90, 0.2)");
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(cx, cy, core, 0, Math.PI * 2);
+    ctx.fill();
+
+    // luce interna (additiva, ritagliata nella sfera)
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, core, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalCompositeOperation = "lighter";
+    const tt = t * speed;
+    for (const b of BLOBS) {
+      const x = cx + Math.sin(tt * b.fx + b.ph) * core * b.ax;
+      const y = cy + Math.cos(tt * b.fy + b.ph * 0.7) * core * b.ay;
+      const rr = core * b.r * (0.8 + energy * 0.5);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
+      g.addColorStop(0, "rgba(255, 255, 255, " + (0.12 + energy * 0.26 + flash * 0.3) + ")");
+      g.addColorStop(0.45, "rgba(" + ICE + ", " + (0.07 + energy * 0.12) + ")");
+      g.addColorStop(1, "rgba(" + ICE + ", 0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // nucleo
+    const nucleus = ctx.createRadialGradient(cx, cy, 0, cx, cy, core * 0.55);
+    nucleus.addColorStop(0, "rgba(255, 255, 255, " + (0.22 + energy * 0.45 + flash * 0.4) + ")");
+    nucleus.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = nucleus;
+    ctx.beginPath();
+    ctx.arc(cx, cy, core * 0.55, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // bordo illuminato: più forte in alto a sinistra
+    const rim = ctx.createLinearGradient(cx - core, cy - core, cx + core, cy + core);
+    rim.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+    rim.addColorStop(0.5, "rgba(" + SILVER + ", 0.25)");
+    rim.addColorStop(1, "rgba(255, 255, 255, 0.55)");
+    ctx.beginPath();
+    ctx.arc(cx, cy, core, 0, Math.PI * 2);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = rim;
+    ctx.stroke();
+
+    // riflesso speculare
+    ctx.save();
+    ctx.translate(cx - core * 0.32, cy - core * 0.48);
+    ctx.rotate(-0.6);
+    const spec = ctx.createRadialGradient(0, 0, 0, 0, 0, core * 0.42);
+    spec.addColorStop(0, "rgba(255, 255, 255, 0.55)");
+    spec.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = spec;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, core * 0.42, core * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // riflesso a terra
+    const floor = ctx.createRadialGradient(cx, cy + core * 1.55, 0, cx, cy + core * 1.55, core * 1.1);
+    floor.addColorStop(0, "rgba(" + ICE + ", " + (0.05 + energy * 0.08) + ")");
+    floor.addColorStop(1, "rgba(" + ICE + ", 0)");
+    ctx.fillStyle = floor;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + core * 1.55, core * 1.4, core * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   let t0 = performance.now();
@@ -176,16 +317,16 @@
     const t = (now - t0) / 1000;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     const cx = w / 2, cy = h / 2;
-    const R = Math.min(w, h) * 0.36;
+    const R = Math.min(w, h) * 0.38;
 
     smooth += (level - smooth) * 0.3;
     level *= 0.9;
-    const breathe = 0.5 + 0.5 * Math.sin(t * 1.2);
+    const breathe = 0.5 + 0.5 * Math.sin(t * 1.1);
     let target;
     if (state === "listening") target = 0.35 + Math.min(1, smooth * 1.6) * 0.65;
     else if (state === "speaking") target = 0.45 + 0.35 * Math.abs(Math.sin(t * 7.3)) * Math.abs(Math.sin(t * 1.9));
-    else if (state === "thinking") target = 0.5 + 0.1 * breathe;
-    else if (state === "idle") target = 0.14 + 0.08 * breathe;
+    else if (state === "thinking") target = 0.55 + 0.1 * breathe;
+    else if (state === "idle") target = 0.16 + 0.1 * breathe;
     else target = 0.04;
     energy += (target - energy) * 0.1;
     wakeFlash *= 0.94;
@@ -193,55 +334,52 @@
     history.shift();
     if (state === "speaking" && now - lastSpeak > 420) { ripples.push(0); lastSpeak = now; }
 
+    const speed = state === "thinking" ? 3.2 : state === "listening" ? 1.3 + smooth * 2 : state === "speaking" ? 1.6 : 1;
+    const rot = t * 0.18 * (state === "thinking" ? 2.5 : 1);
+
     ctx.clearRect(0, 0, w, h);
 
     // alone
     const halo = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 1.5);
-    halo.addColorStop(0, "rgba(207, 233, 255, " + (0.10 + energy * 0.22 + wakeFlash * 0.3) + ")");
-    halo.addColorStop(1, "rgba(207, 233, 255, 0)");
+    halo.addColorStop(0, "rgba(" + ICE + ", " + (0.10 + energy * 0.22 + wakeFlash * 0.3) + ")");
+    halo.addColorStop(1, "rgba(" + ICE + ", 0)");
     ctx.fillStyle = halo;
     ctx.fillRect(0, 0, w, h);
 
-    // anelli sottili in argento
-    const speed = state === "thinking" ? 1.6 : 0.25;
-    ring(cx, cy, R, 1, 0.16);
-    ring(cx, cy, R * 0.88, 1, 0.10, [2, 10], t * 0.08 * speed);
-    ring(cx, cy, R * 0.70, 1, 0.08);
-    // arco luminoso che gira (più veloce quando elabora)
+    // anelli piatti in argento
+    ring(cx, cy, R, 1, 0.14);
+    ring(cx, cy, R * 0.9, 1, 0.09, [2, 10], t * 0.05);
     ctx.save();
     ctx.translate(cx, cy);
-    ctx.rotate(t * 0.6 * speed);
+    ctx.rotate(t * 0.5 * (state === "thinking" ? 3 : 1));
     ctx.beginPath();
-    ctx.arc(0, 0, R, 0, Math.PI * (state === "thinking" ? 0.5 : 0.22));
+    ctx.arc(0, 0, R, 0, Math.PI * (state === "thinking" ? 0.5 : 0.2));
     ctx.lineWidth = 1.5;
     ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(235, 240, 246, " + (0.35 + energy * 0.4) + ")";
+    ctx.strokeStyle = "rgba(" + SILVER + ", " + (0.35 + energy * 0.4) + ")";
     ctx.shadowBlur = 10;
-    ctx.shadowColor = "rgba(207, 233, 255, 0.8)";
+    ctx.shadowColor = "rgba(" + ICE + ", 0.8)";
     ctx.stroke();
     ctx.restore();
 
-    // onde quando parla / al risveglio
+    // onde
     for (let i = ripples.length - 1; i >= 0; i--) {
       ripples[i] += 0.012;
       const p = ripples[i];
       if (p >= 1) { ripples.splice(i, 1); continue; }
-      ring(cx, cy, R * (0.32 + p * 0.55), 1.2, (1 - p) * 0.35);
+      ring(cx, cy, R * (0.34 + p * 0.5), 1.2, (1 - p) * 0.35);
     }
 
+    // orbite e particelle dietro la sfera
+    for (const o of ORBITS) drawOrbitRing(cx, cy, o, R, rot * (o.spin > 0 ? 1 : -1), 0.14 + energy * 0.1);
+    for (const o of ORBITS) drawParticles(cx, cy, o, R, rot * (o.spin > 0 ? 1 : -1), t, speed, energy, false);
+
     // sfera
-    const core = R * (0.26 + energy * 0.12 + wakeFlash * 0.06);
-    const g = ctx.createRadialGradient(cx - core * 0.25, cy - core * 0.3, core * 0.05, cx, cy, core);
-    g.addColorStop(0, "rgba(255, 255, 255, 1)");
-    g.addColorStop(0.45, "rgba(225, 240, 255, " + (0.75 + energy * 0.25) + ")");
-    g.addColorStop(0.85, "rgba(170, 205, 235, " + (0.35 + energy * 0.3) + ")");
-    g.addColorStop(1, "rgba(150, 190, 225, 0)");
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(cx, cy, core, 0, Math.PI * 2);
-    ctx.fill();
-    // bordo sottile della sfera
-    ring(cx, cy, core * 0.78, 1, 0.5 + energy * 0.4);
+    const core = R * (0.30 + energy * 0.09 + wakeFlash * 0.05);
+    drawSphere(cx, cy, core, t, energy, wakeFlash, speed);
+
+    // particelle davanti alla sfera
+    for (const o of ORBITS) drawParticles(cx, cy, o, R, rot * (o.spin > 0 ? 1 : -1), t, speed, energy, true);
 
     // forma d'onda
     const base = state === "idle" || state === "offline" ? 0.08 : 1;
