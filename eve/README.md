@@ -14,7 +14,7 @@ Un'assistente personale nello spirito di J.A.R.V.I.S., che gira sul tuo computer
 |---|---|
 | ![HUD in attesa](docs/hud-idle.jpg) | ![HUD mentre parla](docs/hud-speaking.jpg) |
 
-> È un progetto separato dalla dashboard Advisor Desk che sta nella radice di questo repository. Vive nella cartella `jarvis/` (il nome interno del pacchetto è rimasto `jarvis`; i comandi `eve` e `jarvis` sono equivalenti) e si può spostare in un repository tutto suo senza modifiche.
+> È un progetto separato dalla dashboard Advisor Desk che sta nella radice di questo repository. Vive nella cartella `eve/` e si può spostare in un repository tutto suo senza modifiche.
 
 ## Come funziona
 
@@ -53,7 +53,7 @@ Scarica il repository (se non l'hai già fatto) ed entra nella cartella del prog
 
 ```bash
 git clone https://github.com/dennozvice/Denis.git
-cd Denis/jarvis
+cd Denis/eve
 ```
 
 Crea l'ambiente e installa (su Windows il secondo comando è `.venv\Scripts\activate`):
@@ -78,14 +78,14 @@ Poi la chiave di Claude, sostituendo i puntini con la tua (da https://console.an
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
-E la configurazione (il file può stare anche in `~/.config/jarvis/config.toml`):
+E la configurazione (il file può stare anche in `~/.config/eve/config.toml`):
 
 ```bash
 cp config.example.toml config.toml
-jarvis setup
+eve setup
 ```
 
-`jarvis setup` scarica i modelli e controlla le chiavi.
+`eve setup` scarica i modelli e controlla le chiavi.
 
 Al primo `setup` viene scaricato il modello di trascrizione (`small`, circa 500 MB). Con `model = "base"` è più leggero e veloce, con `medium` più preciso.
 
@@ -93,23 +93,23 @@ Al primo `setup` viene scaricato il modello di trascrizione (`small`, circa 500 
 
 | Comando | Cosa fa |
 |---|---|
-| `jarvis run` | avvia tutto: microfono, parola di attivazione, voce e HUD nel browser |
-| `jarvis run --text` | senza microfono: scrivi i comandi (utile per provare) |
-| `jarvis chat --mute` | solo testo, senza voce |
-| `jarvis devices` | elenca i microfoni |
-| `jarvis say "Buongiorno"` | prova la voce |
-| `jarvis listen-test` | prova la parola di attivazione e tara la sensibilità |
-| `jarvis key` | salva la chiave di Claude nel Portachiavi (macOS) o in un file privato |
-| `jarvis app` | crea `Eve.app` per avviarlo dal Dock (macOS) |
+| `eve run` | avvia tutto: microfono, parola di attivazione, voce e HUD nel browser |
+| `eve run --text` | senza microfono: scrivi i comandi (utile per provare) |
+| `eve chat --mute` | solo testo, senza voce |
+| `eve devices` | elenca i microfoni |
+| `eve say "Buongiorno"` | prova la voce |
+| `eve listen-test` | prova la parola di attivazione e tara la sensibilità |
+| `eve key` | salva la chiave di Claude nel Portachiavi (macOS) o in un file privato |
+| `eve app` | crea `Eve.app` per avviarlo dal Dock (macOS) |
 
 Ricorda di attivare l'ambiente in ogni nuovo terminale, con `source .venv/bin/activate` dalla cartella `jarvis`.
 
 ### Problemi frequenti
 
-- **`cd: no such file or directory: jarvis`**: il repository non è stato scaricato, oppure sei nella cartella sbagliata. Esegui il `git clone` qui sopra e poi `cd Denis/jarvis`.
+- **`cd: no such file or directory: eve`**: il repository non è stato scaricato, oppure sei nella cartella sbagliata. Esegui il `git clone` qui sopra e poi `cd Denis/eve`.
 - **`export: not valid in this context`**: il terminale ha letto un commento come parte del comando. Copia solo la riga `export ...="..."` senza testo dopo.
 - **`Directory cannot be installed in editable mode`** oppure `pip 21.x`: il `pip` è troppo vecchio, di solito perché è il Python di sistema. Installa Python 3.13 e ricrea l'ambiente `.venv`.
-- **`Package 'jarvis-assistant' requires a different Python`** oppure errori di compilazione di `ctranslate2`/`onnxruntime`: stai usando Python 3.15. Crea l'ambiente con `python3.13 -m venv .venv`.
+- **`Package 'eve-assistant' requires a different Python`** oppure errori di compilazione di `ctranslate2`/`onnxruntime`: stai usando Python 3.15. Crea l'ambiente con `python3.13 -m venv .venv`.
 - **`fatal: destination path 'Denis' already exists`**: hai già una copia del repository. Entra con `cd ~/Denis`, poi `git fetch origin` e `git checkout claude/financial-advisor-dashboard-lbiycx`.
 - **`PortAudio library not found`** su Linux: `sudo apt install libportaudio2`.
 
@@ -134,14 +134,14 @@ Eve può diventare una vera app con icona nel Dock: si avvia con un doppio clic,
 1. Salva la chiave di Claude nel Portachiavi, così l'app la trova anche se non passa dal terminale (viene chiesta senza mostrarla):
 
    ```bash
-   jarvis key
+   eve key
    ```
 
 2. Installa il supporto per la finestra e crea l'app:
 
    ```bash
    pip install -e ".[window]"
-   jarvis app
+   eve app
    ```
 
    L'app viene creata in `~/Applications/Eve.app` (cartella Applicazioni dentro la tua home). Trascinala nel Dock per tenerla a portata di mano.
@@ -155,7 +155,7 @@ Per avere Eve sempre in ascolto dall'accensione del Mac, senza aprirlo a mano:
 1. Impostazioni di Sistema › Generali › Elementi login › aggiungi Eve.
 2. In `config.toml`, sezione `[ui]`, metti `start_hidden = true` così parte senza mostrare la finestra, e se vuoi `hide_after_seconds = 20` perché la finestra si nasconda da sola dopo venti secondi di inattività.
 
-L'app è un involucro che usa l'ambiente `.venv` del progetto: se sposti o cancelli la cartella del progetto, rilancia `jarvis app`. Per la stessa finestra senza creare l'app: `jarvis run --window`.
+L'app è un involucro che usa l'ambiente `.venv` del progetto: se sposti o cancelli la cartella del progetto, rilancia `eve app`. Per la stessa finestra senza creare l'app: `eve run --window`.
 
 ## Configurazione
 
@@ -175,7 +175,7 @@ Tutte le opzioni sono commentate in `config.example.toml`. Le più utili:
 
 ### Come viene riconosciuta la parola «Eve»
 
-Il backend predefinito (`whisper`) trascrive in locale, con il modello `tiny`, una finestra scorrevole di circa due secondi, e solo quando nella stanza c'è voce. «Eve» pronunciato «ivi» può essere trascritto come «ivi», «Ivy», «Evie» o «Eve»: tutte le grafie sono elencate in `aliases` e scatta l'ascolto con una qualsiasi, anche dentro una frase («ciao Eve», «ehi Eve»). L'audio detto subito dopo la parola non va perso. Se vuoi un altro nome, cambia `assistant.name`, `assistant.pronunciation`, `wakeword.model` e `wakeword.aliases`. Costa un po' di CPU mentre qualcuno parla, nulla nel silenzio; se è troppo sensibile alza `threshold` a 0.85, se non ti sente abbassalo a 0.65. `jarvis listen-test` mostra in tempo reale quando scatta.
+Il backend predefinito (`whisper`) trascrive in locale, con il modello `tiny`, una finestra scorrevole di circa due secondi, e solo quando nella stanza c'è voce. «Eve» pronunciato «ivi» può essere trascritto come «ivi», «Ivy», «Evie» o «Eve»: tutte le grafie sono elencate in `aliases` e scatta l'ascolto con una qualsiasi, anche dentro una frase («ciao Eve», «ehi Eve»). L'audio detto subito dopo la parola non va perso. Se vuoi un altro nome, cambia `assistant.name`, `assistant.pronunciation`, `wakeword.model` e `wakeword.aliases`. Costa un po' di CPU mentre qualcuno parla, nulla nel silenzio; se è troppo sensibile alza `threshold` a 0.85, se non ti sente abbassalo a 0.65. `eve listen-test` mostra in tempo reale quando scatta.
 
 Alternative:
 
@@ -199,8 +199,8 @@ Su macOS, al primo avvio il sistema chiede il permesso per il **microfono** e, p
 ## Sicurezza e privacy
 
 - Comandi di terminale e spegnimento richiedono sempre una conferma a voce, e i comandi di terminale sono disattivati finché non imposti `allow_shell = true`.
-- La chiave API sta nella variabile d'ambiente, nel Portachiavi di macOS oppure in `~/.config/jarvis/secrets.toml` (leggibile solo dal tuo utente): mai nel codice né nel file di configurazione.
-- Audio e trascrizione non lasciano il computer. A Claude vanno il testo delle richieste, le note in `brain.notes` e i fatti memorizzati con «ricorda che…» (file `~/.config/jarvis/memory.json`, che puoi cancellare quando vuoi).
+- La chiave API sta nella variabile d'ambiente, nel Portachiavi di macOS oppure in `~/.config/eve/secrets.toml` (leggibile solo dal tuo utente): mai nel codice né nel file di configurazione.
+- Audio e trascrizione non lasciano il computer. A Claude vanno il testo delle richieste, le note in `brain.notes` e i fatti memorizzati con «ricorda che…» (file `~/.config/eve/memory.json`, che puoi cancellare quando vuoi).
 - L'HUD è raggiungibile solo da questo computer (`127.0.0.1`).
 
 ## Sviluppo
@@ -213,7 +213,7 @@ pytest
 Struttura:
 
 ```
-jarvis/
+eve/
   assistant.py        orchestratore: stati, ascolto, conferme, conversazione
   cli.py              comandi: run, chat, devices, say, setup, listen-test
   config.py           configurazione TOML

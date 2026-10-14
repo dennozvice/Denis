@@ -1,7 +1,7 @@
 import numpy as np
 
-from jarvis.audio.vad import EndpointDetector, frame_energy
-from jarvis.audio.wakeword import ManualTrigger, _Chunker
+from eve.audio.vad import EndpointDetector, frame_energy
+from eve.audio.wakeword import ManualTrigger, _Chunker
 
 
 def tone(seconds, amplitude=6000, rate=16000):
@@ -74,7 +74,7 @@ def test_manual_trigger_fires_once():
 
 # Parola di attivazione tramite Whisper (trascrizione simulata)
 
-from jarvis.audio.wakeword import WhisperWakeDetector, keyword_match
+from eve.audio.wakeword import WhisperWakeDetector, keyword_match
 
 
 def test_keyword_match_tolerates_italian_spellings():
@@ -83,7 +83,7 @@ def test_keyword_match_tolerates_italian_spellings():
     assert keyword_match([("Gervis", 0.2, 0.7)], "jarvis", 0.7) is not None
     assert keyword_match([("jar", 0.1, 0.3), ("vis", 0.3, 0.6)], "jarvis", 0.75) == (1.0, 0.6)
     assert keyword_match([("ciao", 0.0, 0.3), ("come", 0.3, 0.5), ("va", 0.5, 0.6)], "jarvis", 0.75) is None
-    assert keyword_match([("Jarvisissimo", 0.0, 0.9)], "jarvis", 0.75) is None or keyword_match([("Jarvisissimo", 0.0, 0.9)], "jarvis", 0.75)[0] < 1.0
+    assert keyword_match([("Eveissimo", 0.0, 0.9)], "jarvis", 0.75) is None or keyword_match([("Eveissimo", 0.0, 0.9)], "jarvis", 0.75)[0] < 1.0
     assert keyword_match([], "jarvis", 0.75) is None
 
 

@@ -1,11 +1,11 @@
 import pytest
 
-from jarvis.config import load_config
+from eve.config import load_config
 
 
 def test_defaults_without_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("JARVIS_CONFIG", raising=False)
+    monkeypatch.delenv("EVE_CONFIG", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     config = load_config()
     assert config.wakeword.backend == "whisper"

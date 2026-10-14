@@ -2,8 +2,8 @@
 
 from types import SimpleNamespace
 
-from jarvis.brain.client import Brain, classify_confirmation
-from jarvis.brain.tools import NeedsConfirmation, Tool, ToolRegistry
+from eve.brain.client import Brain, classify_confirmation
+from eve.brain.tools import NeedsConfirmation, Tool, ToolRegistry
 
 
 def text_block(text):

@@ -4,9 +4,9 @@ import urllib.request
 
 import pytest
 
-from jarvis.brain.tools import NeedsConfirmation, Tool, ToolRegistry
-from jarvis.brain.tools import apps, home, memory as memory_tools, system, timers
-from jarvis.brain.tools.memory import Memory
+from eve.brain.tools import NeedsConfirmation, Tool, ToolRegistry
+from eve.brain.tools import apps, home, memory as memory_tools, system, timers
+from eve.brain.tools.memory import Memory
 
 
 def test_registry_schema_is_strict_and_sorted():

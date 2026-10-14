@@ -1,12 +1,12 @@
 """Orchestratore in modalità testo (nessun microfono) con cervello finto."""
 
-from jarvis.assistant import Assistant
-from jarvis.audio.tts import SilentSpeaker
-from jarvis.audio.wakeword import ManualTrigger
-from jarvis.brain.client import PendingAction, Reply
-from jarvis.brain.tools import Tool
-from jarvis.config import Config
-from jarvis.events import EventBus
+from eve.assistant import Assistant
+from eve.audio.tts import SilentSpeaker
+from eve.audio.wakeword import ManualTrigger
+from eve.brain.client import PendingAction, Reply
+from eve.brain.tools import Tool
+from eve.config import Config
+from eve.events import EventBus
 
 
 class FakeBrain:

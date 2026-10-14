@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jarvis-assistant"
+name = "eve-assistant"
 version = "0.1.0"
 description = "Assistente vocale sempre in ascolto, in stile J.A.R.V.I.S.: parola di attivazione, Claude come cervello, strumenti per controllare il computer e la casa, HUD olografico."
 readme = "README.md"
@@ -32,14 +32,13 @@ window = ["pywebview>=5.0"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-eve = "jarvis.cli:main"
-jarvis = "jarvis.cli:main"
+eve = "eve.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["jarvis*"]
+include = ["eve*"]
 
 [tool.setuptools.package-data]
-"jarvis.ui" = ["static/*", "static/*.icns"]
+"eve.ui" = ["static/*", "static/*.icns"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

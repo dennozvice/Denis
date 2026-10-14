@@ -8,8 +8,8 @@ import threading
 import aiohttp
 import pytest
 
-from jarvis.events import EventBus
-from jarvis.ui.server import HudServer
+from eve.events import EventBus
+from eve.ui.server import HudServer
 
 
 def free_port():

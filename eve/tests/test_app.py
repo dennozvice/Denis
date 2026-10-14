@@ -1,14 +1,14 @@
-"""Chiave salvata e creazione di Jarvis.app (senza toccare il Portachiavi vero)."""
+"""Chiave salvata e creazione di Eve.app (senza toccare il Portachiavi vero)."""
 
 import plistlib
 import os
 import stat
 
-from jarvis import macapp, secrets
+from eve import macapp, secrets
 
 
 def test_secrets_file_fallback(tmp_path, monkeypatch):
-    monkeypatch.setenv("JARVIS_HOME", str(tmp_path))
+    monkeypatch.setenv("EVE_HOME", str(tmp_path))
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(secrets.platform, "system", lambda: "Linux")
     assert secrets.get_api_key() == ""
@@ -31,21 +31,21 @@ def test_build_app_bundle(tmp_path):
     with open(app / "Contents" / "Info.plist", "rb") as handle:
         plist = plistlib.load(handle)
     assert plist["CFBundleExecutable"] == "launch"
-    assert plist["CFBundleIconFile"] == "jarvis.icns"
+    assert plist["CFBundleIconFile"] == "eve.icns"
     assert "NSMicrophoneUsageDescription" in plist
     launcher = app / "Contents" / "MacOS" / "launch"
     assert launcher.stat().st_mode & stat.S_IXUSR
     script = launcher.read_text()
     assert f'cd "{project}"' in script
-    assert '-m jarvis --config "' in script and 'config.toml" run --window' in script
+    assert '-m eve --config "' in script and 'config.toml" run --window' in script
     assert "display alert" in script and "denis.log" in script
-    assert (app / "Contents" / "Resources" / "jarvis.icns").stat().st_size > 10000
+    assert (app / "Contents" / "Resources" / "eve.icns").stat().st_size > 10000
     # ricostruire sovrascrive senza errori
     macapp.build_app(tmp_path / "apps", project, python=tmp_path / "py", name="Denis")
 
 
 def test_cli_accepts_config_before_and_after_subcommand(monkeypatch):
-    from jarvis import cli
+    from eve import cli
 
     seen = []
     monkeypatch.setattr(cli, "cmd_devices", lambda args: seen.append(args.config) or 0)

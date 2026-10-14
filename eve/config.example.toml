@@ -1,5 +1,5 @@
-# Configurazione di Jarvis. Copia questo file in config.toml (nella cartella del
-# progetto oppure in ~/.config/jarvis/config.toml) e modifica ciò che ti serve.
+# Configurazione di Eve. Copia questo file in config.toml (nella cartella del
+# progetto oppure in ~/.config/eve/config.toml) e modifica ciò che ti serve.
 # La chiave API di Claude NON va qui: esportala come variabile d'ambiente
 #   export ANTHROPIC_API_KEY="sk-ant-..."
 # oppure accedi una volta con `ant auth login`.
@@ -10,7 +10,7 @@ pronunciation = "ivi"          # come pronunci il nome: aiuta Eve a riconoscersi
 tagline = "Assistente personale"
 user_name = "Signore"          # come Eve si rivolge a te
 language = "it"
-# Secondi in cui Jarvis resta in ascolto dopo una risposta, senza parola di attivazione.
+# Secondi in cui Eve resta in ascolto dopo una risposta, senza parola di attivazione.
 follow_up_seconds = 6.0
 # Dopo quanti secondi di silenzio una conversazione si considera chiusa (nuovo contesto).
 conversation_timeout_seconds = 180
@@ -33,7 +33,7 @@ access_key = ""
 whisper_model = "tiny"         # solo per backend whisper: tiny (veloce) o base (più preciso)
 
 [audio]
-input_device = ""              # vuoto = dispositivo predefinito; vedi `jarvis devices`
+input_device = ""              # vuoto = dispositivo predefinito; vedi `eve devices`
 sample_rate = 16000
 silence_seconds = 0.9          # pausa che chiude la frase
 max_utterance_seconds = 15.0
@@ -57,9 +57,9 @@ model = "claude-opus-5-5"
 effort = "low"                 # low | medium | high: risposte vocali rapide con "low"
 max_tokens = 4096
 fallbacks = true               # ripiego automatico lato server se una richiesta viene rifiutata
-web_search = true              # permette a Jarvis di cercare sul web
+web_search = true              # permette a Eve di cercare sul web
 max_tool_rounds = 8
-# Note personali che Jarvis deve sempre sapere (città, preferenze, nomi...)
+# Note personali che Eve deve sempre sapere (città, preferenze, nomi...)
 notes = """
 Vivo a Milano. Uso un Mac.
 """
@@ -67,7 +67,7 @@ Vivo a Milano. Uso un Mac.
 [tools]
 allow_shell = false            # comandi di terminale a voce (sempre con conferma)
 allow_power = true             # blocco schermo, standby, spegnimento (con conferma)
-typing = true                  # Jarvis può scrivere testo al posto tuo nella finestra attiva
+typing = true                  # Eve può scrivere testo al posto tuo nella finestra attiva
 
 [home_assistant]
 enabled = false
@@ -79,8 +79,8 @@ enabled = true
 host = "127.0.0.1"
 port = 8765
 open = "browser"               # browser | window (serve pywebview) | none
-# Solo con la finestra (open = "window" oppure Jarvis.app):
+# Solo con la finestra (open = "window" oppure Eve.app):
 start_hidden = false           # true: parte in sottofondo senza mostrare la finestra
-show_on_wake = true            # la finestra compare da sola quando dici "Jarvis"
+show_on_wake = true            # la finestra compare da sola quando dici "Eve"
 hide_after_seconds = 0         # dopo quanti secondi di inattività la finestra si nasconde (0 = mai)
-# Chiudere la finestra non ferma Jarvis: continua ad ascoltare. Per uscire: icona nel Dock › Esci.
+# Chiudere la finestra non ferma Eve: continua ad ascoltare. Per uscire: icona nel Dock › Esci.
