@@ -55,9 +55,14 @@ export interface FlatScale {
 
 /**
  * Senza cornice: schermo largo quanto lo spazio (agganciato ai pixel interi solo se costa pochissimo:
- * sui display da 460 ppi dell'iPhone la frazione non si vede), ghiera grande quanto resta in altezza.
- * Su iPhone 16e (390×844, 3×): schermo 320×240 (3 pixel per punto, nitido), ghiera ≈ 290 px, niente scorrimento.
+ * sui display da 460 ppi dell'iPhone la frazione non si vede). La ghiera segue le proporzioni
+ * dell'iPod classic: diametro al 74 % della larghezza dello schermo (40 mm sotto un display da 54 mm),
+ * con uno stacco di circa 10 mm fra i due; se l'altezza non basta, la ghiera si riduce.
+ * Su iPhone 16e (390×844, 3×): schermo 320×240 (3 pixel per punto, nitido), ghiera ≈ 237 px, niente scorrimento.
  */
+export const FLAT_WHEEL_RATIO = 0.74
+export const FLAT_GAP_RATIO = 0.25
+
 export function computeFlatScale(availW: number, availH: number, dpr: number): FlatScale {
   // Un po' d'aria ai lati: lo schermo non va a tutta larghezza.
   const maxScale = Math.min((availW / 320) * 0.88, 1.6)
@@ -67,8 +72,11 @@ export function computeFlatScale(availW: number, availH: number, dpr: number): F
     const snapped = n / dpr
     if (snapped >= 0.96 * maxScale) lcdScale = snapped
   }
-  const rest = availH - 240 * lcdScale - 60
-  const wheelPx = Math.max(150, Math.min(availW * 0.8, rest, 380))
+  const screenW = 320 * lcdScale
+  const screenH = 240 * lcdScale
+  // In altezza devono starci ghiera, stacco dallo schermo e un piccolo margine sotto (0,5 mm).
+  const rest = (availH - screenH) / (1 + FLAT_GAP_RATIO + 0.0125)
+  const wheelPx = Math.round(Math.max(140, Math.min(screenW * FLAT_WHEEL_RATIO, rest, 380)))
   return { lcdScale, wheelPx }
 }
 
