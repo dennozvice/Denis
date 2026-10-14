@@ -45,6 +45,8 @@ I file vengono copiati dentro il browser. Lo spazio disponibile si vede in **Imp
 
 Alla prima accensione (e dopo **Ripristina impostazioni**) l'iPod chiede la lingua, come l'originale.
 
+**Con o senza cornice.** Sul computer l'iPod è disegnato per intero, con la scocca in alluminio. Sul telefono, invece, di default compaiono **solo lo schermo e la ghiera**, su fondo tutto bianco (iPod argento) o tutto nero (iPod nero), così l'app riempie il display. Si cambia con il pulsante **Con cornice / Senza cornice** sotto l'iPod o da **Impostazioni › Cornice iPod** (Automatica, Sì, No).
+
 ## Installarla come app
 
 Si installa come le altre app web: su Mac con Chrome dall'icona nella barra degli indirizzi (o dal pulsante **Installa come app** sotto l'iPod), con Safari da **File › Aggiungi al Dock**; su iPhone da **Condividi › Aggiungi alla schermata Home**; su Android dal menu di Chrome › **Installa app**. Una volta installata si apre anche senza connessione. Su iPhone e iPad il volume si regola con i tasti fisici (il browser non permette di cambiarlo via software) e l'equalizzatore non è attivo.

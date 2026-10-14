@@ -31,7 +31,8 @@
 }
 
 /* Skin argento (2007–2009) */
-.ipod[data-color='silver'] {
+.ipod[data-color='silver'],
+.flat[data-color='silver'] {
   --al-hi: #e2e3e5;
   --al-mid: #c9cacc;
   --al-lo: #b2b3b6;
@@ -49,7 +50,8 @@
   --switch: #d6d7d9;
 }
 /* Skin nero (2007, anodizzato nero) */
-.ipod[data-color='black'] {
+.ipod[data-color='black'],
+.flat[data-color='black'] {
   --al-hi: #3a3b3f;
   --al-mid: #202124;
   --al-lo: #121214;
@@ -301,4 +303,89 @@
   background: rgba(0, 0, 0, 0.35);
   filter: blur(calc(3 * var(--mm)));
   z-index: -2;
+}
+
+/*
+ * Senza cornice: solo schermo e ghiera, su fondo bianco (argento) o nero (nero).
+ * --mm è ricavato dal diametro voluto della ghiera (40 mm), così le etichette restano in proporzione.
+ */
+.flat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  font-family: 'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif;
+  color: var(--label);
+}
+.flat-screen {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #1a1b1a;
+}
+.flat[data-color='silver'] .flat-screen {
+  box-shadow: 0 0 0 1px #d4d4d6, 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+.flat[data-color='black'] .flat-screen {
+  box-shadow: 0 0 0 1px #2a2a2c, 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+.flat .ipod-wheel {
+  position: relative;
+  left: auto;
+  top: auto;
+  flex: 0 0 auto;
+  margin-bottom: calc(2 * var(--mm));
+}
+/* Ghiera chiara su bianco: un filo di contorno in più, altrimenti si perde */
+.flat[data-color='silver'] .ipod-wheel {
+  --wheel-gap: #b9babd;
+  --btn-gap: #a9aaad;
+  box-shadow:
+    0 0 0 calc(0.25 * var(--mm)) var(--wheel-gap),
+    inset 0 calc(0.35 * var(--mm)) calc(0.7 * var(--mm)) rgba(0, 0, 0, 0.14),
+    inset 0 calc(-0.25 * var(--mm)) calc(0.5 * var(--mm)) var(--wheel-inner-light);
+}
+.flat[data-color='black'] .ipod-wheel {
+  --wheel-gap: #2c2c2e;
+  --btn-gap: #3a3a3c;
+}
+/* Interruttore Hold: una linguetta piccola sotto lo schermo, a destra */
+.flat-hold {
+  position: relative;
+  width: 100%;
+  height: 0;
+}
+.flat-hold .ipod-hold {
+  position: absolute;
+  right: 4px;
+  top: calc(-14px - 0.65 * var(--mm));
+  left: auto;
+  width: calc(7.6 * var(--mm) * 0.6);
+  height: calc(1.3 * var(--mm) * 0.6);
+  border-radius: calc(0.4 * var(--mm));
+}
+.flat-hold .ipod-hold::before {
+  left: calc(0.3 * var(--mm));
+  top: calc(0.15 * var(--mm));
+  width: calc(1.4 * var(--mm));
+  height: calc(0.5 * var(--mm));
+}
+.flat-hold .ipod-hold::after {
+  top: calc(0.1 * var(--mm));
+  left: calc(0.2 * var(--mm));
+  width: calc(2.2 * var(--mm));
+  height: calc(0.6 * var(--mm));
+}
+.flat-hold .ipod-hold[data-locked='true']::after {
+  transform: translateX(calc(1.9 * var(--mm)));
+}
+.flat[data-color='silver'] .flat-hold .ipod-hold {
+  background: #cfd0d3;
+  --switch: #f4f4f6;
+  box-shadow: inset 0 calc(0.1 * var(--mm)) calc(0.15 * var(--mm)) rgba(0, 0, 0, 0.25);
 }
