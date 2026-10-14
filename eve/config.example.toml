@@ -30,7 +30,7 @@ model = "eve"                  # whisper: la parola; porcupine: parola di catalo
 aliases = ["ivi", "ivy", "evi", "evie", "ivie", "eevee"]
 threshold = 0.75
 access_key = ""
-whisper_model = "tiny"         # solo per backend whisper: tiny (veloce) o base (più preciso)
+whisper_model = "base"         # solo per backend whisper: tiny (più veloce) o base (più preciso, consigliato)
 
 [audio]
 input_device = ""              # vuoto = dispositivo predefinito; vedi `eve devices`

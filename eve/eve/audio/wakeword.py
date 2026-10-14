@@ -199,7 +199,7 @@ class WhisperWakeDetector:
         self,
         keyword: str | list[str] = "jarvis",
         threshold: float = 0.75,
-        model: str = "tiny",
+        model: str = "base",
         device: str = "cpu",
         compute_type: str = "int8",
         language: str = "it",
@@ -224,24 +224,30 @@ class WhisperWakeDetector:
         self.last_words: list[str] = []  # ultime parole trascritte (per la diagnosi)
         self._transcribe = transcribe or self._load(model, device, compute_type, language)
 
-    @staticmethod
-    def _load(model: str, device: str, compute_type: str, language: str) -> TranscribeWords:
+    def _load(self, model: str, device: str, compute_type: str, language: str) -> TranscribeWords:
         from faster_whisper import WhisperModel
 
         engine = WhisperModel(model, device=device, compute_type=compute_type)
+        keywords = [self.keyword] if isinstance(self.keyword, str) else list(self.keyword)
+        hint = " ".join(dict.fromkeys(k.capitalize() for k in keywords if k))
 
         def transcribe(audio: np.ndarray) -> list[Word]:
             samples = normalize_audio(audio)
             segments, _ = engine.transcribe(
                 samples,
                 language=language,
-                beam_size=1,
+                beam_size=2,
                 word_timestamps=True,
                 vad_filter=False,
                 condition_on_previous_text=False,
+                initial_prompt=f"{hint}.",  # suggerisce al modello il nome che ci aspettiamo
+                hotwords=hint,
             )
             words: list[Word] = []
             for segment in segments:
+                # Scarta ciò che il modello stesso giudica rumore o poco credibile
+                if segment.no_speech_prob > 0.6 or segment.avg_logprob < -1.2:
+                    continue
                 for word in segment.words or []:
                     words.append((word.word, float(word.start), float(word.end)))
             return words
@@ -323,7 +329,7 @@ def build_detector(
     access_key: str = "",
     *,
     aliases: list[str] | None = None,
-    whisper_model: str = "tiny",
+    whisper_model: str = "base",
     device: str = "cpu",
     compute_type: str = "int8",
     language: str = "it",

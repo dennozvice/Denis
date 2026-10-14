@@ -12,10 +12,11 @@ class Transcriber(Protocol):
 
 
 class WhisperTranscriber:
-    def __init__(self, model: str = "small", device: str = "cpu", compute_type: str = "int8", language: str = "it"):
+    def __init__(self, model: str = "small", device: str = "cpu", compute_type: str = "int8", language: str = "it", hint: str = ""):
         from faster_whisper import WhisperModel
 
         self.language = language
+        self.hint = hint  # parole che il modello deve aspettarsi (il nome dell'assistente)
         self._model = WhisperModel(model, device=device, compute_type=compute_type)
 
     def transcribe(self, audio: np.ndarray) -> str:
@@ -30,6 +31,8 @@ class WhisperTranscriber:
             beam_size=2,
             vad_filter=True,
             condition_on_previous_text=False,
+            initial_prompt=f"{self.hint}." if self.hint else None,
+            hotwords=self.hint or None,
         )
-        text = " ".join(segment.text.strip() for segment in segments)
+        text = " ".join(segment.text.strip() for segment in segments if segment.no_speech_prob < 0.7)
         return " ".join(text.split())

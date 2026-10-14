@@ -78,7 +78,8 @@ def build(config: Config, bus: EventBus, *, audio: bool, speak: bool = True):
         from eve.audio.stt import WhisperTranscriber
 
         bus.notice("Carico il modello di trascrizione…")
-        transcriber = WhisperTranscriber(config.stt.model, config.stt.device, config.stt.compute_type, config.assistant.language)
+        hint = " ".join(dict.fromkeys([config.assistant.name, config.assistant.pronunciation.capitalize()]))
+        transcriber = WhisperTranscriber(config.stt.model, config.stt.device, config.stt.compute_type, config.assistant.language, hint=hint)
         detector = make_detector(config)
         microphone = Microphone(config.audio.sample_rate, config.audio.input_device or None)
     else:
@@ -342,8 +343,16 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
     detector = make_detector(config)
     mic = Microphone(config.audio.sample_rate, config.audio.input_device or None)
     mic.start()
+    try:
+        import sounddevice as sd
+
+        device_info = sd.query_devices(mic.device if mic.device is not None else sd.default.device[0])
+        print(f"Microfono in uso: {device_info['name']}", flush=True)
+    except Exception:
+        pass
     print(f'Di\' "{config.wakeword.model}" (pronuncia: {config.assistant.pronunciation or config.wakeword.model}). Ctrl+C per uscire.', flush=True)
-    print("La barra mostra il livello del microfono; le parole sentite compaiono man mano.", flush=True)
+    print("La barra mostra il livello del microfono (parlando dovrebbe superare il 20%); le parole sentite compaiono man mano.", flush=True)
+    peak = 0.0
     last_shown: list[str] = []
     silent = 0
     try:
@@ -352,13 +361,14 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
             silent = silent + 1 if int(abs(frame).max()) == 0 else 0
             if silent == 75:
                 print("\n! Il microfono manda solo silenzio: probabilmente manca il permesso in Privacy e sicurezza › Microfono.", flush=True)
+            peak = max(peak * 0.995, level)
             bar = "#" * int(level * 40)
             hit = detector.feed(frame)
             words = getattr(detector, "last_words", [])
             if words and words != last_shown:
                 last_shown = list(words)
-                print(f"\r{'':<60}\r  sentito: {' '.join(words)}", flush=True)
-            print(f"\r{bar:<40} {'RILEVATA!' if hit else ''}", end="", flush=True)
+                print(f"\r{'':<70}\r  sentito: {' '.join(w.strip() for w in words)}", flush=True)
+            print(f"\r{bar:<40} {int(level * 100):3d}% (picco {int(peak * 100):3d}%) {'RILEVATA!' if hit else ''}", end="", flush=True)
             if hit:
                 print()
     except KeyboardInterrupt:

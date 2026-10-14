@@ -29,7 +29,7 @@ class WakewordConfig:
     aliases: list = field(default_factory=lambda: ["ivi", "ivy", "evi", "evie", "ivie", "eevee"])
     threshold: float = 0.75
     access_key: str = ""
-    whisper_model: str = "tiny"
+    whisper_model: str = "base"
 
 
 @dataclass
