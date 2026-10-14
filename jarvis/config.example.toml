@@ -77,3 +77,8 @@ enabled = true
 host = "127.0.0.1"
 port = 8765
 open = "browser"               # browser | window (serve pywebview) | none
+# Solo con la finestra (open = "window" oppure Jarvis.app):
+start_hidden = false           # true: parte in sottofondo senza mostrare la finestra
+show_on_wake = true            # la finestra compare da sola quando dici "Jarvis"
+hide_after_seconds = 0         # dopo quanti secondi di inattività la finestra si nasconde (0 = mai)
+# Chiudere la finestra non ferma Jarvis: continua ad ascoltare. Per uscire: icona nel Dock › Esci.

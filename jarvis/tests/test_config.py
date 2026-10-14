@@ -43,3 +43,4 @@ def test_example_config_is_valid():
     config = load_config(Path(__file__).resolve().parents[1] / "config.example.toml")
     assert config.wakeword.model == "jarvis"
     assert config.home_assistant.enabled is False
+    assert config.ui.show_on_wake is True and config.ui.start_hidden is False

@@ -148,7 +148,12 @@ Jarvis può diventare una vera app con icona nel Dock: si avvia con un doppio cl
 
 3. Al primo avvio macOS chiede il permesso per il microfono: accettalo. Per la scrittura automatica serve anche il permesso di Accessibilità, che macOS propone la prima volta che Jarvis prova a scrivere.
 
-Chiudendo la finestra Jarvis si ferma. Il registro di ciò che succede è in `~/Library/Logs/jarvis.log`. Per avviarlo da solo all'accesso: Impostazioni di Sistema › Generali › Elementi login › aggiungi Jarvis.
+**Chiudere la finestra non ferma Jarvis**: resta in sottofondo ad ascoltare, e la finestra ricompare da sola quando dici «Jarvis» (o «ciao Jarvis», «ehi Jarvis»: la parola viene cercata dentro la frase). Per fermarlo davvero: tasto destro sull'icona nel Dock › Esci. Il registro di ciò che succede è in `~/Library/Logs/jarvis.log`.
+
+Per avere Jarvis sempre in ascolto dall'accensione del Mac, senza aprirlo a mano:
+
+1. Impostazioni di Sistema › Generali › Elementi login › aggiungi Jarvis.
+2. In `config.toml`, sezione `[ui]`, metti `start_hidden = true` così parte senza mostrare la finestra, e se vuoi `hide_after_seconds = 20` perché la finestra si nasconda da sola dopo venti secondi di inattività.
 
 L'app è un involucro che usa l'ambiente `.venv` del progetto: se sposti o cancelli la cartella del progetto, rilancia `jarvis app`. Per la stessa finestra senza creare l'app: `jarvis run --window`.
 

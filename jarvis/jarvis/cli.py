@@ -145,9 +145,58 @@ def start_hud(config: Config, bus: EventBus, assistant, window: bool = False) ->
             print("pywebview non installato (pip install 'jarvis-assistant[window]'): apro il browser", flush=True)
             webbrowser.open(server.url)
             return
-        webview.create_window(f"{config.assistant.name} HUD", server.url, width=1280, height=800, background_color="#02070d")
-        webview.start()  # blocca il thread principale finché la finestra è aperta
+        run_window(config, bus, server.url)
         raise KeyboardInterrupt
+
+
+def run_window(config: Config, bus: EventBus, url: str) -> None:
+    """Finestra dell'HUD (pywebview). Chiuderla la nasconde soltanto: Jarvis resta in ascolto.
+
+    Blocca il thread principale finché l'app non viene chiusa dal Dock (Esci) o con Ctrl+C.
+    """
+    import webview
+
+    window = webview.create_window(
+        f"{config.assistant.name} HUD",
+        url,
+        width=1280,
+        height=800,
+        background_color="#02070d",
+        hidden=config.ui.start_hidden,
+    )
+    hide_timer: list[threading.Timer] = []
+
+    def cancel_hide() -> None:
+        for timer in hide_timer:
+            timer.cancel()
+        hide_timer.clear()
+
+    def schedule_hide() -> None:
+        cancel_hide()
+        if config.ui.hide_after_seconds > 0:
+            timer = threading.Timer(config.ui.hide_after_seconds, window.hide)
+            timer.daemon = True
+            hide_timer.append(timer)
+            timer.start()
+
+    def on_event(event) -> None:  # noqa: ANN001
+        if event.type == "wake" and config.ui.show_on_wake:
+            cancel_hide()
+            window.show()
+        elif event.type == "state" and event.data.get("state") == "idle":
+            schedule_hide()
+        elif event.type == "state":
+            cancel_hide()
+
+    def on_closing() -> bool:
+        window.hide()  # la finestra sparisce, il processo continua ad ascoltare
+        return False
+
+    bus.subscribe(on_event)
+    window.events.closing += on_closing
+    if config.ui.start_hidden:
+        print("Finestra nascosta: comparirà quando dirai la parola di attivazione.", flush=True)
+    webview.start()
 
 
 def cmd_run(args: argparse.Namespace) -> int:

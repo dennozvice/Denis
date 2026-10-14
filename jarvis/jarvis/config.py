@@ -84,6 +84,9 @@ class UiConfig:
     host: str = "127.0.0.1"
     port: int = 8765
     open: str = "browser"
+    start_hidden: bool = False
+    show_on_wake: bool = True
+    hide_after_seconds: float = 0.0
 
 
 @dataclass
