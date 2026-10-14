@@ -313,7 +313,6 @@ def main(argv: list[str] | None = None) -> int:
     common.add_argument("--config", default=argparse.SUPPRESS, help="percorso del file config.toml")
     common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
     parser = argparse.ArgumentParser(prog="jarvis", description="Assistente vocale sempre in ascolto.", parents=[common])
-    parser.set_defaults(config=None, verbose=False)
     sub = parser.add_subparsers(dest="command", parser_class=lambda **kw: argparse.ArgumentParser(parents=[common], **kw))
 
     run = sub.add_parser("run", help="avvia Jarvis (microfono, parola di attivazione, HUD)")
@@ -341,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
     app.set_defaults(func=cmd_app)
 
     args = parser.parse_args(argv)
+    args.config = getattr(args, "config", None)
+    args.verbose = getattr(args, "verbose", False)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING, format="%(name)s: %(message)s")
     if not args.command:
         parser.print_help()
