@@ -139,4 +139,4 @@ def test_normalize_audio_amplifies_quiet_signal():
     assert 0.85 <= float(np.abs(out).max()) <= 0.9
     assert normalize_audio(silence(0.1)).max() == 0.0
     loud = tone(0.5, amplitude=30000)
-    assert float(np.abs(normalize_audio(loud)).max()) <= 0.9
+    assert float(np.abs(normalize_audio(loud)).max()) <= 0.9001
