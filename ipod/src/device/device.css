@@ -286,6 +286,8 @@
 .ipod-stage {
   position: relative;
   display: inline-block;
+  /* contesto di sovrapposizione proprio: bordo, ombra e bordo superiore (z negativi) restano sopra la pagina */
+  z-index: 0;
 }
 .ipod-stage::after {
   content: '';

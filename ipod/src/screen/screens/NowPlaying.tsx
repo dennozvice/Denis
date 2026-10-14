@@ -10,6 +10,7 @@ import { nav, type Screen } from '../../core/navigation'
 import { updateSettings } from '../../core/settings'
 import { t } from '../../i18n/strings'
 import { library, useLibrary } from '../../library/index'
+import { ui } from '../../core/ui'
 import { Artwork } from '../Artwork'
 import { RepeatIcon, ShuffleIcon, SpeakerIcon } from '../icons'
 import { Marquee } from '../MenuList'
@@ -66,6 +67,13 @@ export function nowPlayingInput(e: InputEvent, screen: Screen): boolean {
       volumeUntil = Date.now() + 1500
       nav.update({ mode: 'volume' })
       armModeTimeout(1500)
+      return true
+    }
+    case 'hold': {
+      // Tasto centrale tenuto premuto: aggiunge (o toglie) il brano alla playlist On-The-Go.
+      if (e.button !== 'center' || !st.trackId) return false
+      const id = st.trackId
+      void library.toggleOnTheGo(id, t('onTheGo')).then((added) => ui.toast(t(added ? 'addedToOnTheGo' : 'removedFromOnTheGo')))
       return true
     }
     case 'press': {

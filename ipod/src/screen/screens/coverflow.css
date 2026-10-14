@@ -1,0 +1,223 @@
+/*
+ * Cover Flow: carosello 3D sul nero (prospettiva 500 px, copertine laterali ruotate di 65°
+ * verso il centro) e "retro" della copertina con l'elenco dei brani.
+ * Coordinate riferite all'area contenuto (320×219): la copertina centrale è a (100, 13).
+ */
+.cf {
+  position: absolute;
+  inset: 0;
+  background: #000000;
+  overflow: hidden;
+}
+
+/* Palcoscenico: ogni copertina è proiettata da sola (niente preserve-3d: l'ordine lo decide z-index) */
+.cf-stage {
+  position: absolute;
+  inset: 0;
+  perspective: 500px;
+  perspective-origin: 160px 73px;
+  transform-origin: 160px 73px;
+  transition: opacity 350ms ease-in-out, transform 350ms ease-in-out;
+}
+.cf-stage[data-back='true'] {
+  opacity: 0.25;
+  transform: scale(0.92);
+}
+.cf-cover {
+  position: absolute;
+  left: 100px;
+  top: 13px;
+  width: 120px;
+  height: 120px;
+  transition: transform 180ms ease-out, visibility 0s linear 350ms;
+  will-change: transform;
+}
+.cf-stage[data-fast='true'] .cf-cover {
+  transition: transform 60ms ease-out, visibility 0s linear 350ms;
+}
+/* Mentre la copertina centrale "gira" (copia nel pannello di flip) l'originale resta nascosta. */
+.cf-stage[data-back='true'] .cf-cover[data-center='true'] {
+  visibility: hidden;
+  transition: transform 180ms ease-out, visibility 0s;
+}
+.cf-cover > .art {
+  box-shadow: none;
+}
+.cf-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: none;
+}
+/* Riflesso più deciso che altrove (0.4 → 0) sul fondo nero. */
+.cf-cover .art-reflection {
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0));
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0));
+}
+.cf-cover .art-note {
+  color: #4a4a4a;
+}
+
+/* Titolo e artista sotto il carosello */
+.cf-text {
+  position: absolute;
+  left: 0;
+  width: 320px;
+  top: 173px;
+  height: 34px;
+  text-align: center;
+  white-space: nowrap;
+  animation: cf-fade-in 120ms linear;
+  transition: opacity 200ms ease-out;
+}
+.cf-text[data-back='true'] {
+  opacity: 0;
+}
+.cf-title,
+.cf-artist {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  height: 16px;
+  line-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-title {
+  top: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.cf-artist {
+  top: 18px;
+  font-size: 13px;
+  color: #d0d0d0;
+}
+@keyframes cf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/*
+ * Flip: un piano 320×219 che ruota attorno all'asse verticale passante per il centro della
+ * copertina. Davanti c'è una copia della copertina centrale, dietro il pannello dei brani
+ * (ruotato di 180° e ingrandito mentre appare). `visibility` resta visibile fino a fine
+ * animazione, così il ritorno al carosello è animato senza stato JS.
+ */
+.cf-flip-wrap {
+  position: absolute;
+  inset: 0;
+  perspective: 500px;
+  perspective-origin: 160px 73px;
+  pointer-events: none;
+}
+.cf-flip {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: 160px 73px;
+  transform: rotateY(0deg);
+  visibility: hidden;
+  transition: transform 350ms ease-in-out, visibility 0s linear 350ms;
+}
+.cf-flip[data-back='true'] {
+  visibility: visible;
+  transform: rotateY(180deg);
+  transition: transform 350ms ease-in-out, visibility 0s;
+}
+.cf-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.cf-front {
+  transform: translateZ(0.1px);
+}
+.cf-back-face {
+  transform-origin: 160px 73px;
+  transform: rotateY(180deg) scale(0.375);
+  transition: transform 350ms ease-in-out;
+}
+.cf-flip[data-back='true'] .cf-back-face {
+  transform: rotateY(180deg) scale(1);
+}
+
+/* Retro: pannello scuro con copertina piccola, titoli e brani */
+.cf-back {
+  position: absolute;
+  inset: 0;
+  background: #1e1e1e;
+  border-top: 1px solid #3a3a3a;
+  overflow: hidden;
+}
+.cf-back-art {
+  position: absolute;
+  left: 10px;
+  top: 27px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.cf-back-title,
+.cf-back-artist {
+  position: absolute;
+  left: 76px;
+  width: 234px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-back-title {
+  top: 31px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.cf-back-artist {
+  top: 48px;
+  height: 14px;
+  line-height: 14px;
+  font-size: 12px;
+  color: #bdbdbd;
+}
+.cf-tracks {
+  position: absolute;
+  left: 0;
+  top: 91px;
+  width: 320px;
+  height: 120px;
+}
+.cf-track {
+  position: absolute;
+  left: 0;
+  width: 320px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 13px;
+  color: #ffffff;
+  white-space: nowrap;
+}
+.cf-track[data-sel='true'] {
+  background: linear-gradient(180deg, #9cd0ff 0, #9cd0ff 1px, #6eb1f9 1px, #2466dc 100%);
+}
+.cf-track-no {
+  position: absolute;
+  left: 10px;
+  width: 20px;
+  text-align: right;
+}
+.cf-track-title {
+  position: absolute;
+  left: 36px;
+  right: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-track-time {
+  position: absolute;
+  right: 14px;
+  text-align: right;
+}
