@@ -307,10 +307,14 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="jarvis", description="Assistente vocale sempre in ascolto.")
-    parser.add_argument("--config", help="percorso del file config.toml")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    sub = parser.add_subparsers(dest="command")
+    # Opzioni comuni, accettate sia prima sia dopo il sottocomando (jarvis --config x run / jarvis run --config x)
+    common = argparse.ArgumentParser(add_help=False)
+    # SUPPRESS: il sottocomando non sovrascrive con un default il valore letto prima di esso
+    common.add_argument("--config", default=argparse.SUPPRESS, help="percorso del file config.toml")
+    common.add_argument("-v", "--verbose", action="store_true", default=argparse.SUPPRESS)
+    parser = argparse.ArgumentParser(prog="jarvis", description="Assistente vocale sempre in ascolto.", parents=[common])
+    parser.set_defaults(config=None, verbose=False)
+    sub = parser.add_subparsers(dest="command", parser_class=lambda **kw: argparse.ArgumentParser(parents=[common], **kw))
 
     run = sub.add_parser("run", help="avvia Jarvis (microfono, parola di attivazione, HUD)")
     run.add_argument("--text", action="store_true", help="senza microfono: comandi scritti")

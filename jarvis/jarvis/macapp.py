@@ -18,7 +18,7 @@ LAUNCHER_TEMPLATE = """#!/bin/bash
 cd "@PROJECT@"
 mkdir -p "@LOGDIR@"
 echo "=== avvio $(date) ===" >> "@LOG@"
-"@PYTHON@" -m jarvis run --window@CONFIG@ >> "@LOG@" 2>&1
+"@PYTHON@" -m jarvis@CONFIG@ run --window >> "@LOG@" 2>&1
 status=$?
 if [ "$status" -ne 0 ]; then
   tail_text=$(tail -n 12 "@LOG@")

@@ -37,8 +37,20 @@ def test_build_app_bundle(tmp_path):
     assert launcher.stat().st_mode & stat.S_IXUSR
     script = launcher.read_text()
     assert f'cd "{project}"' in script
-    assert "-m jarvis run --window" in script and 'config.toml"' in script
+    assert '-m jarvis --config "' in script and 'config.toml" run --window' in script
     assert "display alert" in script and "jarvis.log" in script
     assert (app / "Contents" / "Resources" / "jarvis.icns").stat().st_size > 10000
     # ricostruire sovrascrive senza errori
     macapp.build_app(tmp_path / "apps", project, python=tmp_path / "py", name="Denis")
+
+
+def test_cli_accepts_config_before_and_after_subcommand(monkeypatch):
+    from jarvis import cli
+
+    seen = []
+    monkeypatch.setattr(cli, "cmd_devices", lambda args: seen.append(args.config) or 0)
+    # il sottocomando va reimpostato perché i parser sono costruiti dentro main()
+    parser_main = cli.main
+    assert parser_main(["--config", "/a.toml", "devices"]) == 0
+    assert parser_main(["devices", "--config", "/b.toml"]) == 0
+    assert seen == ["/a.toml", "/b.toml"]
