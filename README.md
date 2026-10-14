@@ -14,6 +14,10 @@ L'app funziona tutta nel browser. Non c'è un server, non serve un login e nessu
 
 Al primo avvio la dashboard è **vuota**: niente clienti, attività o appuntamenti di esempio. Un riquadro di benvenuto ti guida nei primi passi. Se vuoi prima vedere come funziona, puoi caricare dei dati dimostrativi e cancellarli quando vuoi da **Impostazioni › Inizia da zero**.
 
+## Altri progetti in questo repository
+
+- **[iPod](ipod/README.md)** (`ipod/`): un lettore musicale con la grafica e la ghiera cliccabile di un iPod Classic, per ascoltare la propria musica nel browser. Pubblicato su <https://dennozvice.github.io/Denis/ipod/>.
+
 ## Usarla come app sul Mac (o su iPhone, iPad, Android)
 
 La dashboard si può **installare come app**. Avrai un'icona nel Dock e nel Launchpad, una finestra senza barra del browser, e funziona **anche senza internet**. Gli aggiornamenti arrivano da soli.

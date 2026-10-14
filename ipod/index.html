@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Niente zoom: l'interfaccia del dispositivo deve restare fissa come su un iPod vero -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+    <meta name="description" content="Lettore musicale con l'aspetto e la ghiera cliccabile di un iPod Classic, che riproduce la tua musica." />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <!-- App installabile (Mac, Windows, iPhone, Android): manifest, icone e colore della finestra -->
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <meta name="theme-color" content="#141414" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="iPod" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>iPod</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Per usare l'iPod è necessario abilitare JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,304 @@
+/*
+ * Scocca dell'iPod Classic (6G/7G). Tutte le misure sono in millimetri reali,
+ * moltiplicate per --mm (pixel CSS per millimetro, calcolato in Device.tsx).
+ * Corpo 61.8 × 103.5 mm, raggio 8 mm; finestra 54 × 41.5 mm a (3.9, 4.9);
+ * LCD 49.92 × 37.44 mm a (5.94, 6.93); ghiera Ø 40 mm centrata a (30.9, 73.5); tasto Ø 16 mm.
+ */
+.ipod {
+  --w: calc(61.8 * var(--mm));
+  --h: calc(103.5 * var(--mm));
+  position: relative;
+  width: var(--w);
+  height: var(--h);
+  border-radius: calc(8 * var(--mm));
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+  font-family: 'Helvetica Neue', Helvetica, Arial, 'Liberation Sans', sans-serif;
+  /* alluminio satinato: righe sottilissime + luce da in alto a sinistra + vignetta */
+  background:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, rgba(0, 0, 0, 0.022) 1px 2px),
+    radial-gradient(120% 100% at 30% 20%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.06)),
+    linear-gradient(135deg, var(--al-hi) 0%, var(--al-mid) 45%, var(--al-lo) 100%);
+  box-shadow: inset 0 0 0 calc(0.15 * var(--mm)) var(--al-edge);
+  color: var(--label);
+}
+.ipod[data-grain='off'] {
+  background:
+    radial-gradient(120% 100% at 30% 20%, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.06)),
+    linear-gradient(135deg, var(--al-hi) 0%, var(--al-mid) 45%, var(--al-lo) 100%);
+}
+
+/* Skin argento (2007–2009) */
+.ipod[data-color='silver'] {
+  --al-hi: #e2e3e5;
+  --al-mid: #c9cacc;
+  --al-lo: #b2b3b6;
+  --al-edge: #8f9094;
+  --wheel-hi: #e4e5e7;
+  --wheel-mid: #d8d9db;
+  --wheel-lo: #c4c5c8;
+  --wheel-gap: #7a7b7e;
+  --wheel-inner-light: rgba(255, 255, 255, 0.3);
+  --label: rgba(255, 255, 255, 0.92);
+  --btn-hi: #ecedee;
+  --btn-mid: #dcdde0;
+  --btn-lo: #c3c4c7;
+  --btn-gap: #9a9b9e;
+  --switch: #d6d7d9;
+}
+/* Skin nero (2007, anodizzato nero) */
+.ipod[data-color='black'] {
+  --al-hi: #3a3b3f;
+  --al-mid: #202124;
+  --al-lo: #121214;
+  --al-edge: #0b0b0c;
+  --wheel-hi: #2a2b2e;
+  --wheel-mid: #1b1b1d;
+  --wheel-lo: #111112;
+  --wheel-gap: #050505;
+  --wheel-inner-light: rgba(255, 255, 255, 0.1);
+  --label: rgba(141, 142, 145, 0.92);
+  --btn-hi: #38393c;
+  --btn-mid: #232427;
+  --btn-lo: #141416;
+  --btn-gap: #060607;
+  --switch: #2a2b2e;
+}
+
+/* Bordo lucido in acciaio (0.5 mm) dietro la piastra, con ombre di appoggio */
+.ipod::before {
+  content: '';
+  position: absolute;
+  inset: calc(-0.5 * var(--mm));
+  border-radius: calc(8.5 * var(--mm));
+  z-index: -1;
+  background: conic-gradient(
+    from 135deg,
+    #6d6e71 0deg,
+    #ffffff 60deg,
+    #c4c5c7 120deg,
+    #6d6e71 180deg,
+    #ffffff 250deg,
+    #c4c5c7 320deg,
+    #6d6e71 360deg
+  );
+  box-shadow:
+    0 calc(1.5 * var(--mm)) calc(3 * var(--mm)) rgba(0, 0, 0, 0.22),
+    0 calc(14 * var(--mm)) calc(28 * var(--mm)) rgba(0, 0, 0, 0.28);
+}
+
+/* Bordo superiore (visto di sfuggita, come da leggermente sopra): interruttore Hold e presa cuffie */
+.ipod-top {
+  position: absolute;
+  left: calc(2.2 * var(--mm));
+  right: calc(2.2 * var(--mm));
+  top: calc(-1.9 * var(--mm));
+  height: calc(2.6 * var(--mm));
+  border-radius: calc(1.3 * var(--mm)) calc(1.3 * var(--mm)) 0 0 / calc(1.3 * var(--mm)) calc(1.3 * var(--mm)) 0 0;
+  background: linear-gradient(180deg, #f6f6f7 0%, #b9babd 35%, #e9e9eb 60%, #7c7d80 100%);
+  z-index: -1;
+}
+.ipod-hold {
+  position: absolute;
+  left: calc(11 * var(--mm) - 2.2 * var(--mm) - 3.8 * var(--mm));
+  top: calc(0.25 * var(--mm));
+  width: calc(7.6 * var(--mm));
+  height: calc(1.3 * var(--mm));
+  border-radius: calc(0.65 * var(--mm));
+  background: #151516;
+  box-shadow: inset 0 calc(0.1 * var(--mm)) calc(0.15 * var(--mm)) rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+  overflow: hidden;
+}
+.ipod-hold::before {
+  /* striscia arancione, scoperta quando Hold è inserito */
+  content: '';
+  position: absolute;
+  left: calc(0.5 * var(--mm));
+  top: calc(0.25 * var(--mm));
+  width: calc(2.4 * var(--mm));
+  height: calc(0.8 * var(--mm));
+  border-radius: calc(0.2 * var(--mm));
+  background: #f4833b;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.ipod-hold::after {
+  /* linguetta scorrevole */
+  content: '';
+  position: absolute;
+  top: calc(0.15 * var(--mm));
+  left: calc(0.3 * var(--mm));
+  width: calc(3.8 * var(--mm));
+  height: calc(1 * var(--mm));
+  border-radius: calc(0.3 * var(--mm));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--switch) 85%, white) 0%, var(--switch) 55%, color-mix(in srgb, var(--switch) 72%, black) 100%);
+  box-shadow: 0 calc(0.08 * var(--mm)) calc(0.12 * var(--mm)) rgba(0, 0, 0, 0.5);
+  transition: transform 140ms ease-out;
+}
+.ipod-hold[data-locked='true']::after {
+  transform: translateX(calc(3 * var(--mm)));
+}
+.ipod-hold[data-locked='true']::before {
+  opacity: 1;
+}
+.ipod-jack {
+  position: absolute;
+  left: calc(52 * var(--mm) - 2.2 * var(--mm) - 1.6 * var(--mm));
+  top: calc(0.2 * var(--mm));
+  width: calc(3.2 * var(--mm));
+  height: calc(1.5 * var(--mm));
+  border-radius: calc(1.6 * var(--mm)) calc(1.6 * var(--mm)) 0 0 / calc(1.5 * var(--mm)) calc(1.5 * var(--mm)) 0 0;
+  background: radial-gradient(ellipse at 50% 100%, #0a0a0a 50%, #3a3a3a 72%, #9a9a9a 100%);
+}
+
+/* Finestra di vetro con mascherina nera; l'LCD attivo è dentro, con angoli vivi */
+.ipod-window {
+  position: absolute;
+  left: calc(3.9 * var(--mm));
+  top: calc(4.9 * var(--mm));
+  width: calc(54 * var(--mm));
+  height: calc(41.5 * var(--mm));
+  border-radius: calc(1 * var(--mm));
+  background: #0a0a0b;
+  box-shadow:
+    inset 0 0 0 calc(0.15 * var(--mm)) rgba(0, 0, 0, 0.55),
+    inset 0 calc(0.3 * var(--mm)) calc(0.6 * var(--mm)) rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.ipod-lcd {
+  position: absolute;
+  left: calc(2.04 * var(--mm));
+  top: calc(2.03 * var(--mm));
+  width: calc(49.92 * var(--mm));
+  height: calc(37.44 * var(--mm));
+  overflow: hidden;
+  background: #1a1b1a;
+}
+/* Contenuto 320×240 scalato: 1 px LCD = 0.156 mm */
+.ipod-lcd-inner {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 320px;
+  height: 240px;
+  transform: scale(var(--lcd-scale));
+  transform-origin: 0 0;
+}
+.ipod-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(112deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.06) 34%, rgba(255, 255, 255, 0) 52%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+/* Ghiera */
+.ipod-wheel {
+  position: absolute;
+  left: calc((30.9 - 20) * var(--mm));
+  top: calc((73.5 - 20) * var(--mm));
+  width: calc(40 * var(--mm));
+  height: calc(40 * var(--mm));
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 44%, var(--wheel-hi) 0%, var(--wheel-mid) 58%, var(--wheel-lo) 100%);
+  box-shadow:
+    0 0 0 calc(0.25 * var(--mm)) var(--wheel-gap),
+    inset 0 calc(0.35 * var(--mm)) calc(0.7 * var(--mm)) rgba(0, 0, 0, 0.22),
+    inset 0 calc(-0.25 * var(--mm)) calc(0.5 * var(--mm)) var(--wheel-inner-light);
+  cursor: pointer;
+  touch-action: none;
+}
+/* Ombra leggera del quadrante premuto (il tasto fisico non si muove) */
+.ipod-wheel-press {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 90ms;
+}
+.ipod-wheel-press[data-zone='menu'],
+.ipod-wheel-press[data-zone='next'],
+.ipod-wheel-press[data-zone='play'],
+.ipod-wheel-press[data-zone='prev'] {
+  opacity: 1;
+}
+.ipod-wheel-press[data-zone='menu'] { background: conic-gradient(from -45deg, rgba(0, 0, 0, 0.05) 0 90deg, transparent 90deg); }
+.ipod-wheel-press[data-zone='next'] { background: conic-gradient(from 45deg, rgba(0, 0, 0, 0.05) 0 90deg, transparent 90deg); }
+.ipod-wheel-press[data-zone='play'] { background: conic-gradient(from 135deg, rgba(0, 0, 0, 0.05) 0 90deg, transparent 90deg); }
+.ipod-wheel-press[data-zone='prev'] { background: conic-gradient(from 225deg, rgba(0, 0, 0, 0.05) 0 90deg, transparent 90deg); }
+
+.ipod-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(16 * var(--mm));
+  height: calc(16 * var(--mm));
+  margin: calc(-8 * var(--mm)) 0 0 calc(-8 * var(--mm));
+  border-radius: 50%;
+  background: radial-gradient(circle at 42% 36%, var(--btn-hi) 0%, var(--btn-mid) 55%, var(--btn-lo) 100%);
+  box-shadow:
+    0 0 0 calc(0.3 * var(--mm)) var(--btn-gap),
+    0 calc(0.25 * var(--mm)) calc(0.5 * var(--mm)) rgba(0, 0, 0, 0.3);
+  transition: transform 80ms ease-out, box-shadow 80ms ease-out;
+  pointer-events: none;
+}
+.ipod-center[data-pressed='true'] {
+  transform: translateY(calc(0.15 * var(--mm)));
+  box-shadow:
+    0 0 0 calc(0.3 * var(--mm)) var(--btn-gap),
+    0 calc(0.12 * var(--mm)) calc(0.25 * var(--mm)) rgba(0, 0, 0, 0.3);
+}
+
+/* Etichette stampate (piatte, nessuna ombra) */
+.ipod-label {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  pointer-events: none;
+  fill: var(--label);
+  color: var(--label);
+}
+.ipod-label svg {
+  display: block;
+  height: calc(1.7 * var(--mm));
+  width: auto;
+}
+.ipod-label-menu {
+  transform: translate(-50%, -50%) translateY(calc(-15.3 * var(--mm)));
+  font-size: calc(2.1 * var(--mm));
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  font-family: 'Myriad Pro', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+.ipod-label-prev { transform: translate(-50%, -50%) translateX(calc(-15.3 * var(--mm))); }
+.ipod-label-next { transform: translate(-50%, -50%) translateX(calc(15.3 * var(--mm))); }
+.ipod-label-play { transform: translate(-50%, -50%) translateY(calc(15.3 * var(--mm))); }
+
+/* Ombra di contatto e riflesso sul "pavimento" */
+.ipod-stage {
+  position: relative;
+  display: inline-block;
+  /* contesto di sovrapposizione proprio: bordo, ombra e bordo superiore (z negativi) restano sopra la pagina */
+  z-index: 0;
+}
+.ipod-stage::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(-3 * var(--mm));
+  width: calc(56 * var(--mm));
+  height: calc(6 * var(--mm));
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  filter: blur(calc(3 * var(--mm)));
+  z-index: -2;
+}

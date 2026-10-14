@@ -1,0 +1,149 @@
+/*
+ * Extra: Orologi (righe da 56 px con quadrante analogico) e Cronometro (totale, pulsanti, giri).
+ * Stesse sfumature e colori delle liste in lcd.css.
+ */
+
+/* ---------- Orologi ---------- */
+.ck {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+}
+.ck-row {
+  position: absolute;
+  left: 0;
+  height: 56px;
+  color: #000000;
+}
+.ck-row[data-sel='true'] {
+  background: linear-gradient(180deg, #9cd0ff 0, #9cd0ff 1px, #6eb1f9 1px, #2466dc 100%);
+  color: #ffffff;
+}
+.ck-face {
+  position: absolute;
+  left: 12px;
+  top: 4px;
+  display: block;
+}
+.ck-city {
+  position: absolute;
+  left: 72px;
+  right: 12px;
+  top: 8px;
+  font-size: 16px;
+  line-height: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-time {
+  position: absolute;
+  left: 72px;
+  top: 28px;
+  font-size: 14px;
+  line-height: 14px;
+  white-space: nowrap;
+}
+.ck-date {
+  position: absolute;
+  right: 10px;
+  top: 30px;
+  font-size: 12px;
+  line-height: 12px;
+  color: #6e6e6e;
+  white-space: nowrap;
+}
+.ck-row[data-sel='true'] .ck-date {
+  color: #e8f0ff;
+}
+/* Sotto-menu di un orologio: "Elimina" spento quando è l'unico */
+.ck-menu .row[data-disabled='true'] .row-label {
+  color: #9b9b9b;
+}
+.ck-menu .row[data-sel='true'][data-disabled='true'] .row-label {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* ---------- Cronometro ---------- */
+.sw {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  color: #000000;
+}
+.sw-total {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 36px;
+  text-align: center;
+  font-size: 30px;
+  line-height: 30px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.sw-lap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 70px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 14px;
+  color: #6e6e6e;
+  white-space: nowrap;
+}
+.sw-lap-time {
+  margin-left: 8px;
+}
+.sw-btn {
+  position: absolute;
+  top: 92px;
+  width: 104px;
+  height: 24px;
+  border: 1px solid #9b9b9b;
+  border-radius: 6px;
+  background: #f0f0f0;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 700;
+  text-align: center;
+  color: #000000;
+  white-space: nowrap;
+}
+.sw-btn[data-focus='true'] {
+  background: linear-gradient(180deg, #6eb1f9, #2466dc);
+  border-color: #2466dc;
+  color: #ffffff;
+}
+.sw-row {
+  position: absolute;
+  left: 0;
+  width: 320px;
+  height: 20px;
+  line-height: 20px;
+  font-size: 13px;
+  color: #000000;
+  white-space: nowrap;
+}
+.sw-row-n {
+  position: absolute;
+  left: 12px;
+}
+.sw-row-lap {
+  position: absolute;
+  left: 120px;
+}
+.sw-row-total {
+  position: absolute;
+  right: 12px;
+}
+.sw-row[data-scroll='true'] .sw-row-total {
+  right: 24px;
+}
+.sw-scrollbar {
+  top: 124px;
+  left: 308px;
+  height: 92px;
+}

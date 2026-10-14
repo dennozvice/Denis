@@ -5,7 +5,7 @@
  *   quindi una nuova versione ha file con nomi nuovi e non c'è rischio di usare file vecchi.
  * I dati dell'utente NON passano da qui: restano nel localStorage del browser.
  */
-const CACHE = 'advisor-desk-v1'
+const CACHE = 'advisor-desk-v2'
 const SHELL = ['./', './index.html', './manifest.webmanifest', './favicon.svg', './icon-192.png', './icon-512.png']
 
 self.addEventListener('install', (event) => {
@@ -33,6 +33,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return
 
   if (request.mode === 'navigate') {
+    // Solo la pagina della dashboard: altre app pubblicate sotto questo sito (es. ./ipod/)
+    // hanno il proprio service worker e non vanno salvate al posto di index.html.
+    const scopePath = new URL(self.registration.scope).pathname
+    if (url.pathname !== scopePath && url.pathname !== scopePath + 'index.html') return
     event.respondWith(
       fetch(request)
         .then((response) => {
