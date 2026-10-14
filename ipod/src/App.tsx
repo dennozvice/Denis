@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useSettings, updateSettings } from './core/settings'
 import { Device, useFlat } from './device/Device'
 import { t } from './i18n/strings'
+import { syncStatusBar } from './lib/native'
 import { useInstallPrompt } from './lib/pwa'
 import { startSync, supportsFolderPicker } from './library/syncFlow'
 import { useLibrary } from './library/index'
@@ -21,8 +22,10 @@ export function App() {
   // Senza cornice la pagina diventa tutta bianca o tutta nera; anche la barra di stato del telefono segue.
   useEffect(() => {
     const theme = flat ? (color === 'silver' ? '#ffffff' : '#000000') : '#141414'
-    document.body.dataset.flat = flat ? (color === 'silver' ? 'light' : 'dark') : ''
+    const mode = flat ? (color === 'silver' ? 'light' : 'dark') : ''
+    document.body.dataset.flat = mode
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme)
+    void syncStatusBar(mode)
   }, [flat, color])
   // Dopo un clic il pulsante perde il fuoco: Spazio e Invio tornano subito alla ghiera.
   const blur = (e: React.MouseEvent<HTMLButtonElement>) => e.currentTarget.blur()

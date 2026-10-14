@@ -18,6 +18,15 @@
     <title>iPod</title>
   </head>
   <body>
+    <!-- Colore della pagina prima del primo disegno (niente lampo scuro all'avvio sul telefono e nell'app nativa): stessa regola di useFlat() -->
+    <script>
+      try {
+        var s = JSON.parse(localStorage.getItem('ipod:settings') || '{}') || {}
+        var frame = s.frame === 'on' || s.frame === 'off' ? s.frame : 'auto'
+        var flat = frame === 'off' || (frame === 'auto' && matchMedia('(pointer: coarse)').matches && innerWidth < 700)
+        if (flat) document.body.setAttribute('data-flat', s.color === 'black' ? 'dark' : 'light')
+      } catch (e) {}
+    </script>
     <div id="root"></div>
     <noscript>Per usare l'iPod è necessario abilitare JavaScript.</noscript>
     <script type="module" src="/src/main.tsx"></script>

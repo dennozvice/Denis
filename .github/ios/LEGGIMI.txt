@@ -1,0 +1,22 @@
+iPod per iPhone: come installare l'app con Xcode
+
+Serve: un Mac con Xcode (gratis dal Mac App Store), un Apple ID e il cavo dell'iPhone.
+
+1. Apri ios/App/App.xcodeproj (doppio clic). Alla prima apertura Xcode scarica Capacitor da internet: aspetta che in alto sparisca "Resolving packages" (circa un minuto).
+2. Xcode › Settings (⌘,) › Accounts › + › aggiungi il tuo Apple ID, se non c'è già.
+3. Nell'elenco a sinistra clicca "App" (la prima riga), poi in mezzo la scheda "Signing & Capabilities":
+   lascia spuntato "Automatically manage signing" e in "Team" scegli il tuo nome (Personal Team).
+   Se Xcode dice che l'identificatore è già usato da un altro team, cambia "Bundle Identifier" (per esempio com.tuonome.ipod).
+4. Collega l'iPhone con il cavo e sbloccalo. Sull'iPhone attiva la Modalità sviluppatore:
+   Impostazioni › Privacy e sicurezza › Modalità sviluppatore (la voce compare dopo il primo collegamento a Xcode; l'iPhone si riavvia).
+5. In alto in Xcode, accanto ad "App", scegli il tuo iPhone come destinazione e premi ▶ (Run).
+6. Alla prima apertura l'iPhone chiede di autorizzare lo sviluppatore:
+   Impostazioni › Generali › VPN e gestione dispositivi › tocca il tuo Apple ID › Autorizza.
+   Da quel momento l'app "iPod" si apre dalla Home come tutte le altre, con la musica che continua anche a schermo bloccato.
+
+Da sapere
+- Con l'Apple ID gratuito l'app resta valida 7 giorni: poi non si apre più finché non premi di nuovo ▶ in Xcode (musica e impostazioni restano).
+  Con l'Apple Developer Program (99 € l'anno) la firma dura un anno e si può distribuire con TestFlight o sull'App Store.
+- iPod-senza-firma.ipa (nella stessa release) è la stessa app senza firma, per chi la installa con AltStore o Sideloadly (anche da Windows): stesso limite dei 7 giorni con l'Apple ID gratuito.
+- Per aggiornare l'app: scarica di nuovo iPod-Xcode.zip dalla release e ripeti dal passo 1. Oppure, dal repository: cd ipod && npm install && npm run ios.
+- La musica si aggiunge dentro l'app con "Aggiungi musica" (file dall'app File dell'iPhone). Resta salvata nell'app.

@@ -16,7 +16,7 @@ Al primo avvio la dashboard è **vuota**: niente clienti, attività o appuntamen
 
 ## Altri progetti in questo repository
 
-- **[iPod](ipod/README.md)** (`ipod/`): un lettore musicale con la grafica e la ghiera cliccabile di un iPod Classic, per ascoltare la propria musica nel browser. Pubblicato su <https://dennozvice.github.io/Denis/ipod/>.
+- **[iPod](ipod/README.md)** (`ipod/`): un lettore musicale con la grafica e la ghiera cliccabile di un iPod Classic, per ascoltare la propria musica nel browser. Pubblicato su <https://dennozvice.github.io/Denis/ipod/>; esiste anche come app nativa per iPhone (progetto Xcode nella release [ipod-ios](https://github.com/dennozvice/Denis/releases/tag/ipod-ios)).
 
 ## Usarla come app sul Mac (o su iPhone, iPad, Android)
 
