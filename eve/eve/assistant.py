@@ -74,11 +74,25 @@ class Assistant:
         assert self.microphone is not None
         self._calibrate()
         counter = 0
+        silent_frames = 0
+        warned_silent = False
         while self._running.is_set():
             frame = self.microphone.read(timeout=0.5)
             if frame is None:
                 continue
             counter += 1
+            # Microfono che consegna solo zeri: quasi sempre un permesso negato da macOS
+            if int(np.abs(frame).max()) == 0:
+                silent_frames += 1
+                if silent_frames == 75 and not warned_silent:  # ~6 secondi
+                    warned_silent = True
+                    self.bus.notice(
+                        "Il microfono non manda audio: controlla Impostazioni di Sistema › Privacy e sicurezza › Microfono "
+                        f"e abilita {self.config.assistant.name} (o il Terminale), poi riavvia.",
+                        "error",
+                    )
+            else:
+                silent_frames = 0
             if counter % 2 == 0:
                 self.bus.level(rms_level(frame))
             if self._manual_wake.is_set():

@@ -211,6 +211,7 @@ class WhisperWakeDetector:
         self._refractory = refractory_seconds
         self._last_hit = 0.0
         self._carry = np.zeros(0, dtype=np.int16)
+        self.last_words: list[str] = []  # ultime parole trascritte (per la diagnosi)
         self._transcribe = transcribe or self._load(model, device, compute_type, language)
 
     @staticmethod
@@ -257,6 +258,7 @@ class WhisperWakeDetector:
             words = self._transcribe(self._buffer)
         except Exception:
             return False
+        self.last_words = [w for w, _s, _e in words]
         match = keyword_match(words, self.keyword, self.threshold)
         if match is None:
             return False

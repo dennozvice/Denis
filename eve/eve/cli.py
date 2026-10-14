@@ -342,11 +342,22 @@ def cmd_listen_test(args: argparse.Namespace) -> int:
     detector = make_detector(config)
     mic = Microphone(config.audio.sample_rate, config.audio.input_device or None)
     mic.start()
-    print(f'Di\' "{config.wakeword.model}". Ctrl+C per uscire.', flush=True)
+    print(f'Di\' "{config.wakeword.model}" (pronuncia: {config.assistant.pronunciation or config.wakeword.model}). Ctrl+C per uscire.', flush=True)
+    print("La barra mostra il livello del microfono; le parole sentite compaiono man mano.", flush=True)
+    last_shown: list[str] = []
+    silent = 0
     try:
         for frame in mic.frames():
-            bar = "#" * int(rms_level(frame) * 40)
+            level = rms_level(frame)
+            silent = silent + 1 if int(abs(frame).max()) == 0 else 0
+            if silent == 75:
+                print("\n! Il microfono manda solo silenzio: probabilmente manca il permesso in Privacy e sicurezza › Microfono.", flush=True)
+            bar = "#" * int(level * 40)
             hit = detector.feed(frame)
+            words = getattr(detector, "last_words", [])
+            if words and words != last_shown:
+                last_shown = list(words)
+                print(f"\r{'':<60}\r  sentito: {' '.join(words)}", flush=True)
             print(f"\r{bar:<40} {'RILEVATA!' if hit else ''}", end="", flush=True)
             if hit:
                 print()
