@@ -108,6 +108,35 @@ export function SplitPane({ kind }: { kind: PaneKind }) {
         </div>
       )
       break
+    case 'videos':
+      body = (
+        <div className="pane-art" style={{ background: 'linear-gradient(180deg,#2b2b2b,#141414)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)' }}>
+          <svg viewBox="0 0 128 128" width="128" height="128" style={{ position: 'absolute', inset: 0 }}>
+            <rect x="16" y="28" width="96" height="72" rx="4" fill="#3a3a3a" stroke="#777" />
+            {Array.from({ length: 6 }, (_, i) => (
+              <g key={i}>
+                <rect x={21 + i * 15} y="31" width="8" height="6" rx="1" fill="#111" />
+                <rect x={21 + i * 15} y="91" width="8" height="6" rx="1" fill="#111" />
+              </g>
+            ))}
+            <rect x="24" y="42" width="80" height="44" fill="#8fb3d9" />
+            <polygon points="56,52 76,64 56,76" fill="#ffffff" opacity="0.9" />
+          </svg>
+        </div>
+      )
+      break
+    case 'photos':
+      body = (
+        <div className="pane-art" style={{ background: 'linear-gradient(180deg,#f4f4f4,#dcdcdc)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.08)' }}>
+          <svg viewBox="0 0 128 128" width="128" height="128" style={{ position: 'absolute', inset: 0 }}>
+            <rect x="18" y="24" width="92" height="80" fill="#ffffff" stroke="#b5b5b5" />
+            <rect x="24" y="30" width="80" height="60" fill="#9fd0f0" />
+            <circle cx="84" cy="44" r="7" fill="#ffd36b" />
+            <polygon points="24,90 48,58 64,76 76,66 104,90" fill="#5d9a4e" />
+          </svg>
+        </div>
+      )
+      break
     case 'none':
       body = null
       break

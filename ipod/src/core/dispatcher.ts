@@ -29,28 +29,44 @@ export function seekStepFor(elapsedMs: number): number {
 
 let seeking = false
 
-function defaultHandler(e: InputEvent): void {
+/** Comportamenti predefiniti; restituisce true se ha fatto qualcosa (così il clicker non suona a vuoto). */
+function defaultHandler(e: InputEvent): boolean {
   const st = playerStore.get()
   switch (e.type) {
     case 'press':
       if (e.button === 'play') {
-        if (st.trackId) void player.toggle()
-      } else if (e.button === 'next') {
-        if (st.trackId && !seeking) void player.next()
-      } else if (e.button === 'prev') {
-        if (st.trackId && !seeking) void player.previous()
-      } else if (e.button === 'menu') {
-        nav.pop()
+        if (!st.trackId) return false
+        void player.toggle()
+        return true
       }
-      break
+      if (e.button === 'next') {
+        if (!st.trackId || seeking) return false
+        void player.next()
+        return true
+      }
+      if (e.button === 'prev') {
+        if (!st.trackId || seeking) return false
+        void player.previous()
+        return true
+      }
+      if (e.button === 'menu') return nav.pop()
+      return false
     case 'hold':
-      if (e.button === 'menu') nav.home()
-      else if (e.button === 'play') system.sleep()
-      else if ((e.button === 'next' || e.button === 'prev') && st.trackId) {
+      if (e.button === 'menu') {
+        if (nav.depth() === 1) return false
+        nav.home()
+        return true
+      }
+      if (e.button === 'play') {
+        system.sleep()
+        return true
+      }
+      if ((e.button === 'next' || e.button === 'prev') && st.trackId) {
         seeking = true
         player.seekBy(e.button === 'next' ? seekStepFor(e.elapsed) : -seekStepFor(e.elapsed))
+        return true
       }
-      break
+      return false
     case 'release':
       if (e.button === 'next' || e.button === 'prev') {
         // il "press" arriva prima del "release": liberiamo il blocco dopo
@@ -58,9 +74,9 @@ function defaultHandler(e: InputEvent): void {
           seeking = false
         })
       }
-      break
+      return false
     default:
-      break
+      return false
   }
 }
 
@@ -70,13 +86,8 @@ export function dispatch(e: InputEvent): void {
     system.setHold(e.locked)
     return
   }
-  if (sys.hold) {
-    if (e.type === 'press' || e.type === 'hold') {
-      if (sys.asleep) system.wake()
-      system.flashHold()
-    }
-    return
-  }
+  // Hold inserito: il vero iPod ignora tutto e mostra solo il lucchetto.
+  if (sys.hold) return
   if (!sys.booted) return
   if (sys.asleep) {
     if (e.type === 'press' || e.type === 'hold') system.wake()
@@ -87,10 +98,10 @@ export function dispatch(e: InputEvent): void {
   // Con lo schermo spento il primo tocco lo riaccende soltanto (come sull'iPod).
   if (wasDark && e.type !== 'release') return
   const screen = nav.top()
-  const handled = handlers.get(screen.kind)?.(e, screen) === true
-  if (!handled) defaultHandler(e)
-  // Il clicker suona a ogni tasto e a ogni scatto che muove davvero qualcosa (non a fine lista).
-  if (settingsStore.get().clicker && (e.type === 'press' || (e.type === 'rotate' && handled))) {
+  let handled = handlers.get(screen.kind)?.(e, screen) === true
+  if (!handled) handled = defaultHandler(e)
+  // Il clicker suona solo quando qualcosa succede davvero (non a fine lista, non MENU alla radice).
+  if (handled && settingsStore.get().clicker && (e.type === 'press' || e.type === 'rotate')) {
     tick(e.type === 'rotate' ? Math.max(0.4, 1 - Math.abs(e.velocity) / 60) : 1)
   }
 }

@@ -5,6 +5,7 @@ import { player, playerStore, setTrackProvider } from './audio/player'
 import { setClickerEnabled, settingsStore } from './boot'
 import { system, setPlayingProbe } from './core/system'
 import { setupPwa } from './lib/pwa'
+import { nav } from './core/navigation'
 import { artworkUrl, library, libraryStore, loadLibrary } from './library/index'
 import { refreshFolderName } from './library/syncFlow'
 import { unknownLabels } from './i18n/strings'
@@ -44,7 +45,11 @@ uiStore.subscribe(() => {})
 const bootAt = Date.now()
 void Promise.all([loadLibrary(unknownLabels()), refreshFolderName()]).finally(() => {
   const wait = Math.max(0, 2200 - (Date.now() - bootAt))
-  setTimeout(() => system.boot(), wait)
+  setTimeout(() => {
+    system.boot()
+    // La prima volta l'iPod chiede la lingua (come il vero dispositivo appena acceso).
+    if (!settingsStore.get().welcomed) nav.push('option', { setting: 'language', first: '1' })
+  }, wait)
 })
 
 createRoot(document.getElementById('root')!).render(

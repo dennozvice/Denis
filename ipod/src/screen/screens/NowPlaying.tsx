@@ -101,8 +101,9 @@ export function nowPlayingInput(e: InputEvent, screen: Screen): boolean {
 }
 
 function ProgressBar({ position, duration, scrub }: { position: number; duration: number; scrub: boolean }) {
-  const ratio = duration > 0 ? Math.min(1, position / duration) : 0
-  const w = Math.round(222 * ratio)
+  // Il display vero aggiorna una volta al secondo: la barra segue i secondi interi.
+  const ratio = duration > 0 ? Math.min(1, Math.floor(position) / duration) : 0
+  const w = Math.round(210 * ratio)
   return (
     <>
       <div className="np-bar">
@@ -116,7 +117,7 @@ function ProgressBar({ position, duration, scrub }: { position: number; duration
 }
 
 function VolumeBar({ volume }: { volume: number }) {
-  const w = Math.round((222 * volume) / 100)
+  const w = Math.round((210 * volume) / 100)
   return (
     <>
       <div className="np-speaker">
@@ -176,7 +177,10 @@ export function NowPlayingScreen({ screen }: { screen: Screen }) {
   const duration = progress.duration || track.duration
   return (
     <div className="np">
-      <Artwork artworkId={track.artworkId} size={112} reflection={34} full className="np-art" />
+      {/* Copertina in prospettiva (firmware 2007): bordo destro che si allontana, riflesso sotto. */}
+      <div className="np-art-stage">
+        <Artwork artworkId={track.artworkId} size={124} reflection={36} full className="np-art" />
+      </div>
       <div className="np-counter">
         {shuffle !== 'off' && <ShuffleIcon style={{ color: '#555' }} />}
         {repeat !== 'off' && <RepeatIcon one={repeat === 'one'} style={{ color: '#555' }} />}

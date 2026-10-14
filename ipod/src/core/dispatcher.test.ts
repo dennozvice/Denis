@@ -21,12 +21,12 @@ describe('dispatcher', () => {
     dispatch({ type: 'hold', button: 'menu', elapsed: 700 })
     expect(nav.top().kind).toBe('main')
   })
-  it('con Hold inserito ignora i comandi e fa lampeggiare il lucchetto', () => {
+  it('con Hold inserito ignora i comandi', () => {
     nav.push('music')
     dispatch({ type: 'holdSwitch', locked: true })
     dispatch({ type: 'press', button: 'menu' })
     expect(nav.top().kind).toBe('music')
-    expect(systemStore.get().holdFlashUntil).toBeGreaterThan(0)
+    expect(systemStore.get().hold).toBe(true)
     dispatch({ type: 'holdSwitch', locked: false })
     dispatch({ type: 'press', button: 'menu' })
     expect(nav.top().kind).toBe('main')

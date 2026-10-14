@@ -113,7 +113,7 @@ export function MenuList({
         </div>
       )}
       {letters && letter && hasScrollbar && (
-        <div className="letter-overlay" style={{ left: Math.round(rowWidth / 2), top: 109 }}>
+        <div className="letter-overlay" style={{ left: 160, top: 109 }}>
           {letter}
         </div>
       )}

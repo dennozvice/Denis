@@ -19,6 +19,8 @@ const errors = []
 async function session(name, viewport, dpr, run) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: dpr, locale: 'it-IT', hasTouch: dpr === 3 })
   const page = await ctx.newPage()
+  // salta la scelta della lingua della prima accensione
+  await page.addInitScript(() => { try { localStorage.setItem('ipod:settings', JSON.stringify({ welcomed: true })) } catch {} })
   page.on('pageerror', (e) => errors.push(`[${name}] pageerror: ${e.message}`))
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(`[${name}] console: ${m.text()}`)

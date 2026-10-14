@@ -323,14 +323,14 @@
   z-index: 20;
 }
 .lcd-dim {
-  background: #2d302d;
-  mix-blend-mode: multiply;
+  background: #1b1e1b;
   opacity: 0;
-  transition: opacity 350ms ease-out;
+  transition: opacity 300ms ease-out;
 }
+/* Retroilluminazione spenta: il pannello resta leggibile ma grigio-verde scuro; si riaccende di colpo (LED). */
 .lcd-dim[data-on='true'] {
-  opacity: 0.93;
-  transition: opacity 120ms ease-out;
+  opacity: 0.86;
+  transition: opacity 0ms;
 }
 .lcd-off {
   background: #1a1b1a;
@@ -392,10 +392,19 @@
   inset: 0;
   background: #ffffff;
 }
-.np-art {
+.np-art-stage {
   position: absolute;
   left: 14px;
-  top: 13px;
+  top: 7px;
+  width: 124px;
+  height: 160px;
+  perspective: 700px;
+  perspective-origin: 0% 40%;
+}
+.np-art {
+  transform: rotateY(18deg);
+  transform-origin: left center;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 1px 0 3px rgba(0, 0, 0, 0.15);
 }
 .np-counter {
   position: absolute;
@@ -434,9 +443,9 @@
 }
 .np-bar {
   position: absolute;
-  left: 48px;
+  left: 54px;
   top: 185px;
-  width: 224px;
+  width: 212px;
   height: 9px;
   border: 1px solid #9b9b9b;
   border-radius: 4.5px;
@@ -474,7 +483,7 @@
 }
 .np-speaker {
   position: absolute;
-  left: 34px;
+  left: 38px;
   top: 186px;
   color: #000000;
   display: flex;

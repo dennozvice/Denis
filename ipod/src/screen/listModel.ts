@@ -6,7 +6,7 @@
 import type { QueueItem, ShuffleMode } from '../audio/queue'
 import type { Screen, ScreenKind } from '../core/navigation'
 
-export type PaneKind = 'slideshow' | 'nowPlaying' | 'extras' | 'settings' | 'podcasts' | 'none'
+export type PaneKind = 'slideshow' | 'nowPlaying' | 'extras' | 'settings' | 'podcasts' | 'videos' | 'photos' | 'none'
 
 export type ItemAction =
   | { kind: 'push'; screen: ScreenKind; params?: Record<string, string> }

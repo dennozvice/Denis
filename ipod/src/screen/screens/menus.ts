@@ -55,6 +55,8 @@ defineList('main', {
   items: () => {
     const items: ListItem[] = [
       { id: 'music', label: t('music'), chevron: true, pane: 'slideshow', action: { kind: 'push', screen: 'music' } },
+      { id: 'videos', label: t('videos'), chevron: true, pane: 'videos', action: { kind: 'push', screen: 'videos' } },
+      { id: 'photos', label: t('photos'), chevron: true, pane: 'photos', action: { kind: 'push', screen: 'photos' } },
       { id: 'podcasts', label: t('podcasts'), chevron: true, pane: 'podcasts', action: { kind: 'push', screen: 'podcasts' } },
       { id: 'extras', label: t('extras'), chevron: true, pane: 'extras', action: { kind: 'push', screen: 'extras' } },
       { id: 'settings', label: t('settings'), chevron: true, pane: 'settings', action: { kind: 'push', screen: 'settings' } },
@@ -68,6 +70,21 @@ defineList('main', {
     if (playerStore.get().trackId) items.push({ id: 'np', label: t('nowPlaying'), chevron: true, pane: 'nowPlaying', action: { kind: 'push', screen: 'nowPlaying' } })
     return items
   },
+})
+
+/* Video e Foto: voci presenti sul vero iPod; qui aprono elenchi vuoti (niente video né foto sul web). */
+const emptyRow = (id: StringKey): ListItem => ({ id, label: t(id), chevron: true, action: { kind: 'push', screen: 'empty', params: { title: t(id) } } })
+defineList('videos', {
+  title: () => t('videos'),
+  items: () => [emptyRow('movies'), emptyRow('musicVideos'), emptyRow('tvShows'), emptyRow('videoPlaylists')],
+})
+defineList('photos', {
+  title: () => t('photos'),
+  items: () => [emptyRow('allPhotos'), emptyRow('slideshowSettings')],
+})
+defineList('empty', {
+  title: (s) => s.params.title ?? '',
+  items: () => [],
 })
 
 /* ---------------- Musica ---------------- */
@@ -115,7 +132,24 @@ defineList('playlist', {
     const tracks = library.tracksOf(p.trackIds)
     const rows = songRows(tracks, () => toQueue(tracks))
     if (p.kind === 'otg' && tracks.length > 0) {
-      rows.unshift({ id: '_clear', label: t('erase'), chevron: true, action: { kind: 'push', screen: 'confirm', params: { action: 'clearOtg' } } })
+      // Come sull'iPod: la On-The-Go si può salvare come playlist ("Nuova playlist 1", 2, …) o svuotare.
+      rows.unshift(
+        {
+          id: '_save',
+          label: t('savePlaylist'),
+          action: {
+            kind: 'run',
+            run: () => {
+              const existing = L().playlists.filter((x) => x.kind === 'user').map((x) => x.name)
+              let n = 1
+              while (existing.includes(`${t('newPlaylist')} ${n}`)) n++
+              const id = `pl-${Date.now().toString(36)}`
+              void library.savePlaylist({ id, name: `${t('newPlaylist')} ${n}`, trackIds: [...p.trackIds], kind: 'user' }).then(() => library.clearOnTheGo()).then(() => nav.pop())
+            },
+          },
+        },
+        { id: '_clear', label: t('clearPlaylist'), chevron: true, action: { kind: 'push', screen: 'confirm', params: { action: 'clearOtg' } } },
+      )
     }
     return rows
   },
@@ -393,15 +427,17 @@ defineList('option', {
           action: { kind: 'run' as const, run: () => updateSettings({ backlightSeconds: v }) },
         }))
       case 'language':
-        return (['it', 'en'] as const).map((l) => ({
+        return (['en', 'it'] as const).map((l) => ({
           id: l,
           label: t(l === 'it' ? 'italian' : 'english'),
           checked: st.language === l,
           action: {
             kind: 'run' as const,
             run: () => {
-              updateSettings({ language: l })
+              updateSettings({ language: l, welcomed: true })
               relabelLibrary(unknownLabels(l))
+              // Prima accensione (o dopo un ripristino): scelta la lingua si va al menu principale.
+              if (s.params.first === '1') nav.home()
             },
           },
         }))
@@ -440,7 +476,7 @@ defineList('confirm', {
       ]
     }
     if (action === 'clearOtg') {
-      return [cancel, { id: 'clear', label: t('erase'), action: { kind: 'run', run: () => void library.clearOnTheGo().then(() => nav.pop()) } }]
+      return [cancel, { id: 'clear', label: t('clearPlaylist'), action: { kind: 'run', run: () => void library.clearOnTheGo().then(() => nav.pop()) } }]
     }
     return [
       cancel,
@@ -458,7 +494,9 @@ defineList('confirm', {
             player.setVolume(st.volume)
             relabelLibrary(unknownLabels(st.language))
             system.touch()
-            nav.pop()
+            // Come sul vero iPod, dopo il ripristino compare la scelta della lingua.
+            nav.home()
+            nav.push('option', { setting: 'language', first: '1' })
           },
         },
       },

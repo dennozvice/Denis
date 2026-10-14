@@ -1,5 +1,5 @@
 /** Barra di stato: icona play/pausa, lucchetto Hold, titolo, batteria. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { usePlayer } from '../audio/player'
 import { useSystem } from '../core/system'
 import { BatteryIcon, LockIcon, PauseIcon, PlayIcon } from './icons'
@@ -37,24 +37,11 @@ export function StatusBar({ title }: { title: string }) {
   const status = usePlayer((s) => s.status)
   const hasTrack = usePlayer((s) => s.trackId !== null)
   const hold = useSystem((s) => s.hold)
-  const flashUntil = useSystem((s) => s.holdFlashUntil)
   const battery = useBattery()
-  const lockRef = useRef<HTMLSpanElement>(null)
-  // Il lucchetto lampeggia due volte quando si preme un tasto con Hold inserito.
-  useEffect(() => {
-    const el = lockRef.current
-    if (!flashUntil || !el) return
-    const anim = el.animate([{ opacity: 1 }, { opacity: 0 }, { opacity: 1 }, { opacity: 0 }, { opacity: 1 }], { duration: 600, easing: 'steps(1, end)' })
-    return () => anim.cancel()
-  }, [flashUntil])
   return (
     <div className="sb">
       <div className="sb-left">
-        {hold && (
-          <span ref={lockRef} style={{ display: 'flex' }}>
-            <LockIcon />
-          </span>
-        )}
+        {hold && <LockIcon />}
         {hasTrack && status === 'playing' && <PlayIcon />}
         {hasTrack && (status === 'paused' || status === 'loading') && <PauseIcon />}
       </div>

@@ -56,7 +56,7 @@ export function registerScreen(kind: ScreenKind, def: ScreenDef): void {
 /** Collega i gestori di input al dispatcher (una volta all'avvio). */
 export function registerAllInputs(): void {
   const kinds: ScreenKind[] = [
-    'main', 'music', 'podcasts', 'extras', 'settings', 'playlists', 'playlist', 'artists', 'artist', 'albums', 'album', 'songs', 'genres', 'genre',
+    'main', 'music', 'videos', 'photos', 'empty', 'podcasts', 'extras', 'settings', 'playlists', 'playlist', 'artists', 'artist', 'albums', 'album', 'songs', 'genres', 'genre',
     'composers', 'composer', 'audiobooks', 'coverflow', 'nowPlaying', 'about', 'option', 'brightness', 'clock', 'stopwatch', 'games', 'sync', 'legal',
     'confirm', 'message',
   ]
