@@ -1,0 +1,108 @@
+# App nativa per iPhone (cartella ipod/ios, progetto Xcode generato con Capacitor).
+# - Su ogni pull request che tocca ipod/: compila l'app su un runner macOS (senza firma), così si sa che il progetto torna.
+# - Su push al branch principale (o avvio manuale): pubblica nella release "ipod-ios", con link fissi:
+#     iPod-Xcode.zip        progetto Xcode già pronto (con dentro i file dell'app) da aprire sul Mac e installare sull'iPhone
+#     iPod-senza-firma.ipa  la stessa app senza firma, per chi la installa con AltStore o Sideloadly
+# I runner macOS sono gratuiti per i repository pubblici. Istruzioni per l'utente: ipod/README.md › "App vera per iPhone".
+name: App iPhone
+
+on:
+  push:
+    branches: [main]
+    paths: ['ipod/**', '.github/workflows/ios.yml', '.github/ios/**']
+  pull_request:
+    paths: ['ipod/**', '.github/workflows/ios.yml', '.github/ios/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  xcode:
+    name: Compila con Xcode
+    # Runner Intel: i runner Apple Silicon (macos-26) hanno code lunghe e GitHub annulla i job dopo 15 minuti in coda.
+    # Xcode 26 compila per iPhone anche da x64; ha 4 CPU e 14 GB di RAM.
+    runs-on: macos-26-intel
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ipod
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ipod/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Copia l'app nel progetto Xcode (cap sync)
+        run: npx cap sync ios
+      - name: Versione di Xcode
+        run: xcodebuild -version
+
+      - name: Compila per iPhone (senza firma)
+        run: |
+          set -o pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build 2>&1 | tee xcodebuild.log | (grep -E --line-buffered 'error:|warning:|\*\* BUILD|Resolved source packages|Fetching' || true)
+      - name: Log completo di Xcode (in caso di errore)
+        if: failure()
+        run: tail -n 200 xcodebuild.log
+
+      - name: Impacchetta .ipa senza firma e progetto Xcode pronto
+        run: |
+          set -e
+          APP=build/Build/Products/Release-iphoneos/App.app
+          test -d "$APP"
+          rm -rf out && mkdir -p out/Payload out/iPod-Xcode/node_modules/@capacitor
+          cp -R "$APP" out/Payload/
+          (cd out && zip -qr iPod-senza-firma.ipa Payload)
+          # Progetto Xcode con dentro i file dell'app (ios/App/App/public) e il plugin che Package.swift cerca in node_modules
+          rsync -a --exclude 'DerivedData' --exclude '.build' --exclude 'xcuserdata' --exclude '.swiftpm' ios/ out/iPod-Xcode/ios/
+          cp -R node_modules/@capacitor/status-bar out/iPod-Xcode/node_modules/@capacitor/
+          cp ../.github/ios/LEGGIMI.txt out/iPod-Xcode/LEGGIMI.txt
+          (cd out && zip -qr iPod-Xcode.zip iPod-Xcode)
+          ls -la out/iPod-Xcode.zip out/iPod-senza-firma.ipa
+          # Controllo: l'archivio contiene il progetto, i file dell'app e il plugin
+          unzip -l out/iPod-Xcode.zip | grep -E 'App.xcodeproj/project.pbxproj|App/App/public/index.html|status-bar/Package.swift'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: iPod-iPhone
+          path: |
+            ipod/out/iPod-Xcode.zip
+            ipod/out/iPod-senza-firma.ipa
+          if-no-files-found: error
+
+  release:
+    name: Pubblica nella release ipod-ios
+    if: github.event_name != 'pull_request'
+    needs: xcode
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: iPod-iPhone
+          path: out
+      - name: Aggiorna la release "ipod-ios" (stesso link, file nuovi)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          ls -la out
+          gh release delete ipod-ios --yes --cleanup-tag || true
+          gh release create ipod-ios out/iPod-Xcode.zip out/iPod-senza-firma.ipa \
+            --target "$GITHUB_SHA" \
+            --title "iPod per iPhone (ultima versione)" \
+            --notes-file .github/ios/release.md

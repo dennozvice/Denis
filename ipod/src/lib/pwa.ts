@@ -4,6 +4,7 @@
  * "Aggiungi alla schermata Home" o "Aggiungi al Dock").
  */
 import { useSyncExternalStore } from 'react'
+import { isNative } from './native'
 
 /** Evento non standard di Chromium che permette di mostrare il proprio pulsante "Installa". */
 interface BeforeInstallPromptEvent extends Event {
@@ -29,7 +30,8 @@ export function setupPwa(): void {
   })
   // Il service worker serve solo nella versione pubblicata (in sviluppo darebbe file vecchi).
   // Scope "./" (cioè /Denis/ipod/): il sito radice ha un altro service worker su /Denis/ e i due non devono sovrapporsi.
-  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  // Nell'app nativa i file sono già dentro l'app: niente service worker.
+  if (import.meta.env.PROD && !isNative && 'serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(() => {
         /* senza service worker l'app funziona lo stesso, solo non offline */
@@ -41,6 +43,7 @@ export function setupPwa(): void {
 /** true se l'app è aperta come app installata (finestra propria, senza barra del browser). */
 export function isStandalone(): boolean {
   if (typeof window === 'undefined') return false
+  if (isNative) return true
   const nav = navigator as Navigator & { standalone?: boolean }
   return window.matchMedia?.('(display-mode: standalone)').matches || nav.standalone === true
 }

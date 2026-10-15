@@ -51,6 +51,30 @@ Alla prima accensione (e dopo **Ripristina impostazioni**) l'iPod chiede la ling
 
 Si installa come le altre app web: su Mac con Chrome dall'icona nella barra degli indirizzi (o dal pulsante **Installa come app** sotto l'iPod), con Safari da **File › Aggiungi al Dock**; su iPhone da **Condividi › Aggiungi alla schermata Home**; su Android dal menu di Chrome › **Installa app**. Una volta installata si apre anche senza connessione. Su iPhone e iPad il volume si regola con i tasti fisici (il browser non permette di cambiarlo via software) e l'equalizzatore non è attivo.
 
+## App vera per iPhone
+
+Oltre alla versione web c'è la **stessa app come app nativa per iPhone** (cartella `ios/`, un progetto Xcode generato con [Capacitor](https://capacitorjs.com/)): icona e nome propri, tutto schermo, musica che continua a schermo bloccato (modalità audio in background), dati salvati dentro l'app e nessun problema di cache del browser.
+
+Le app per iPhone non si installano da un file come sul Mac: devono essere **firmate con un Apple ID**. Le strade sono due:
+
+- **Apple ID gratuito + Xcode** (nessun costo): l'app resta valida **7 giorni**, poi non si apre più finché non la si reinstalla premendo di nuovo Run in Xcode (musica e impostazioni restano).
+- **Apple Developer Program** (99 € l'anno): firma valida un anno, TestFlight e App Store.
+
+Il modo più semplice, senza installare nulla oltre a Xcode:
+
+1. Scarica **iPod-Xcode.zip** dalla release [ipod-ios](https://github.com/dennozvice/Denis/releases/tag/ipod-ios) (viene rigenerato a ogni aggiornamento dell'app) e scompattalo.
+2. Apri `ios/App/App.xcodeproj`. Alla prima apertura Xcode scarica Capacitor (serve internet).
+3. In **Xcode › Settings › Accounts** aggiungi il tuo Apple ID.
+4. Seleziona il progetto "App" › scheda **Signing & Capabilities** › scegli il tuo **Team** (Personal Team). Se l'identificatore risultasse già usato, cambia il *Bundle Identifier*.
+5. Collega l'iPhone, attiva la **Modalità sviluppatore** (Impostazioni › Privacy e sicurezza), scegli l'iPhone come destinazione e premi **▶ Run**.
+6. Alla prima apertura: Impostazioni › Generali › **VPN e gestione dispositivi** › il tuo Apple ID › **Autorizza**.
+
+Per aggiornare l'app si ripetono gli stessi passaggi con lo zip nuovo (se avevi cambiato il *Bundle Identifier*, riscrivi lo stesso, altrimenti l'iPhone installa una seconda app senza la tua musica). Le stesse istruzioni sono nel file `LEGGIMI.txt` dentro lo zip. Nella release c'è anche **iPod-senza-firma.ipa**, per chi preferisce AltStore o Sideloadly (anche da Windows; stesso limite dei 7 giorni con l'Apple ID gratuito).
+
+Per chi lavora sul codice: `npm run ios` compila l'app web, la copia nel progetto Xcode (`npx cap sync ios`) e apre Xcode. Il workflow `.github/workflows/ios.yml` compila il progetto su un runner macOS a ogni pull request e aggiorna la release a ogni push su `main`.
+
+Dentro l'app nativa: niente service worker (i file sono già nell'app), barra di stato dello stesso colore della pagina (`src/lib/native.ts`), orientamento solo verticale su iPhone, modalità audio in background (`ios/App/App/Info.plist`).
+
 ## Sviluppo
 
 Serve [Node.js](https://nodejs.org/) 22 o superiore.
@@ -64,6 +88,7 @@ npm run preview    # prova la build
 npm test           # test unitari (vitest)
 npm run lint       # eslint
 npm run typecheck  # tsc
+npm run ios        # build + cap sync + apre il progetto Xcode (solo su Mac)
 ```
 
 `scripts/screenshot.mjs` fotografa l'app con Chromium (richiede Playwright): `node scripts/screenshot.mjs http://localhost:4173 ./shots`.
